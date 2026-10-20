@@ -1,0 +1,64 @@
+/* Lazy Bookie design tokens — from Figma variables (collection "Lazy Bookie"), 2026-10-20.
+   Accessible text variants (*-text) added after a WCAG contrast check; see design-handoff.md §4. */
+:root {
+  /* colour */
+  --color-ink: #1c1c1a;
+  --color-ink-2: #4a4740;
+  --color-ink-3: #86826f; /* decorative / large text only */
+  --color-ink-3-text: #6b6757; /* small captions: 4.50:1 on paper */
+  --color-paper: #e9e5d8;
+  --color-card: #f8f6ef;
+  --color-line: #cbc6b4;
+  --color-leaf: #1e5b3a;
+  --color-leaf-soft: #dce6d3;
+  --color-sun: #ffc23a;
+  --color-sun-soft: #f8e7b5;
+  --color-rain: #7fa6c9; /* decorative only */
+  --color-rain-soft: #dce4ec;
+  --color-coral: #c8322b;
+  --color-coral-soft: #f2d6cf;
+  --color-amber: #9a6200;
+  --color-amber-text: #8a5700; /* amber text on paper: 4.84:1 */
+  --color-amber-soft: #f1e0b4;
+  --color-sky-deep: #14243a;
+  --color-sky-mid: #2c4a6b;
+  --color-bark: #9a8572;
+
+  /* type */
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif; /* 800, 900; uppercase */
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace; /* 500, 600 */
+  --font-body: "Figtree", system-ui, sans-serif; /* 400, 600, 700 */
+  --text-label: 11px; /* mono caps, letter-spacing 0.08em */
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-title: 22px; /* display */
+  --text-headline: 34px; /* display */
+  --text-hero: 64px; /* payout figure */
+
+  /* shape and space */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-sheet: 24px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px; /* screen gutter */
+  --space-6: 24px;
+  --border-hair: 1px;
+  --border-strong: 1.5px;
+  --tap-min: 44px;
+
+  /* motion (proposed) */
+  --motion-stamp: 250ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  --motion-flap: 280ms ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-stamp: 0ms;
+    --motion-flap: 0ms;
+  }
+}

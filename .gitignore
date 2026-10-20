@@ -1,0 +1,32 @@
+# --- common ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+.reviews/
+.claude/settings.local.json
+CLAUDE.local.md
+# local open-weight model files (large; some licences forbid redistribution)
+models/
+*.gguf
+*.safetensors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# --- node / typescript ---
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# --- public (new-project --public) ---
+# AI toolkit working folders stay on your machine in a public repository.
+.claude/
+.agents/
+CLAUDE.md
+.mcp.json

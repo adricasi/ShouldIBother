@@ -1,0 +1,168 @@
+{
+  "color": {
+    "ink": {
+      "$value": "#1C1C1A"
+    },
+    "ink-2": {
+      "$value": "#4A4740"
+    },
+    "ink-3": {
+      "$value": "#86826F"
+    },
+    "ink-3-text": {
+      "$value": "#6B6757"
+    },
+    "paper": {
+      "$value": "#E9E5D8"
+    },
+    "card": {
+      "$value": "#F8F6EF"
+    },
+    "line": {
+      "$value": "#CBC6B4"
+    },
+    "leaf": {
+      "$value": "#1E5B3A"
+    },
+    "leaf-soft": {
+      "$value": "#DCE6D3"
+    },
+    "sun": {
+      "$value": "#FFC23A"
+    },
+    "sun-soft": {
+      "$value": "#F8E7B5"
+    },
+    "rain": {
+      "$value": "#7FA6C9"
+    },
+    "rain-soft": {
+      "$value": "#DCE4EC"
+    },
+    "coral": {
+      "$value": "#C8322B"
+    },
+    "coral-soft": {
+      "$value": "#F2D6CF"
+    },
+    "amber": {
+      "$value": "#9A6200"
+    },
+    "amber-text": {
+      "$value": "#8A5700"
+    },
+    "amber-soft": {
+      "$value": "#F1E0B4"
+    },
+    "sky-deep": {
+      "$value": "#14243A"
+    },
+    "sky-mid": {
+      "$value": "#2C4A6B"
+    },
+    "bark": {
+      "$value": "#9A8572"
+    },
+    "$type": "color"
+  },
+  "font": {
+    "display": {
+      "$value": "\"Big Shoulders Display\", \"Arial Narrow\", sans-serif"
+    },
+    "mono": {
+      "$value": "\"IBM Plex Mono\", ui-monospace, monospace"
+    },
+    "body": {
+      "$value": "\"Figtree\", system-ui, sans-serif"
+    },
+    "$type": "fontFamily"
+  },
+  "text": {
+    "label": {
+      "$value": "11px"
+    },
+    "small": {
+      "$value": "13px"
+    },
+    "body": {
+      "$value": "15px"
+    },
+    "title": {
+      "$value": "22px"
+    },
+    "headline": {
+      "$value": "34px"
+    },
+    "hero": {
+      "$value": "64px"
+    },
+    "$type": "dimension"
+  },
+  "radius": {
+    "xs": {
+      "$value": "4px"
+    },
+    "sm": {
+      "$value": "8px"
+    },
+    "md": {
+      "$value": "12px"
+    },
+    "lg": {
+      "$value": "14px"
+    },
+    "sheet": {
+      "$value": "24px"
+    },
+    "pill": {
+      "$value": "999px"
+    },
+    "$type": "dimension"
+  },
+  "space": {
+    "1": {
+      "$value": "4px"
+    },
+    "2": {
+      "$value": "8px"
+    },
+    "3": {
+      "$value": "12px"
+    },
+    "4": {
+      "$value": "16px"
+    },
+    "5": {
+      "$value": "20px"
+    },
+    "6": {
+      "$value": "24px"
+    },
+    "$type": "dimension"
+  },
+  "border": {
+    "hair": {
+      "$value": "1px"
+    },
+    "strong": {
+      "$value": "1.5px"
+    },
+    "$type": "dimension"
+  },
+  "tap": {
+    "min": {
+      "$value": "44px"
+    },
+    "$type": "dimension"
+  },
+  "motion": {
+    "stamp": {
+      "$value": "250ms cubic-bezier(0.2, 1.4, 0.4, 1)"
+    },
+    "flap": {
+      "$value": "280ms ease-in-out"
+    },
+    "$type": "transition"
+  },
+  "$description": "Lazy Bookie tokens (Figma hDYVCSZCGhxGRsU4Nbz02z), 2026-10-20. Format: W3C design tokens draft."
+}
