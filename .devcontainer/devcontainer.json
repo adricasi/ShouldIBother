@@ -1,0 +1,38 @@
+{
+  "containerEnv": {
+    "DEVCONTAINER_FIREWALL": "on"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "editorconfig.editorconfig",
+        "github.vscode-github-actions",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "vitest.explorer"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "mounts": [
+    "source=${localEnv:HOME}/ai-toolkit,target=/home/vscode/ai-toolkit,type=bind,readonly",
+    "source=claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
+  "name": "should-i-bother",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "sudo --preserve-env=DEVCONTAINER_FIREWALL bash .devcontainer/init-firewall.sh",
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+  "waitFor": "postStartCommand"
+}

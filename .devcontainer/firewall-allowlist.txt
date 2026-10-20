@@ -1,0 +1,23 @@
+# Outbound allowlist for the dev container firewall (one domain per line; GitHub IP
+# ranges are added automatically). After editing, rebuild or run:
+#   sudo bash .devcontainer/init-firewall.sh
+# --- Claude Code (API, login/token refresh, telemetry)
+api.anthropic.com
+claude.ai
+console.anthropic.com
+platform.claude.com
+statsig.anthropic.com
+sentry.io
+# --- VS Code server and extensions
+marketplace.visualstudio.com
+vscode.blob.core.windows.net
+update.code.visualstudio.com
+az764295.vo.msecnd.net
+# --- GitHub release downloads (uv-managed Python, linters, tflint plugins); GitHub's
+#     own IP ranges are added automatically from api.github.com/meta
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+# --- Node (Claude Code feature, tooling)
+registry.npmjs.org
+
+# --- Node / TypeScript (registry.npmjs.org is in the common list)

@@ -1,0 +1,8 @@
+dist/
+coverage/
+package-lock.json
+# Agent/doc files are Markdown/JSON maintained by tools and humans, not by Prettier.
+*.md
+.claude/
+.agents/
+.devcontainer/
