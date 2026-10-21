@@ -8,7 +8,10 @@ import {
   ATTRIBUTION,
   DisallowedHostError,
   SnapshotFormatError,
+  SnapshotCoverageError,
+  alignSumVariables,
   archiveHours,
+  archiveLastCompleteDay,
   assertAllowedUrl,
   buildRequestUrl,
   fetchJsonWithTimeout,
@@ -26,6 +29,7 @@ import {
   syntheticSnapshot,
   type RecordedCall,
 } from "./support/synthetic-weather.js";
+import { HOUR_MS, addDays, madridWallTimeToEpochMs } from "../../src/domain/outcomes.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -94,11 +98,44 @@ describe("fetchJsonWithTimeout", () => {
     expect(stub).not.toHaveBeenCalled();
   });
 
-  it("returns the parsed body and reports HTTP errors", async () => {
+  it("returns the parsed body, with a timeout signal and redirects turned into errors", async () => {
     const url = buildRequestUrl("archive", GRACIA, {
       startDate: "2026-04-01",
       endDate: "2026-04-01",
     });
+    const calls: (RequestInit | undefined)[] = [];
+    const stub = vi.fn((_url: string, init?: RequestInit) => {
+      calls.push(init);
+      return Promise.resolve(new Response(JSON.stringify({ ok: 1 }), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", stub);
+    await expect(fetchJsonWithTimeout(url)).resolves.toEqual({ ok: 1 });
+    const init = calls[0];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.redirect).toBe("error");
+  });
+
+  it("reports HTTP errors with Open-Meteo's reason when there is one", async () => {
+    const url = buildRequestUrl("archive", GRACIA, {
+      startDate: "2026-04-01",
+      endDate: "2026-04-01",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: true, reason: "Date is out of range" }), {
+            status: 400,
+          }),
+        ),
+      ),
+    );
+    await expect(fetchJsonWithTimeout(url)).rejects.toThrow(/400.*Date is out of range/);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("busy", { status: 429 }))),
+    );
+    await expect(fetchJsonWithTimeout(url)).rejects.toThrow(/429/);
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: 1 }), { status: 200 }))),
@@ -167,9 +204,47 @@ describe("fetchSnapshot", () => {
   });
 
   it("fails clearly when the archive has no complete day", async () => {
+    const source = fakeOpenMeteo({});
     await expect(
-      syntheticSnapshot({ archiveLastDay: "2026-03-01", requestedEndDate: "2026-04-03" }),
+      fetchSnapshot({
+        fetchJson: async (url) => {
+          const body = (await source(url)) as { hourly: Record<string, (number | null)[]> };
+          if (url.startsWith("https://archive")) {
+            // one hole per day: no day is complete
+            body.hourly["precipitation"] = body.hourly["precipitation"]!.map((v, i) =>
+              i % 24 === 5 ? null : v,
+            );
+          }
+          return body;
+        },
+        location: GRACIA,
+        startDate: "2026-04-01",
+        requestedEndDate: "2026-04-03",
+        fetchedAt: "t",
+      }),
     ).rejects.toThrow(/no complete day/);
+  });
+
+  it("fails the build when a core variable is entirely null for a source", async () => {
+    await expect(
+      syntheticSnapshot({ requestedEndDate: "2026-04-03", previousRunsOmit: ["temperature_2m"] }),
+    ).rejects.toThrow(SnapshotCoverageError);
+    await expect(
+      syntheticSnapshot({ requestedEndDate: "2026-04-03", archiveLastDay: "2026-03-01" }),
+    ).rejects.toThrow(/archive returned no values for/);
+  });
+
+  it("tolerates an entirely null optional variable and records the coverage", async () => {
+    const snapshot = await syntheticSnapshot({
+      requestedEndDate: "2026-04-03",
+      previousRunsOmit: ["precipitation_probability"],
+      archiveWithoutEt0: true,
+    });
+    expect(snapshot.coverage.previousRunsDay1.hours).toBe(72);
+    expect(snapshot.coverage.previousRunsDay1.nonNull.precipitation_probability).toBe(0);
+    expect(snapshot.coverage.previousRunsDay1.nonNull.temperature_2m).toBe(72);
+    expect(snapshot.coverage.archive.nonNull.et0_fao_evapotranspiration).toBe(0);
+    expect(snapshot.coverage.archive.nonNull.precipitation).toBe(72);
   });
 
   it("counts a day with a missing hour as incomplete", async () => {
@@ -202,6 +277,108 @@ describe("fetchSnapshot", () => {
         fetchedAt: "t",
       }),
     ).rejects.toThrow(/before/);
+  });
+});
+
+describe("hour-stamp convention of sum variables", () => {
+  it("shifts sum variables back one hour when values are stamped at the end of the hour", async () => {
+    const common = { requestedEndDate: "2026-04-03" } as const;
+    const startStamped = await syntheticSnapshot(common);
+    const endStamped = await fetchSnapshot({
+      fetchJson: fakeOpenMeteo({}),
+      location: GRACIA,
+      startDate: "2026-04-01",
+      requestedEndDate: common.requestedEndDate,
+      fetchedAt: "2026-10-22T09:00:00Z",
+      sumVariableStamp: "hour_end",
+    });
+    expect(startStamped.sumVariableStamp).toBe("hour_start");
+    expect(endStamped.sumVariableStamp).toBe("hour_end");
+    for (const variable of [
+      "precipitation",
+      "sunshine_duration",
+      "et0_fao_evapotranspiration",
+    ] as const) {
+      const raw = startStamped.archive.values[variable]!;
+      const shifted = endStamped.archive.values[variable]!;
+      expect(shifted.slice(0, -1)).toEqual(raw.slice(1));
+      expect(shifted.at(-1)).toBeNull();
+    }
+    for (const variable of ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"] as const) {
+      expect(endStamped.archive.values[variable]).toEqual(startStamped.archive.values[variable]);
+    }
+    // the shifted forecast series follow the same convention
+    expect(endStamped.previousRunsDay1.values.precipitation?.slice(0, -1)).toEqual(
+      startStamped.previousRunsDay1.values.precipitation?.slice(1),
+    );
+  });
+
+  it("does not shift across a gap in the series", () => {
+    const series = {
+      timesMs: [0, HOUR_MS, 5 * HOUR_MS],
+      values: { precipitation: [1, 2, 3], temperature_2m: [10, 11, 12] },
+    };
+    expect(alignSumVariables(series, "hour_end").values.precipitation).toEqual([2, null, null]);
+    expect(alignSumVariables(series, "hour_start")).toBe(series);
+  });
+});
+
+describe("archiveLastCompleteDay", () => {
+  const core = [
+    "temperature_2m",
+    "dew_point_2m",
+    "relative_humidity_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "sunshine_duration",
+  ] as const;
+  /** Hourly series for whole Madrid days; `drop` removes hours by index. */
+  function days(firstDate: string, lastDate: string, drop: (timeMs: number) => boolean) {
+    const timesMs: number[] = [];
+    const end = madridWallTimeToEpochMs(addDays(lastDate, 1), "00:00");
+    for (let t = madridWallTimeToEpochMs(firstDate, "00:00"); t < end; t += HOUR_MS) {
+      if (!drop(t)) timesMs.push(t);
+    }
+    return {
+      timesMs,
+      values: Object.fromEntries(core.map((name) => [name, timesMs.map(() => 1)])),
+    };
+  }
+
+  it("counts a 23-hour day (spring forward) and a 25-hour day (fall back) as complete", () => {
+    expect(
+      archiveLastCompleteDay(
+        days("2026-03-28", "2026-03-29", () => false),
+        "2026-03-28",
+        "2026-03-30",
+      ),
+    ).toBe("2026-03-29");
+    expect(
+      archiveLastCompleteDay(
+        days("2026-10-24", "2026-10-25", () => false),
+        "2026-10-24",
+        "2026-10-26",
+      ),
+    ).toBe("2026-10-25");
+  });
+
+  it("rejects a DST day with an hour missing", () => {
+    const missingHour = madridWallTimeToEpochMs("2026-10-25", "10:00");
+    expect(
+      archiveLastCompleteDay(
+        days("2026-10-24", "2026-10-25", (t) => t === missingHour),
+        "2026-10-24",
+        "2026-10-26",
+      ),
+    ).toBe("2026-10-24");
+    const missingHourSpring = madridWallTimeToEpochMs("2026-03-29", "10:00");
+    expect(
+      archiveLastCompleteDay(
+        days("2026-03-28", "2026-03-29", (t) => t === missingHourSpring),
+        "2026-03-28",
+        "2026-03-30",
+      ),
+    ).toBe("2026-03-28");
   });
 });
 
@@ -282,5 +459,23 @@ describe("NFR-012: snapshot persistence", () => {
       parseSnapshot({ ...json, archive: { timesMs: [7_200_000, 3_600_000], values: {} } }),
     ).toThrow(/ascending/);
     expect(() => parseSnapshot(null)).toThrow(SnapshotFormatError);
+    expect(() => parseSnapshot({ ...json, startDate: "2026-4-1" })).toThrow(/startDate/);
+    expect(() => parseSnapshot({ ...json, endDate: "2026-02-30" })).toThrow(/endDate/);
+    expect(() => parseSnapshot({ ...json, endDate: "2026-03-31" })).toThrow(/before/);
+    expect(() => parseSnapshot({ ...json, timeZone: "UTC" })).toThrow(/timeZone/);
+    expect(() => parseSnapshot({ ...json, sumVariableStamp: "middle" })).toThrow(
+      /sumVariableStamp/,
+    );
+    expect(() => parseSnapshot({ ...json, coverage: {} })).toThrow(SnapshotFormatError);
+    const sources = json["sources"] as Record<string, Record<string, unknown>>;
+    expect(() =>
+      parseSnapshot({
+        ...json,
+        sources: {
+          ...sources,
+          archive: { ...sources["archive"], baseUrl: "https://example.com/v1/archive" },
+        },
+      }),
+    ).toThrow(/baseUrl/);
   });
 });

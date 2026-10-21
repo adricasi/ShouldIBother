@@ -115,6 +115,11 @@ function madridOffsetMs(epochMs: number): number {
   return wallAsUtc - Math.floor(epochMs / 1000) * 1000;
 }
 
+/** Throws unless `date` is a real calendar date written YYYY-MM-DD. */
+export function assertIsoDate(date: string): void {
+  parseDate(date);
+}
+
 function parseDate(date: string): { year: number; month: number; day: number } {
   const match = DATE_PATTERN.exec(date);
   if (match === null) {
@@ -197,7 +202,7 @@ export function outcomeWindow(chore: OutcomeChore, date: string, sunsetMs?: numb
   switch (chore) {
     case "plants":
       return {
-        startMs: madridWallTimeToEpochMs(date, "19:00"),
+        startMs: madridWallTimeToEpochMs(date, DECISION_TIMES.plants),
         endMs: madridWallTimeToEpochMs(next, "10:00"),
       };
     case "laundry_line":
@@ -217,7 +222,7 @@ export function outcomeWindow(chore: OutcomeChore, date: string, sunsetMs?: numb
       };
     case "heater":
       return {
-        startMs: madridWallTimeToEpochMs(date, "08:00"),
+        startMs: madridWallTimeToEpochMs(date, DECISION_TIMES.heater),
         endMs: madridWallTimeToEpochMs(date, "22:00"),
       };
   }
@@ -260,7 +265,8 @@ export function selectWindowHours(
   }
   if (missing.length > 0) {
     throw new IncompleteWeatherError(
-      `${missing.length} of ${windowHourStarts(window).length} window hours are missing`,
+      `${missing.length} of ${windowHourStarts(window).length} window hours are missing, ` +
+        `the first at ${new Date(missing[0] ?? 0).toISOString()}`,
     );
   }
   return selected;

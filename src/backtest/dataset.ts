@@ -83,6 +83,8 @@ export interface HoldoutRow extends RowBase {
 
 export type SkipReason =
   | "outside_periods"
+  | "before_snapshot_start"
+  | "recorded_weather_forecast"
   | "window_crosses_split"
   | "no_sunset"
   | "incomplete_archive_window"
@@ -100,7 +102,60 @@ export interface Dataset {
   readonly train: readonly TrainingRow[];
   readonly holdout: readonly HoldoutRow[];
   readonly skipped: readonly SkippedDay[];
+  /** Features left out per chore (unavailable in some training row), for the manifest. */
   readonly droppedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
+  readonly usedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
+  readonly counts: DatasetCounts;
+}
+
+export type PlantsBasis = "et0_minus_rain" | "rain_only_fallback";
+
+/** Row counts T-031 puts in the manifest. Every skipped day is counted under one reason. */
+export interface DatasetCounts {
+  readonly forecastQuality: Readonly<Record<Split, Readonly<Record<ForecastQuality, number>>>>;
+  /** Plants rows by how their label was computed (ET0 balance or the rain-only fallback). */
+  readonly plantsBasis: Readonly<Record<Split, Readonly<Record<PlantsBasis, number>>>>;
+  readonly skipReasons: Readonly<Record<SkipReason, number>>;
+}
+
+const SKIP_REASONS: readonly SkipReason[] = [
+  "outside_periods",
+  "before_snapshot_start",
+  "recorded_weather_forecast",
+  "window_crosses_split",
+  "no_sunset",
+  "incomplete_archive_window",
+  "incomplete_forecast",
+];
+
+function countRows(
+  train: readonly TrainingRow[],
+  holdout: readonly HoldoutRow[],
+  skipped: readonly SkippedDay[],
+): DatasetCounts {
+  const quality = (rows: readonly (TrainingRow | HoldoutRow)[]) => ({
+    day1_previous_runs: rows.filter((r) => r.forecastQuality === "day1_previous_runs").length,
+    short_lead_forecast_optimistic: rows.filter(
+      (r) => r.forecastQuality === "short_lead_forecast_optimistic",
+    ).length,
+    perfect_forecast_upper_bound: rows.filter(
+      (r) => r.forecastQuality === "perfect_forecast_upper_bound",
+    ).length,
+  });
+  const basis = (rows: readonly (TrainingRow | HoldoutRow)[]) => ({
+    et0_minus_rain: rows.filter((r) => r.chore === "plants" && r.outcome.basis === "et0_minus_rain")
+      .length,
+    rain_only_fallback: rows.filter(
+      (r) => r.chore === "plants" && r.outcome.basis === "rain_only_fallback",
+    ).length,
+  });
+  return {
+    forecastQuality: { train: quality(train), holdout: quality(holdout) },
+    plantsBasis: { train: basis(train), holdout: basis(holdout) },
+    skipReasons: Object.fromEntries(
+      SKIP_REASONS.map((reason) => [reason, skipped.filter((s) => s.reason === reason).length]),
+    ) as Record<SkipReason, number>,
+  };
 }
 
 export function buildDataset(snapshot: WeatherSnapshot): Dataset {
@@ -119,8 +174,12 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
         skipped.push({ chore, date, reason });
       };
       const split = splitOf(date, snapshot.endDate);
-      if (split === undefined || date < snapshot.startDate) {
+      if (split === undefined) {
         skip("outside_periods");
+        continue;
+      }
+      if (date < snapshot.startDate) {
+        skip("before_snapshot_start");
         continue;
       }
       if (chore === "laundry_tonight" && snapshot.sunsetMsByDate[date] === undefined) {
@@ -144,8 +203,14 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
         throw error;
       }
 
+      // Model inputs must be forecasts. Recorded weather would leak the outcome into the
+      // features and targets, so a day that can only be filled from the archive is skipped.
       const forecast = decisionForecast(snapshot, chore, date);
-      const features = choreFeatures(chore, toHourlyWeather(forecast.hours), window);
+      if (forecast.quality === "perfect_forecast_upper_bound") {
+        skip("recorded_weather_forecast");
+        continue;
+      }
+      const features = choreFeatures(chore, toHourlyWeather(forecast.hours), forecast.window);
       const coreMissing = CHORE_FEATURES[chore].some(
         (spec) => !spec.optional && features[spec.name] === null,
       );
@@ -179,7 +244,7 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
     features: day.features,
     delivered: day.outcome.delivered,
   }));
-  const { targets, droppedFeatures } = computeTargetBands(examples);
+  const { targets, droppedFeatures, usedFeatures } = computeTargetBands(examples);
   const targetByKey = new Map(targets.map((target) => [`${target.chore}|${target.date}`, target]));
 
   const train: TrainingRow[] = trainingDays.map((day) => {
@@ -204,5 +269,7 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
     holdout: holdoutRows,
     skipped,
     droppedFeatures,
+    usedFeatures,
+    counts: countRows(train, holdoutRows, skipped),
   };
 }

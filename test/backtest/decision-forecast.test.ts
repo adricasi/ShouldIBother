@@ -20,7 +20,7 @@ import {
   madridWallTimeToEpochMs,
   outcomeWindow,
 } from "../../src/domain/outcomes.js";
-import { syntheticSnapshot } from "./support/synthetic-weather.js";
+import { syntheticSnapshot, withoutVariables } from "./support/synthetic-weather.js";
 
 const DAY1_ONLY = new Set<ForecastSource>(["previous_runs_day1"]);
 const EVERY_SOURCE = new Set<ForecastSource>([
@@ -35,6 +35,11 @@ beforeAll(async () => {
 });
 
 describe("AC-018.1: no lookahead", () => {
+  // NOTE: day-1 issue times are derived (hour - 24 h), not read from the API, so this loop
+  // passes by construction until real run-start data exists. The injected decision-time tests
+  // below are the ones that can fail.
+  // TODO(T-031): verify the Previous Runs run-start semantics against the real API and, if the
+  // API exposes run times, derive `issuedAtMs` from them instead.
   it("uses only values issued before the decision time, for every chore and every day", () => {
     let checked = 0;
     for (const chore of OUTCOME_CHORES) {
@@ -163,14 +168,21 @@ describe("AC-018.2: labelled fallbacks", () => {
   });
 
   it("falls back to recorded weather and labels it a perfect-forecast upper bound", async () => {
-    const onlyRecorded = await syntheticSnapshot({
-      requestedEndDate: "2026-04-20",
-      previousRunsOmit: ["precipitation_probability", "temperature_2m", "precipitation"],
-      historicalOmit: ["precipitation_probability", "temperature_2m", "precipitation"],
-    });
+    const full = await syntheticSnapshot({ requestedEndDate: "2026-04-20" });
+    const onlyRecorded = withoutVariables(
+      withoutVariables(full, "previousRunsDay1", ["temperature_2m", "precipitation"]),
+      "historicalForecast",
+      ["temperature_2m", "precipitation"],
+    );
     const forecast = decisionForecast(onlyRecorded, "plants", "2026-04-10");
     expect(forecast.quality).toBe("perfect_forecast_upper_bound");
     expect(forecast.qualityLabel).toBe("perfect-forecast upper bound");
+    // the dataset policy refuses recorded weather: no archive values at all
+    const noArchive = decisionForecast(onlyRecorded, "plants", "2026-04-10", {
+      fallback: "historical",
+    });
+    expect(noArchive.quality).toBe("day1_previous_runs");
+    expect(noArchive.hours.every((hour) => hour.values.temperature_2m === undefined)).toBe(true);
   });
 
   it("uses no fallback when it is not allowed", async () => {
@@ -179,7 +191,7 @@ describe("AC-018.2: labelled fallbacks", () => {
       previousRunsOmit: ["precipitation_probability"],
     });
     const forecast = decisionForecast(withoutProbability, "plants", "2026-04-10", {
-      allowFallback: false,
+      fallback: "none",
     });
     expect(forecast.quality).toBe("day1_previous_runs");
     expect(
@@ -204,5 +216,20 @@ describe("AC-018.2: labelled fallbacks", () => {
     expect(() =>
       decisionForecast({ ...snapshot, sunsetMsByDate: rest }, "laundry_tonight", "2026-07-15"),
     ).toThrow(/sunset/);
+  });
+});
+
+describe("rule window for the features", () => {
+  it("starts line-dry at the 09:00 decision (now -> 18:00), the other chores at their window", () => {
+    const line = decisionForecast(snapshot, "laundry_line", "2026-07-15");
+    expect(line.window.startMs).toBe(madridWallTimeToEpochMs("2026-07-15", "09:00"));
+    expect(line.window.endMs).toBe(madridWallTimeToEpochMs("2026-07-15", "18:00"));
+    expect(line.hours).toHaveLength(9);
+    for (const chore of ["plants", "ac", "heater"] as const) {
+      const forecast = decisionForecast(snapshot, chore, "2026-07-15");
+      expect(forecast.window).toEqual(outcomeWindow(chore, "2026-07-15"));
+    }
+    const tonight = decisionForecast(snapshot, "laundry_tonight", "2026-07-15");
+    expect(tonight.window.startMs).toBe(snapshot.sunsetMsByDate["2026-07-15"]);
   });
 });

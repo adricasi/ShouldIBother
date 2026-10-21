@@ -5,6 +5,8 @@ import {
   parseSnapshot,
   serializeSnapshot,
   splitOf,
+  choreFeatures,
+  toHourlyWeather,
   type Dataset,
   type HoldoutRow,
   type SkippedDay,
@@ -17,7 +19,7 @@ import {
   madridDateOf,
   type OutcomeChore,
 } from "../../src/domain/outcomes.js";
-import { syntheticSnapshot } from "./support/synthetic-weather.js";
+import { syntheticSnapshot, withoutVariables } from "./support/synthetic-weather.js";
 
 const SEPTEMBER_FIRST_MS = Date.UTC(2026, 7, 31, 22, 0); // 2026-09-01 00:00 Madrid
 
@@ -230,6 +232,101 @@ describe("outcomes and labelled fallbacks in rows (AC-018.1, AC-018.2)", () => {
     void _gone;
     const result = buildDataset({ ...snapshot, sunsetMsByDate: rest });
     expect(skippedFor(result, "laundry_tonight", "no_sunset")).toEqual(["2026-06-10"]);
+  });
+});
+
+describe("recorded weather is never a model input", () => {
+  it("skips days whose forecast could only be filled from the archive, with a recorded reason", async () => {
+    const full = await syntheticSnapshot({ requestedEndDate: "2026-09-20" });
+    const noTemperature = withoutVariables(
+      withoutVariables(full, "previousRunsDay1", ["temperature_2m"]),
+      "historicalForecast",
+      ["temperature_2m"],
+    );
+    const result = buildDataset(noTemperature);
+    const rows = [...result.train, ...result.holdout];
+    expect(rows.some((r) => r.forecastQuality === "perfect_forecast_upper_bound")).toBe(false);
+    for (const row of rows) {
+      for (const hour of row.forecast.hours) {
+        for (const value of Object.values(hour.values)) {
+          expect(value.source).not.toBe("archive");
+        }
+      }
+    }
+    // chores that read temperature lose every day; line-dry does not use it
+    for (const chore of ["plants", "laundry_tonight", "ac", "heater"] as const) {
+      expect(rows.some((r) => r.chore === chore)).toBe(false);
+      expect(skippedFor(result, chore, "recorded_weather_forecast").length).toBeGreaterThan(100);
+    }
+    expect(rows.some((r) => r.chore === "laundry_line")).toBe(true);
+    expect(result.counts.skipReasons.recorded_weather_forecast).toBeGreaterThan(400);
+    expect(result.counts.forecastQuality.train.perfect_forecast_upper_bound).toBe(0);
+    expect(result.counts.forecastQuality.holdout.perfect_forecast_upper_bound).toBe(0);
+  });
+});
+
+describe("manifest counts", () => {
+  it("counts rows per split and forecast quality, plants label basis and skip reasons", () => {
+    const { counts } = dataset;
+    expect(counts.forecastQuality.train.day1_previous_runs).toBe(dataset.train.length);
+    expect(counts.forecastQuality.holdout.day1_previous_runs).toBe(dataset.holdout.length);
+    const plantsTrain = dataset.train.filter((r) => r.chore === "plants").length;
+    expect(counts.plantsBasis.train).toEqual({
+      et0_minus_rain: plantsTrain,
+      rain_only_fallback: 0,
+    });
+    const totalSkipped = Object.values(counts.skipReasons).reduce((sum, n) => sum + n, 0);
+    expect(totalSkipped).toBe(dataset.skipped.length);
+    expect(counts.skipReasons.window_crosses_split).toBe(3);
+  });
+
+  it("counts the rain-only plants label separately", async () => {
+    const result = buildDataset(
+      await syntheticSnapshot({ requestedEndDate: "2026-05-10", archiveWithoutEt0: true }),
+    );
+    expect(result.counts.plantsBasis.train.et0_minus_rain).toBe(0);
+    expect(result.counts.plantsBasis.train.rain_only_fallback).toBeGreaterThan(20);
+  });
+
+  it("exposes the features used and dropped per chore", () => {
+    expect(dataset.usedFeatures.plants).toEqual([
+      "rain_mm",
+      "max_precipitation_probability_pct",
+      "max_temperature_c",
+    ]);
+    expect(dataset.droppedFeatures.plants).toEqual([]);
+    expect(dataset.usedFeatures.laundry_line).toEqual(["wet_hours", "mean_drying_index"]);
+  });
+});
+
+describe("feature windows", () => {
+  it("computes line-dry features over the rule window, 09:00 to 18:00", () => {
+    const row = dataset.train.find((r) => r.chore === "laundry_line" && r.date === "2026-07-15");
+    expect(row?.forecast.hours).toHaveLength(9);
+    expect(new Date(row?.forecast.window.startMs ?? 0).toISOString()).toBe(
+      "2026-07-15T07:00:00.000Z",
+    );
+    expect(
+      choreFeatures(
+        "laundry_line",
+        toHourlyWeather(row?.forecast.hours ?? []),
+        row!.forecast.window,
+      ),
+    ).toEqual(row?.features);
+  });
+});
+
+describe("snapshot start inside the training period", () => {
+  it("labels days before the snapshot start distinctly from days outside both periods", async () => {
+    const late = buildDataset(
+      await syntheticSnapshot({ startDate: "2026-04-03", requestedEndDate: "2026-04-30" }),
+    );
+    expect(skippedFor(late, "heater", "before_snapshot_start")).toEqual([
+      "2026-04-01",
+      "2026-04-02",
+    ]);
+    expect(skippedFor(late, "heater", "outside_periods")).toEqual([]);
+    expect(late.train.filter((r) => r.chore === "heater")[0]?.date).toBe("2026-04-03");
   });
 });
 

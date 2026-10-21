@@ -22,6 +22,7 @@ import {
   selectWindowHours,
   windowHourStarts,
   type HourlyWeather,
+  type OutcomeChore,
 } from "../../src/domain/outcomes.js";
 
 function hour(timeMs: number, overrides: Partial<HourlyWeather> = {}): HourlyWeather {
@@ -375,5 +376,130 @@ describe("selectWindowHours", () => {
     const selected = selectWindowHours([...hours("2026-07-15", "00:00", 24)].reverse(), window);
     expect(selected).toHaveLength(14);
     expect(selected[0]?.timeMs).toBe(window.startMs);
+  });
+});
+
+describe("label windows are half-open: hours just outside never count", () => {
+  const day = "2026-07-15";
+  const sunset = madridWallTimeToEpochMs(day, "21:20");
+
+  interface BoundCase {
+    chore: OutcomeChore;
+    expected: boolean;
+    /** The window's hours; `index` is the position inside the window. */
+    inside: (index: number) => Partial<HourlyWeather>;
+    /** A single hour that would flip the label if it were counted. */
+    poison: Partial<HourlyWeather>;
+  }
+  const cases: BoundCase[] = [
+    {
+      chore: "plants",
+      expected: true,
+      inside: () => ({ et0Mm: 0, precipitationMm: 0.1 }),
+      poison: { et0Mm: 100, precipitationMm: 0 },
+    },
+    {
+      chore: "plants",
+      expected: false,
+      inside: () => ({ et0Mm: 1, precipitationMm: 0 }),
+      poison: { et0Mm: 0, precipitationMm: 100 },
+    },
+    {
+      chore: "laundry_line",
+      expected: true,
+      inside: () => ({
+        precipitationMm: 0,
+        windSpeedKmh: 30,
+        relativeHumidityPct: 0,
+        sunshineSeconds: 3600,
+      }),
+      poison: {
+        precipitationMm: 5,
+        windSpeedKmh: 30,
+        relativeHumidityPct: 0,
+        sunshineSeconds: 3600,
+      },
+    },
+    {
+      chore: "laundry_line",
+      expected: false,
+      // D = 0.36 per hour: 8 hours sum to 2.88, one more dry hour of D = 1 would reach 3
+      inside: () => ({
+        precipitationMm: 0,
+        windSpeedKmh: 18,
+        relativeHumidityPct: 100,
+        sunshineSeconds: 1080,
+      }),
+      poison: {
+        precipitationMm: 0,
+        windSpeedKmh: 30,
+        relativeHumidityPct: 0,
+        sunshineSeconds: 3600,
+      },
+    },
+    {
+      chore: "laundry_tonight",
+      expected: true,
+      inside: (index) => ({ temperatureC: 20, dewPointC: index < 2 ? 19 : 5 }),
+      poison: { temperatureC: 20, dewPointC: 19 },
+    },
+    {
+      chore: "laundry_tonight",
+      expected: false,
+      inside: (index) => ({ temperatureC: 20, dewPointC: index < 3 ? 19 : 5 }),
+      poison: { temperatureC: 20, dewPointC: 5, precipitationMm: 0 },
+    },
+    {
+      chore: "ac",
+      expected: true,
+      inside: () => ({ temperatureC: 18 }),
+      poison: { temperatureC: 30 },
+    },
+    {
+      chore: "ac",
+      expected: false,
+      inside: () => ({ temperatureC: 30 }),
+      poison: { temperatureC: 10 },
+    },
+    {
+      chore: "heater",
+      expected: true,
+      inside: () => ({ temperatureC: 25 }),
+      poison: { temperatureC: 5 },
+    },
+    {
+      chore: "heater",
+      expected: false,
+      inside: () => ({ temperatureC: 5 }),
+      poison: { temperatureC: 25 },
+    },
+  ];
+
+  it.each(cases)(
+    "$chore stays $expected when the hours around the window say the opposite",
+    ({ chore, expected, inside, poison }) => {
+      const window = outcomeWindow(chore, day, sunset);
+      // independent of windowHourStarts: an hour is inside if it overlaps [startMs, endMs)
+      const firstInside = Math.floor(window.startMs / HOUR_MS) * HOUR_MS;
+      const series: HourlyWeather[] = [];
+      for (
+        let timeMs = firstInside - 18 * HOUR_MS;
+        timeMs < window.endMs + 18 * HOUR_MS;
+        timeMs += HOUR_MS
+      ) {
+        const isInside = timeMs >= firstInside && timeMs < window.endMs;
+        series.push(hour(timeMs, isInside ? inside((timeMs - firstInside) / HOUR_MS) : poison));
+      }
+      // 36 h of data around the window; the hour before it and the hour at its end are poison
+      expect(series.find((h) => h.timeMs === firstInside - HOUR_MS)).toMatchObject(poison);
+      expect(series.find((h) => h.timeMs === window.endMs)).toMatchObject(poison);
+      expect(outcomeLabel(chore, series, window).delivered).toBe(expected);
+    },
+  );
+
+  it("names the first missing hour when the window is incomplete", () => {
+    const window = outcomeWindow("heater", day);
+    const series = hours(day, "08:00", 14).filter((h) => h.timeMs !== window.startMs + 3 * HOUR_MS);
+    expect(() => selectWindowHours(series, window)).toThrow(/1 of 14.*2026-07-15T09:00:00.000Z/);
   });
 });

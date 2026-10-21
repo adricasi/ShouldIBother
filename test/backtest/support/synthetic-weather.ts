@@ -199,6 +199,22 @@ export function fakeOpenMeteo(
   };
 }
 
+/** A copy of the snapshot in which a source has no values for some variables. */
+export function withoutVariables(
+  snapshot: WeatherSnapshot,
+  source: "previousRunsDay1" | "historicalForecast" | "archive",
+  variables: readonly string[],
+): WeatherSnapshot {
+  const series = snapshot[source];
+  const values = Object.fromEntries(
+    Object.entries(series.values).map(([name, column]) => [
+      name,
+      variables.includes(name) ? column.map(() => null) : column,
+    ]),
+  );
+  return { ...snapshot, [source]: { ...series, values } };
+}
+
 export const GRACIA = { name: "Gràcia, Barcelona", latitude: 41.4036, longitude: 2.1567 };
 
 export async function syntheticSnapshot(

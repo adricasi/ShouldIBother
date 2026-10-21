@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   addDays,
+  assertIsoDate,
   dateRange,
   HOUR_MS,
   madridDateOf,
@@ -22,13 +23,18 @@ import {
   ALLOWED_HOSTS,
   ATTRIBUTION,
   COORDINATE_DECIMALS,
+  CORE_VARIABLES,
   DAILY_VARIABLE_SUNSET,
   LICENSE,
   OPEN_METEO_SOURCES,
   QUERY,
+  REQUEST_TIMEOUT_MS,
   RESPONSE,
   SOURCE_VARIABLES,
+  SUM_VARIABLES,
+  SUM_VARIABLE_STAMP,
   WEATHER_VARIABLES,
+  type HourStamp,
   type SnapshotSourceKey,
   type WeatherVariable,
 } from "./open-meteo.js";
@@ -40,6 +46,11 @@ export const SNAPSHOT_FILE_NAME = "snapshot.json";
 export interface HourlySeries {
   readonly timesMs: readonly number[];
   readonly values: Readonly<Partial<Record<WeatherVariable, readonly (number | null)[]>>>;
+}
+
+export interface SourceCoverage {
+  readonly hours: number;
+  readonly nonNull: Readonly<Partial<Record<WeatherVariable, number>>>;
 }
 
 export interface SnapshotLocation {
@@ -65,6 +76,10 @@ export interface WeatherSnapshot {
   readonly sources: Readonly<
     Record<SnapshotSourceKey, { readonly baseUrl: string; readonly variables: readonly string[] }>
   >;
+  /** The hour-stamp convention assumed for sum variables; series are stored hour-start aligned. */
+  readonly sumVariableStamp: HourStamp;
+  /** Non-null value count per source and variable (for the manifest and for audits). */
+  readonly coverage: Readonly<Record<SnapshotSourceKey, SourceCoverage>>;
   readonly previousRunsDay1: HourlySeries;
   readonly historicalForecast: HourlySeries;
   readonly archive: HourlySeries;
@@ -79,6 +94,14 @@ export class SnapshotFormatError extends Error {
   }
 }
 
+/** A source that should provide a core variable returned nothing for it. */
+export class SnapshotCoverageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SnapshotCoverageError";
+  }
+}
+
 export class DisallowedHostError extends Error {
   constructor(host: string) {
     super(`refusing to call host "${host}": not an allowed Open-Meteo host`);
@@ -88,12 +111,33 @@ export class DisallowedHostError extends Error {
 
 export type FetchJson = (url: string) => Promise<unknown>;
 
-/** Real fetch with a timeout, for the CLI (T-031). Tests inject a fake instead. */
+/** Open-Meteo's error body is `{"error": true, "reason": "..."}`. */
+async function errorReason(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (isRecord(body) && typeof body["reason"] === "string") {
+      return `: ${body["reason"]}`;
+    }
+  } catch {
+    // not JSON: the status code is all we have
+  }
+  return "";
+}
+
+/**
+ * Real fetch with a timeout, for the CLI (T-031). Redirects are an error, so a 3xx cannot
+ * leave the allowlisted hosts. Tests inject a fake instead.
+ */
 export const fetchJsonWithTimeout: FetchJson = async (url) => {
   assertAllowedUrl(url);
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    redirect: "error",
+  });
   if (!response.ok) {
-    throw new Error(`Open-Meteo answered ${response.status} for ${url}`);
+    throw new Error(
+      `Open-Meteo answered ${response.status} for ${url}${await errorReason(response)}`,
+    );
   }
   return await response.json();
 };
@@ -109,20 +153,25 @@ export function assertAllowedUrl(url: string): void {
 // Variable <-> HourlyWeather mapping
 // ---------------------------------------------------------------------------------------------
 
-export const VARIABLE_FIELD: Readonly<
-  Record<WeatherVariable, keyof Omit<HourlyWeather, "timeMs">>
-> = {
-  temperature_2m: "temperatureC",
-  dew_point_2m: "dewPointC",
-  relative_humidity_2m: "relativeHumidityPct",
-  precipitation: "precipitationMm",
-  precipitation_probability: "precipitationProbabilityPct",
-  wind_speed_10m: "windSpeedKmh",
-  wind_gusts_10m: "windGustsKmh",
-  weather_code: "weatherCode",
-  sunshine_duration: "sunshineSeconds",
-  et0_fao_evapotranspiration: "et0Mm",
-};
+/** Builds an `HourlyWeather` field by field from a per-variable lookup. */
+export function hourlyWeatherFrom(
+  timeMs: number,
+  read: (variable: WeatherVariable) => number | null | undefined,
+): HourlyWeather {
+  return {
+    timeMs,
+    temperatureC: read("temperature_2m") ?? null,
+    dewPointC: read("dew_point_2m") ?? null,
+    relativeHumidityPct: read("relative_humidity_2m") ?? null,
+    precipitationMm: read("precipitation") ?? null,
+    precipitationProbabilityPct: read("precipitation_probability") ?? null,
+    windSpeedKmh: read("wind_speed_10m") ?? null,
+    windGustsKmh: read("wind_gusts_10m") ?? null,
+    weatherCode: read("weather_code") ?? null,
+    sunshineSeconds: read("sunshine_duration") ?? null,
+    et0Mm: read("et0_fao_evapotranspiration") ?? null,
+  };
+}
 
 export type HourValues = Partial<Record<WeatherVariable, number | null>>;
 
@@ -144,13 +193,9 @@ export function indexSeries(series: HourlySeries): Map<number, HourValues> {
 
 /** Recorded (archive) hours as `HourlyWeather`, in time order. */
 export function archiveHours(snapshot: WeatherSnapshot): HourlyWeather[] {
-  return snapshot.archive.timesMs.map((timeMs, position) => {
-    const hour: Record<string, number | null> = { timeMs };
-    for (const variable of WEATHER_VARIABLES) {
-      hour[VARIABLE_FIELD[variable]] = snapshot.archive.values[variable]?.[position] ?? null;
-    }
-    return hour as unknown as HourlyWeather;
-  });
+  return snapshot.archive.timesMs.map((timeMs, position) =>
+    hourlyWeatherFrom(timeMs, (variable) => snapshot.archive.values[variable]?.[position]),
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -166,6 +211,8 @@ export interface FetchSnapshotParams {
   readonly requestedEndDate: string;
   /** Provenance only, e.g. an ISO timestamp from the CLI. Never read from the clock here. */
   readonly fetchedAt: string;
+  /** Defaults to `SUM_VARIABLE_STAMP`; a parameter so tests can exercise both conventions. */
+  readonly sumVariableStamp?: HourStamp;
 }
 
 function roundCoordinate(value: number): number {
@@ -326,15 +373,47 @@ function mergeChunks(
   return { series: { timesMs, values }, sunsetMsByDate: sortedSunsets };
 }
 
-/** Variables that must be present for a day to count as a complete archive day. */
-const CORE_ARCHIVE_VARIABLES: readonly WeatherVariable[] = [
-  "temperature_2m",
-  "dew_point_2m",
-  "relative_humidity_2m",
-  "precipitation",
-  "wind_speed_10m",
-  "sunshine_duration",
-];
+/**
+ * With "hour_end", a sum value stamped t covers the hour that started at t - 1 h: move it to
+ * that hour. The series' last hour then has no sum value (null). Other variables are untouched.
+ */
+export function alignSumVariables(series: HourlySeries, stamp: HourStamp): HourlySeries {
+  if (stamp === "hour_start") {
+    return series;
+  }
+  const values: Partial<Record<WeatherVariable, (number | null)[]>> = {};
+  for (const variable of WEATHER_VARIABLES) {
+    const column = series.values[variable];
+    if (column === undefined) {
+      continue;
+    }
+    values[variable] = SUM_VARIABLES.includes(variable)
+      ? column.map((_, position) => {
+          const next = series.timesMs[position + 1];
+          return next === (series.timesMs[position] ?? 0) + HOUR_MS
+            ? (column[position + 1] ?? null)
+            : null;
+        })
+      : [...column];
+  }
+  return { timesMs: series.timesMs, values };
+}
+
+/** Counts non-null values; throws if a core variable is entirely null for the source. */
+export function coverageOf(series: HourlySeries, source: SnapshotSourceKey): SourceCoverage {
+  const nonNull: Partial<Record<WeatherVariable, number>> = {};
+  for (const variable of SOURCE_VARIABLES[source]) {
+    nonNull[variable] = (series.values[variable] ?? []).filter((value) => value !== null).length;
+  }
+  for (const variable of CORE_VARIABLES) {
+    if (SOURCE_VARIABLES[source].includes(variable) && nonNull[variable] === 0) {
+      throw new SnapshotCoverageError(
+        `${source} returned no values for ${variable}; check the variable name and the API`,
+      );
+    }
+  }
+  return { hours: series.timesMs.length, nonNull };
+}
 
 /** 23, 24 or 25 across the DST changes. */
 function hoursInMadridDay(date: string): number {
@@ -355,9 +434,7 @@ export function archiveLastCompleteDay(
 ): string | undefined {
   const hoursByDay = new Map<string, number>();
   archive.timesMs.forEach((timeMs, position) => {
-    const core = CORE_ARCHIVE_VARIABLES.every(
-      (variable) => archive.values[variable]?.[position] != null,
-    );
+    const core = CORE_VARIABLES.every((variable) => archive.values[variable]?.[position] != null);
     if (core) {
       const date = madridDateOf(timeMs);
       hoursByDay.set(date, (hoursByDay.get(date) ?? 0) + 1);
@@ -384,6 +461,7 @@ export function archiveLastCompleteDay(
  */
 export async function fetchSnapshot(params: FetchSnapshotParams): Promise<WeatherSnapshot> {
   const { fetchJson, location, startDate, requestedEndDate, fetchedAt } = params;
+  const sumVariableStamp = params.sumVariableStamp ?? SUM_VARIABLE_STAMP;
   if (requestedEndDate < startDate) {
     throw new Error("requestedEndDate is before startDate");
   }
@@ -405,7 +483,16 @@ export async function fetchSnapshot(params: FetchSnapshotParams): Promise<Weathe
       assertAllowedUrl(url);
       chunks.push(parseOpenMeteoResponse(await fetchJson(url), source));
     }
-    merged[source] = mergeChunks(source, chunks);
+    const combined = mergeChunks(source, chunks);
+    merged[source] = {
+      series: alignSumVariables(combined.series, sumVariableStamp),
+      sunsetMsByDate: combined.sunsetMsByDate,
+    };
+  }
+
+  const coverage = {} as Record<SnapshotSourceKey, SourceCoverage>;
+  for (const source of sourceKeys) {
+    coverage[source] = coverageOf(merged[source].series, source);
   }
 
   const endDate = archiveLastCompleteDay(merged.archive.series, startDate, requestedEndDate);
@@ -436,6 +523,8 @@ export async function fetchSnapshot(params: FetchSnapshotParams): Promise<Weathe
     requestedEndDate,
     fetchedAt,
     sources,
+    sumVariableStamp,
+    coverage,
     previousRunsDay1: merged.previousRunsDay1.series,
     historicalForecast: merged.historicalForecast.series,
     archive: merged.archive.series,
@@ -454,7 +543,7 @@ export function serializeSnapshot(snapshot: WeatherSnapshot): string {
 export function snapshotDirectoryName(snapshot: WeatherSnapshot): string {
   const slug = snapshot.location.name
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
@@ -498,6 +587,16 @@ function expectString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string") {
     throw new SnapshotFormatError(`snapshot.${key} must be a string`);
+  }
+  return value;
+}
+
+function expectDate(record: Record<string, unknown>, key: string): string {
+  const value = expectString(record, key);
+  try {
+    assertIsoDate(value);
+  } catch (error) {
+    throw new SnapshotFormatError(`snapshot.${key}: ${(error as Error).message}`);
   }
   return value;
 }
@@ -571,22 +670,62 @@ export function parseSnapshot(json: unknown): WeatherSnapshot {
     if (!Array.isArray(variables) || !variables.every((v) => typeof v === "string")) {
       throw new SnapshotFormatError(`snapshot.sources.${key}.variables must be strings`);
     }
-    sources[key] = {
-      baseUrl: expectString(entry, "baseUrl"),
-      variables: variables,
-    };
+    const baseUrl = expectString(entry, "baseUrl");
+    try {
+      assertAllowedUrl(baseUrl);
+    } catch (error) {
+      throw new SnapshotFormatError(
+        `snapshot.sources.${key}.baseUrl is not allowed: ${(error as Error).message}`,
+      );
+    }
+    sources[key] = { baseUrl, variables: variables };
+  }
+
+  const startDate = expectDate(record, "startDate");
+  const endDate = expectDate(record, "endDate");
+  const requestedEndDate = expectDate(record, "requestedEndDate");
+  if (endDate < startDate) {
+    throw new SnapshotFormatError("snapshot.endDate is before snapshot.startDate");
+  }
+  const timeZone = expectString(record, "timeZone");
+  if (timeZone !== QUERY.timezoneValue) {
+    throw new SnapshotFormatError(`snapshot.timeZone must be ${QUERY.timezoneValue}`);
+  }
+  const stamp = record["sumVariableStamp"];
+  if (stamp !== "hour_start" && stamp !== "hour_end") {
+    throw new SnapshotFormatError("snapshot.sumVariableStamp must be hour_start or hour_end");
+  }
+  const coverageRaw = expectRecord(record["coverage"], "snapshot.coverage");
+  const coverage = {} as Record<SnapshotSourceKey, SourceCoverage>;
+  for (const key of Object.keys(OPEN_METEO_SOURCES) as SnapshotSourceKey[]) {
+    const entry = expectRecord(coverageRaw[key], `snapshot.coverage.${key}`);
+    const hours = entry["hours"];
+    if (typeof hours !== "number") {
+      throw new SnapshotFormatError(`snapshot.coverage.${key}.hours must be a number`);
+    }
+    const counts = expectRecord(entry["nonNull"], `snapshot.coverage.${key}.nonNull`);
+    const nonNull: Partial<Record<WeatherVariable, number>> = {};
+    for (const [name, count] of Object.entries(counts)) {
+      if (!(WEATHER_VARIABLES as readonly string[]).includes(name) || typeof count !== "number") {
+        throw new SnapshotFormatError(`snapshot.coverage.${key}.nonNull has an invalid entry`);
+      }
+      nonNull[name as WeatherVariable] = count;
+    }
+    coverage[key] = { hours, nonNull };
   }
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     attribution: expectString(record, "attribution"),
     license: expectString(record, "license"),
     location: { name: expectString(location, "name"), latitude, longitude },
-    timeZone: expectString(record, "timeZone"),
-    startDate: expectString(record, "startDate"),
-    endDate: expectString(record, "endDate"),
-    requestedEndDate: expectString(record, "requestedEndDate"),
+    timeZone,
+    startDate,
+    endDate,
+    requestedEndDate,
     fetchedAt: expectString(record, "fetchedAt"),
     sources,
+    sumVariableStamp: stamp,
+    coverage,
     previousRunsDay1: parseSeries(record["previousRunsDay1"], "snapshot.previousRunsDay1"),
     historicalForecast: parseSeries(record["historicalForecast"], "snapshot.historicalForecast"),
     archive: parseSeries(record["archive"], "snapshot.archive"),

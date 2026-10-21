@@ -6,7 +6,8 @@
  * and its documentation before the real snapshot is taken: hosts and paths, the
  * `_previous_day1` variable suffix, the `unixtime` time format, which variables each API
  * offers for Gràcia from April 2026, whether `end_date` beyond the archive's last day is
- * accepted (nulls) or rejected, and the `models` parameter for Previous Runs.
+ * accepted (nulls) or rejected, the `models` parameter for Previous Runs, and the hour-stamp
+ * convention of sum variables (`SUM_VARIABLE_STAMP` below).
  *
  * Hosts match the weather client allowlist in design.md (AC-014.7).
  */
@@ -122,3 +123,41 @@ export const DAY1_LEAD_HOURS = 24;
 
 /** Coordinates are rounded to 2 decimals before any request (NFR-002, AC-014.1). */
 export const COORDINATE_DECIMALS = 2;
+
+/** Which instant a hourly value is stamped with. */
+export type HourStamp = "hour_start" | "hour_end";
+
+/**
+ * Sum-type variables (precipitation, sunshine duration, ET0) may be stamped with the END of the
+ * hour they cover (the value at 10:00 being the sum over 09:00-10:00) instead of its start.
+ * Instantaneous variables (temperature, humidity, wind, ...) are not affected.
+ *
+ * UNVERIFIED: T-031 must check this against the real API and change this one switch if needed.
+ * "hour_start" keeps every value on the hour it is stamped with; "hour_end" shifts the sum
+ * variables back one hour when the snapshot is built, so the snapshot always stores hour-start
+ * aligned data. The convention used is recorded in the snapshot.
+ */
+export const SUM_VARIABLE_STAMP: HourStamp = "hour_start";
+
+export const SUM_VARIABLES: readonly WeatherVariable[] = [
+  "precipitation",
+  "sunshine_duration",
+  "et0_fao_evapotranspiration",
+];
+
+/**
+ * Variables every source must actually deliver (non-null somewhere). A source that returns one
+ * of them as all-null fails the snapshot build. Precipitation probability and ET0 are
+ * deliberately not core: both have labelled fallbacks.
+ */
+export const CORE_VARIABLES: readonly WeatherVariable[] = [
+  "temperature_2m",
+  "dew_point_2m",
+  "relative_humidity_2m",
+  "precipitation",
+  "wind_speed_10m",
+  "sunshine_duration",
+];
+
+/** Request timeout for the real fetch. */
+export const REQUEST_TIMEOUT_MS = 30_000;

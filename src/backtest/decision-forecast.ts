@@ -18,7 +18,12 @@ import {
   type TimeWindow,
 } from "../domain/outcomes.js";
 import { DAY1_LEAD_HOURS, type WeatherVariable } from "./open-meteo.js";
-import { VARIABLE_FIELD, indexSeries, type HourValues, type WeatherSnapshot } from "./snapshot.js";
+import {
+  hourlyWeatherFrom,
+  indexSeries,
+  type HourValues,
+  type WeatherSnapshot,
+} from "./snapshot.js";
 
 export type ForecastSource = "previous_runs_day1" | "historical_forecast" | "archive";
 
@@ -130,11 +135,18 @@ export interface DecisionForecast {
   readonly qualityLabel: string;
 }
 
+export type FallbackPolicy = "none" | "historical" | "historical_and_archive";
+
 export interface DecisionForecastOptions {
   /** Defaults to the chore's fixed decision time. Tests use it to provoke lookahead. */
   readonly decisionAtMs?: number;
-  /** Fall back to Historical Forecast, then the archive, when day-1 data is missing. */
-  readonly allowFallback?: boolean;
+  /**
+   * What to do when day-1 data is missing for a value: nothing, fall back to Historical
+   * Forecast (labelled "short-lead forecast (optimistic)"), or also to the archive (labelled
+   * "perfect-forecast upper bound"). Default: both fallbacks, for the backtest report
+   * (AC-018.2). The fine-tune dataset never accepts recorded weather as a model input.
+   */
+  readonly fallback?: FallbackPolicy;
   readonly variables?: readonly WeatherVariable[];
 }
 
@@ -181,6 +193,22 @@ export function windowFor(
 }
 
 /**
+ * The window the rule (and so the neighbour features) looks at: "now" to the end of the chore's
+ * window. It equals the label window except for line-dry, where the rule runs from the 09:00
+ * decision to 18:00 while the label covers 10:00-18:00 (design.md).
+ */
+export function featureWindowFor(
+  snapshot: WeatherSnapshot,
+  chore: OutcomeChore,
+  date: string,
+): TimeWindow {
+  const window = windowFor(snapshot, chore, date);
+  return chore === "laundry_line"
+    ? { startMs: decisionTimeMs(chore, date), endMs: window.endMs }
+    : window;
+}
+
+/**
  * Builds the forecast a decision at the chore's fixed time may use, for the chore's window.
  * Day-1 values are used wherever present; missing values fall back (labelled) when allowed.
  */
@@ -191,9 +219,9 @@ export function decisionForecast(
   options: DecisionForecastOptions = {},
 ): DecisionForecast {
   const decisionAtMs = options.decisionAtMs ?? decisionTimeMs(chore, date);
-  const allowFallback = options.allowFallback ?? true;
+  const fallback = options.fallback ?? "historical_and_archive";
   const variables = options.variables ?? CHORE_FORECAST_VARIABLES[chore];
-  const window = windowFor(snapshot, chore, date);
+  const window = featureWindowFor(snapshot, chore, date);
   const { previous, historical, archive } = indexesOf(snapshot);
 
   const hours: ForecastHour[] = windowHourStarts(window).map((timeMs) => {
@@ -208,7 +236,7 @@ export function decisionForecast(
         };
         continue;
       }
-      if (!allowFallback) {
+      if (fallback === "none") {
         continue;
       }
       const shortLead = historical.get(timeMs)?.[variable];
@@ -220,7 +248,8 @@ export function decisionForecast(
         };
         continue;
       }
-      const recorded = archive.get(timeMs)?.[variable];
+      const recorded =
+        fallback === "historical_and_archive" ? archive.get(timeMs)?.[variable] : null;
       if (recorded !== undefined && recorded !== null) {
         values[variable] = {
           value: recorded,
@@ -247,11 +276,7 @@ export function decisionForecast(
 
 /** Plain hourly numbers (provenance dropped) for feature computation. */
 export function toHourlyWeather(hours: readonly ForecastHour[]): HourlyWeather[] {
-  return hours.map((hour) => {
-    const row: Record<string, number | null> = { timeMs: hour.timeMs };
-    for (const [variable, field] of Object.entries(VARIABLE_FIELD)) {
-      row[field] = hour.values[variable as WeatherVariable]?.value ?? null;
-    }
-    return row as unknown as HourlyWeather;
-  });
+  return hours.map((hour) =>
+    hourlyWeatherFrom(hour.timeMs, (variable) => hour.values[variable]?.value),
+  );
 }
