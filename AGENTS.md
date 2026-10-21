@@ -86,7 +86,20 @@ npm audit --audit-level=high             # dependency vulnerabilities
   photos are stripped of EXIF and resized to ≤ 1024 px. Ollama stays on 127.0.0.1.
 
 ## Project kit
-<!-- Filled by the `project-kit` skill: project-specific agents/skills and when to use them. -->
+Local to each machine: this repository is public, so `.claude/` is git-ignored. Recreate the
+files from this list with the `project-kit` skill when you work from a fresh clone; cloud
+workers get the checklists in their task brief.
+- Skill `gemma-job` (`.claude/skills/gemma-job/`): checklist for adding or changing a Gemma
+  job: versioned prompt, zod schema, retry budget and deadline, fixtures by job + scenario,
+  decision logging, eval set. Use for T-006, T-007, T-009, T-013, T-022, T-028, T-030.
+  (REQ-002/003/005/008/012/021/027/028, NFR-004/007/010)
+- Subagent `bookie-rules-reviewer` (`.claude/agents/`): read-only check of a diff against
+  odds, points, settlement, savings, rules, outcome labels, calibration populations and
+  leakage. Use with `code-reviewer` on T-004, T-008, T-009, T-011, T-015, T-016, T-031.
+  (REQ-006/008/009/011/013/016/018/019/020)
+- Permissions (`.claude/settings.json`): routine npm/npx test, lint and build commands
+  allowed; agents may not read or edit household data (`~/.should-i-bother/**`, `data/**`;
+  NFR-002).
 
 ## Do not touch without asking
 - `.github/workflows/` (CI and security gates) — the Node 24 pin and the `training/` Python
