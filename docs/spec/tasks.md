@@ -1,6 +1,6 @@
 # Tasks: Should I Bother?
 
-- Status: Draft <!-- Draft | In review | Approved -->
+- Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
 - Last updated: 2026-10-21
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.

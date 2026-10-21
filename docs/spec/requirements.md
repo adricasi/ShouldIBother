@@ -1,6 +1,6 @@
 # Requirements: Should I Bother?
 
-- Status: Draft <!-- Draft | In review | Approved -->
+- Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
 - Last updated: 2026-10-21
 
 IDs are permanent: never renumber or reuse. Deprecate with ~~strikethrough~~ and a note.

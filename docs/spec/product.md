@@ -1,6 +1,6 @@
 # Product: Should I Bother?
 
-- Status: Draft <!-- Draft | In review | Approved -->
+- Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
 - Last updated: 2026-10-21
 - Inputs: [idea brief](../discovery/idea-brief.md) (verdict: Go with a cut scope), [product concept](../discovery/product-concept.md) (catalogue, points, settlement, savings rules), [design handoff](../discovery/design-handoff.md) (screens, tokens), [research notes](../discovery/research-notes.md). Where they disagree, this spec wins.
 
