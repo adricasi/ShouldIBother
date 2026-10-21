@@ -1,6 +1,6 @@
 # 0003. One Node.js process serving a React single-page app
 
-- Status: Proposed
+- Status: Accepted (2026-10-21)
 - Date: 2026-10-21
 - Deciders: adricasi
 

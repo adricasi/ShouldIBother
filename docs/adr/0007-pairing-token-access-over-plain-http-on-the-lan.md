@@ -1,6 +1,6 @@
 # 0007. Pair devices with a short-lived token over plain HTTP on the LAN
 
-- Status: Proposed
+- Status: Accepted (2026-10-21)
 - Date: 2026-10-21
 - Deciders: adricasi
 
@@ -13,7 +13,7 @@ The phone reaches the laptop over home Wi-Fi. Without access control anyone on t
 3. **HTTPS only (Tailscale Serve or a local CA).** Pros: encrypted. Cons: extra setup for every user; a dependency for the default path.
 
 ## Decision
-We will use option 2 and offer Tailscale Serve as the documented HTTPS option. At each start (or `sib pair`) the server generates a ≥ 128-bit CSPRNG token valid for 10 minutes, prints a QR/URL, and exchanges it for an HttpOnly, SameSite=Strict session cookie (any number of devices within the 10 minutes; existing sessions stay valid), then redirects to a token-free URL. Sessions expire after 30 days. Every route except `/pair` requires a session; state-changing requests must carry a matching Origin; a Host allowlist (active interfaces + `config.allowedHosts`) blocks DNS rebinding; failed attempts are rate-limited; "Forget devices" revokes all sessions and tokens. Token and sessions are stored only as SHA-256 hashes and never logged.
+We will use option 2 and offer Tailscale Serve as the documented HTTPS option. At each start (or `sib pair`) the server generates a ≥ 128-bit CSPRNG token valid for 10 minutes, prints a QR/URL, and exchanges it for an HttpOnly, SameSite=Strict session cookie (at most 3 devices per token, each pairing printed to the console; existing sessions stay valid), then redirects to a token-free URL. Sessions expire after 30 days. Every route except `/pair` requires a session; state-changing requests must carry a matching Origin; a Host allowlist (active interfaces + `config.allowedHosts` + the hosts of `config.publicOrigins`; otherwise 421) blocks DNS rebinding; `config.publicOrigins` also defines the Tailscale Serve https origin for the Origin check, and pairing through it sets a `Secure` cookie; unauthenticated failures are rate-limited, never valid sessions; the `/pair` query string is redacted from request logs; "Forget devices" revokes all sessions and tokens. Token and sessions are stored only as SHA-256 hashes and never logged.
 
 ## Consequences
 - Positive: other LAN devices get 401; no certificates to install.

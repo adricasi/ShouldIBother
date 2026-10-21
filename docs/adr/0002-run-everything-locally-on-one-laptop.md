@@ -1,6 +1,6 @@
 # 0002. Run everything locally on one laptop
 
-- Status: Proposed
+- Status: Accepted (2026-10-21)
 - Date: 2026-10-21
 - Deciders: adricasi
 

@@ -1,6 +1,6 @@
 # 0005. Gemma sets odds as five bands, scored against a rule baseline
 
-- Status: Proposed
+- Status: Accepted (2026-10-21)
 - Date: 2026-10-21
 - Deciders: adricasi
 
@@ -18,4 +18,4 @@ We will have Gemma return one of five bands (very likely · likely · toss-up ·
 ## Consequences
 - Positive: Gemma visibly makes the call; calibration can be reported per band for Gemma (base, fine-tuned) and the rule.
 - Negative / risks: five bands are coarse; calibration bands with few bets are marked "too few to judge".
-- Follow-ups: thresholds for the rule and the safety backstop are tuned on the backtest (Q-5).
+- Follow-ups: the rule and safety thresholds in design.md are final for this version, not tuned (Q-5 closed), so the rule band in the fine-tune data equals the live one. Calibration counts every win, lucky wins included (lucky wins computed by code from the outcome labels).

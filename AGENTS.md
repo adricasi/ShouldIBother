@@ -13,8 +13,8 @@ Specification: `docs/spec/` — the source of truth: `product.md` (why), `requir
 Reference IDs in commits.
 
 ## Project overview
-"The Lazy Bookie": a local Gemma 4 E4B bookmaker that turns weather chores (balcony plants,
-laundry, AC, heater) into bets on doing nothing, and settles each bet on evidence (modelled
+"The Lazy Bookie": a local Gemma 4 E4B bookmaker that turns weather chores (balcony plants and
+line-drying in the core loop; laundry overnight, AC and heater later) into bets on doing nothing, and settles each bet on evidence (modelled
 recent weather + an after photo or one tap). Entry for the DEV Hacktoberfest Open-Source AI
 Challenge Week 3 (Overall + Best Use of Gemma); feature freeze Sat 24 Oct 2026 14:00 Madrid,
 publish by 23:00 the same day.
@@ -52,7 +52,9 @@ npm audit --audit-level=high             # dependency vulnerabilities
   stack order. Use the migration number given in the brief.
 - Unfinished Should/Could features ship behind a flag in `config/flags.json`, off by default.
 - Prompts are versioned files in `prompts/<job>.v<n>.md`; a prompt change bumps the version
-  and re-records its fixtures.
+  and re-records its fixtures. Fixtures are keyed by job + scenario name, never by input hash.
+- Migration tests in agent tasks run on a seeded fixture database; the builder checks each
+  migration on a copy of the live database at merge.
 
 ## Domain rules
 - Gemma decides; code executes. Gemma returns an odds band (very likely · likely · toss-up ·
@@ -68,11 +70,18 @@ npm audit --audit-level=high             # dependency vulnerabilities
   −25/−50/−150 regardless of evidence; do-it +5/−10.
 - Savings count only on wins; time only for skipped steps; net time subtracts 30 s per bet;
   every figure shows its assumption.
-- Rule-odds bets (`odds_source = rule`) never count toward Gemma's calibration.
+- Rule-odds bets (`odds_source = rule`) never count toward Gemma's calibration. Calibration counts
+  every win as a success, lucky wins included; `lucky_win` is computed by code from the outcome
+  labels (`src/domain/outcomes.ts`), never by Gemma.
+- Rule and safety thresholds in `config/rules.json` are final for this version: no tuning.
 - Backtest and fine-tune decide only on forecasts from model runs started before the
   decision time (Previous Runs, day-1 lead); no Sep–Oct hold-out data in any training
   target or rule threshold; fine-tuned results are headlined on Sep–Oct only.
 - Committed Gemma fixtures come from staged or synthetic inputs only, reviewed by hand.
+- Fine-tune rows use a fixed synthetic habit profile; nothing from `config/household.json` may
+  appear in the dataset (the build fails if it does).
+- The weather client calls only the allowlisted Open-Meteo hosts. All times are Europe/Madrid.
+- One GPU user at a time: stop Ollama (`ollama stop`) before training.
 - Household data (photos, chore text, habits, audio) never leaves the laptop or enters git;
   photos are stripped of EXIF and resized to ≤ 1024 px. Ollama stays on 127.0.0.1.
 

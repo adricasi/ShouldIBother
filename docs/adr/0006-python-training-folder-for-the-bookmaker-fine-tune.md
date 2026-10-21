@@ -1,6 +1,6 @@
 # 0006. Fine-tune the bookmaker in a Python `training/` folder
 
-- Status: Proposed
+- Status: Accepted (2026-10-21)
 - Date: 2026-10-21
 - Deciders: adricasi
 
@@ -13,7 +13,7 @@ REQ-019 fine-tunes the E4B bookmaker on public Barcelona weather outcomes (QLoRA
 3. **No fine-tune.** Pros: saves time. Cons: loses a Best Use of Gemma result the builder wants.
 
 ## Decision
-We will keep a self-contained Python project in `training/` (uv, pinned lockfile, Unsloth or TRL + PEFT) that reads the JSONL dataset produced by the TypeScript backtest pipeline, trains a QLoRA adapter on E4B, merges it, converts it to GGUF and imports it into Ollama. The adapter is published on Hugging Face by the builder (Q-11); weights and checkpoints are never committed.
+We will keep a self-contained Python project in `training/` (uv, pinned lockfile, Unsloth or TRL + PEFT) that reads the JSONL dataset produced by the TypeScript backtest pipeline (public weather data and a fixed synthetic habit profile only, never household data), trains a QLoRA adapter on E4B, merges it, converts it to GGUF and imports it into Ollama. The adapter is published on Hugging Face by the builder (Q-11); weights and checkpoints are never committed.
 
 ## Consequences
 - Positive: one place to reproduce the result; the app treats the fine-tuned model as just another configured model.

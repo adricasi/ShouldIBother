@@ -13,7 +13,9 @@ Fixed values used below:
 - **Odds bands → odds**: very likely 85 · likely 70 · toss-up 50 · unlikely 35 · very unlikely 15 (%, chance that doing nothing works).
 - **Payout on a do-nothing win**: (100 − odds) × evidence multiplier, rounded to the nearest integer (halves up). Multiplier: after photo ×1.0, one tap ×0.5, auto-settle ×0.5.
 - **Other outcomes**: small loss −25 · normal loss −50 · harmful loss −150 · cash-out −10 · "I'll do it" and the weather would not have helped +5 · "I'll do it" and the weather would have done it −10 · advice followed +5.
-- **Gemma timeouts**: 30 s per model call; 45 s deadline per Gemma job end to end (all calls, tool calls and the retry; for a photo, inspector + bookmaker together).
+- **Gemma timeouts**: 30 s per model call; 45 s deadline per Gemma job end to end, measured from when the job is queued (so it includes waiting for the GPU) and covering all calls, tool calls and the retry; for a photo, inspector + bookmaker together. Gemma jobs run one at a time.
+- **Retry budget**: each Gemma job makes at most 4 model calls: up to 2 for the first attempt (a `get_forecast` tool call and the answer) and up to 2 for its single retry. Every "retry once" below uses this budget.
+- **Time zone**: all times, windows, settle bounds and the Monday–Sunday week are Europe/Madrid.
 
 ## Functional requirements
 
@@ -23,13 +25,15 @@ Fixed values used below:
 - Goals: G-5
 - Acceptance criteria:
   - AC-001.1: WHEN the server starts or the user runs `sib pair` THE SYSTEM SHALL generate a new pairing token of at least 128 bits from a cryptographically secure random source, valid for 10 minutes, print a pairing URL and QR code to the laptop console, and leave existing sessions valid.
-  - AC-001.2: WHEN a device opens the pairing URL with a valid, unexpired token THE SYSTEM SHALL set an HttpOnly, SameSite=Strict session cookie and redirect to a URL that does not contain the token; one token may pair several devices within its 10 minutes.
+  - AC-001.2: WHEN a device opens the pairing URL with a valid, unexpired token THE SYSTEM SHALL set an HttpOnly, SameSite=Strict session cookie and redirect to a URL that does not contain the token; one token may pair at most 3 devices within its 10 minutes, and each new pairing prints a console line with the time, client address and user agent.
   - AC-001.3: IF a request to any route other than `/pair` (pages, API, photo files) lacks a valid session THEN THE SYSTEM SHALL respond 401 and return no app data.
-  - AC-001.4: IF a POST, PUT or DELETE request carries an Origin header that does not match the app's own origin, or no Origin header THEN THE SYSTEM SHALL reject it with 403.
-  - AC-001.5: IF more than 10 failed pairing or session attempts arrive from one client address within 1 minute THEN THE SYSTEM SHALL reject further attempts from that address for 1 minute.
+  - AC-001.4: IF a POST, PUT or DELETE request carries no Origin header, or one that is not an app origin (an allowlisted host over http, or an entry of `config.publicOrigins` such as a Tailscale Serve https origin) THEN THE SYSTEM SHALL reject it with 403.
+  - AC-001.5: IF more than 10 unauthenticated requests that fail the pairing or session check arrive from one client address within 1 minute THEN THE SYSTEM SHALL reject further unauthenticated requests from that address for 1 minute; requests with a valid session are never rejected by this limit.
   - AC-001.6: WHEN the user runs "Forget devices" (in the app or `sib forget-devices`) THE SYSTEM SHALL invalidate all existing sessions and any unexpired pairing token.
-  - AC-001.7: THE SYSTEM SHALL never write the pairing token or session identifiers to logs.
+  - AC-001.7: THE SYSTEM SHALL never write the pairing token or session identifiers to logs, including the `/pair` query string in request logs.
   - AC-001.8: IF a session is older than 30 days or a pairing token is older than 10 minutes THEN THE SYSTEM SHALL treat it as invalid.
+  - AC-001.9: IF a request's Host header (with port) is not in the allowlist built at start-up (localhost, 127.0.0.1, the active interfaces' addresses, `config.allowedHosts` and the hosts of `config.publicOrigins`) THEN THE SYSTEM SHALL respond 421 and return no app data.
+  - AC-001.10: WHEN a device pairs through an https entry of `config.publicOrigins` THE SYSTEM SHALL also set the Secure attribute on the session cookie.
 
 ### REQ-002: Capture chores as cards
 - Story: As a household member, I want to type my chores in one sentence, so that each one becomes its own card without filling in forms.
@@ -84,7 +88,7 @@ Fixed values used below:
   - AC-006.2: WHEN the forecast or Gemma's answer changes after a bet is placed THE SYSTEM SHALL NOT change that bet's odds, band or payouts.
   - AC-006.3: WHEN the user taps "I'll do it" THE SYSTEM SHALL record a do-it decision with the same odds and settle time, to be scored at settlement (REQ-009).
   - AC-006.4: WHEN the user taps Undo within 5 minutes of placing a bet or do-it decision THE SYSTEM SHALL delete it with no points [ASSUMPTION A-9].
-  - AC-006.5: IF the user tries to undo more than 5 minutes after placing THEN THE SYSTEM SHALL not offer Undo (cash-out, REQ-022, is the way out).
+  - AC-006.5: IF the user tries to undo more than 5 minutes after placing THEN THE SYSTEM SHALL not offer Undo; the bet is locked (cash-out applies only when REQ-022 is enabled).
 
 ### REQ-007: Slips with countdown
 - Story: As a household member, I want to see my open bets and when they settle, so that I know what is waiting and what to settle now.
@@ -105,7 +109,7 @@ Fixed values used below:
   - AC-008.3: WHEN the user answers with one tap ("Yes, dry" / "Damp" / "Wet", or the chore's equivalent) THE SYSTEM SHALL send the answer and the recorded weather to the Gemma judge.
   - AC-008.4: WHEN the judge returns a verdict THE SYSTEM SHALL show it as win, small loss, normal loss or harmful loss with a one-line reason and its evidence ("Gemma's read"), apply the points (REQ-009) and mark the bet settled.
   - AC-008.5: WHEN the judge returns "unsure" THE SYSTEM SHALL ask the user its yes/no question and re-judge with the answer.
-  - AC-008.6: WHEN the judge decides a win where the recorded weather did not deliver (e.g. no rain on a rain bet) THE SYSTEM SHALL mark it a lucky win, pay it as a win and count it separately from Gemma's calibration.
+  - AC-008.6: WHEN a do-nothing bet is settled as a win and the recorded weather does not meet the chore's outcome label (design.md, Outcome labels) THE SYSTEM SHALL mark it a lucky win (computed by code, not by Gemma), pay it as a win, count it as a success in calibration like every other win, and report the lucky-win share separately.
   - AC-008.7: IF a bet has no user answer 24 h after its settle time THEN THE SYSTEM SHALL have the judge settle it from the recorded weather alone, at the ×0.5 multiplier.
   - AC-008.8: IF Gemma is unavailable when a bet needs a verdict THEN THE SYSTEM SHALL keep the bet in "Settle when Gemma is back" and never settle it with the rule model; when Gemma returns it SHALL judge it (×0.5 if the 24 h limit passed).
   - AC-008.9: WHEN a do-it decision reaches its settle time THE SYSTEM SHALL have the judge decide from the recorded weather whether the weather would have done the chore.
@@ -126,7 +130,7 @@ Fixed values used below:
 - Goals: G-1, G-3
 - Acceptance criteria:
   - AC-010.1: WHEN a do-nothing bet is settled as a win THE SYSTEM SHALL show a receipt with the bet, odds, evidence type, recorded weather, points won, time saved and water or electricity saved, with a "PAID OUT" stamp.
-  - AC-010.2: WHEN a bet is settled as a loss THE SYSTEM SHALL show the result with its points and reason, without the PAID OUT stamp and without shaming copy.
+  - AC-010.2: WHEN a bet is settled as a loss THE SYSTEM SHALL show the result with its points and reason, using the fixed loss copy strings reviewed by `ux-reviewer`, without the PAID OUT stamp.
 
 ### REQ-011: Savings totals
 - Story: As a household member, I want to see the time, water and electricity the weather saved me, so that I know laziness was worth it.
@@ -138,7 +142,7 @@ Fixed values used below:
   - AC-011.3: THE SYSTEM SHALL report net time back as time saved minus 30 s per bet or do-it decision placed and not undone, and show both parts (e.g. "2 h 10 saved, minus 6 min spent on 12 bets").
   - AC-011.4: THE SYSTEM SHALL count time only for skipped steps; electricity-only savings (e.g. line instead of dryer) add 0 minutes.
   - AC-011.5: THE SYSTEM SHALL show the assumption behind each savings figure where it is displayed (e.g. "vs a heat-pump dryer, ~2 kWh").
-  - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday): net time back, water in litres and electricity in kWh.
+  - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday, Europe/Madrid): net time back, water in litres and electricity in kWh.
 
 ### REQ-012: Safety is never a bet
 - Story: As a household member, I want risky weather to tell me to act, so that the game never puts plants or people at risk.
@@ -172,6 +176,7 @@ Fixed values used below:
   - AC-014.4: IF no forecast younger than 24 h is available THEN THE SYSTEM SHALL show "No forecast, can't set odds" on new cards and not allow betting [ASSUMPTION A-10].
   - AC-014.5: IF recorded weather for a bet's window is not yet available THEN THE SYSTEM SHALL keep the bet waiting and retry at least every 30 min.
   - AC-014.6: THE SYSTEM SHALL show the Open-Meteo attribution (CC BY 4.0) in the app and the README.
+  - AC-014.7: THE SYSTEM SHALL send outbound requests only to the Open-Meteo hosts in the weather client's allowlist (forecast, Previous Runs, Historical Forecast and archive APIs) and refuse any other host.
 
 ### REQ-015: Own and delete my data
 - Story: As a household member, I want to delete photos and bets and export my data, so that I control what is kept about my home.
@@ -179,16 +184,18 @@ Fixed values used below:
 - Goals: G-5, G-4
 - Acceptance criteria:
   - AC-015.1: THE SYSTEM SHALL store the database and photos in a data folder outside the source tree that is listed in `.gitignore`.
-  - AC-015.2: WHEN the user deletes a photo or a bet in the app THE SYSTEM SHALL remove the photo file(s) and records from disk (SQLite `secure_delete` on, WAL checkpointed so deleted rows are overwritten) and recompute totals.
-  - AC-015.3: WHEN the user runs the delete-all command THE SYSTEM SHALL remove all photos, and with `--all-data` also the database, logs and weather cache, after a confirmation prompt.
-  - AC-015.4: WHEN the user runs the export command THE SYSTEM SHALL write a JSON file of all bets, decisions, verdicts and totals plus the photo files to a chosen folder.
+  - AC-015.2: WHEN the user deletes a photo or a bet in the app THE SYSTEM SHALL remove the photo file(s) and every record derived from them from disk: for a photo, its `photos` row, the `quotes` made with it and the inspector's and judge's `gemma_decisions` rows that used it (input_summary and output); for a bet, also its `bets`, `settlements`, quotes and decisions (SQLite `secure_delete` on, WAL checkpointed so deleted rows are overwritten), and recompute totals.
+  - AC-015.3: WHEN the user runs `sib delete-photos` THE SYSTEM SHALL remove all photos, and with `--all-data` also the database, logs and weather cache, after a confirmation prompt.
+  - AC-015.4: WHEN the user runs `sib export <dir>` THE SYSTEM SHALL write a JSON file of all bets, decisions, verdicts and totals plus the photo files to a chosen folder.
 
 ### REQ-016: Chores in this version
 - Story: As a household member, I want bets for the chores I actually do this week, so that the live week produces real bets.
-- Priority: Must (balcony plants, skip the AC) · Should (laundry: leave it out tonight) · Could (skip the heater)
+- Priority: Must (water balcony plants; line-dry today, skip the dryer) · Should (laundry: leave it out tonight) · Could (skip the AC, skip the heater, each offered only when the household baseline says it is used this season)
 - Goals: G-3
 - Acceptance criteria:
-  - AC-016.1: THE SYSTEM SHALL support do-nothing bets for "water balcony plants" and "skip the AC tonight", with catalogue savings and settle-time rules.
+  - AC-016.1: THE SYSTEM SHALL support do-nothing bets for "water balcony plants" and "line-dry today (skip the dryer)", with catalogue savings and settle-time rules.
+  - AC-016.4: WHEN the user creates a laundry card between 07:00 and 15:00 THE SYSTEM SHALL offer "Line-dry today (skip the dryer)", a bet that wins if the load is dry by its settle time (same day 18:00–21:00) and loses if it is still damp or rain wet it; its savings are the dryer's kWh from the household baseline and 0 minutes (AC-011.4). Outside that window the card says when it can be offered.
+  - AC-016.5: IF the household baseline says the AC (or heater) is not used this season THEN THE SYSTEM SHALL show that chore as "Not needed this season" with no odds and no bet action.
   - AC-016.2: WHEN the user creates a "Leave it out tonight" card between 1 h before and 2 h after sunset THE SYSTEM SHALL offer a "Leave it out tonight" bet (outside that window the card says when it can be offered) that wins if the laundry is dry in the morning and loses if dew or rain dampened it.
   - AC-016.3: THE SYSTEM SHALL support a "skip the heater" bet settled by a one-tap comfort answer.
 
@@ -205,9 +212,9 @@ Fixed values used below:
 - Priority: Should
 - Goals: G-4
 - Acceptance criteria:
-  - AC-018.1: WHEN the backtest runs THE SYSTEM SHALL decide each simulated day only from forecasts issued by model runs that started before the decision time (Open-Meteo Previous Runs API, day-1 lead), and settle it from recorded weather (archive).
+  - AC-018.1: WHEN the backtest runs THE SYSTEM SHALL decide each simulated day only from forecasts issued by model runs that started before the decision time (Open-Meteo Previous Runs API, day-1 lead) at the chore's fixed decision time, and settle it with the chore's outcome label (design.md, Outcome labels) computed from recorded weather (archive).
   - AC-018.2: IF day-1-lead forecasts are not available for a variable THEN THE SYSTEM SHALL fall back to the Historical Forecast API and label the affected results "short-lead forecast (optimistic)", or "perfect-forecast upper bound" if only recorded weather is available.
-  - AC-018.3: WHEN the backtest finishes THE SYSTEM SHALL report for Gemma E4B, Gemma E2B, the rule and the fixed routine: chores skipped, chores avoided, time, water and electricity saved, plant-risk days (simulated days where a strategy skipped watering and doing nothing did not work for the plants), and band calibration with N per band; results on Apr–Aug are labelled "in-sample" for the fine-tuned model and for rule thresholds, and the headline comparison uses Sep–Oct only.
+  - AC-018.3: WHEN the backtest finishes THE SYSTEM SHALL report for Gemma E4B, Gemma E2B, the rule and the fixed routine: skips (do-nothing decisions taken), skips that worked, time, water and electricity saved, plant-risk days (simulated days where a strategy skipped watering and the plants' outcome label was false), and band calibration with N per band (the fixed routine has no odds: calibration n/a); the fine-tuned model's column comes from the hold-out evaluation (AC-019.3) and its Apr–Aug results, if shown, are labelled "in-sample"; the headline comparison uses Sep–Oct only.
   - AC-018.4: THE SYSTEM SHALL use no photos and no household data in the backtest.
 
 ### REQ-019: Fine-tuned bookmaker
@@ -215,20 +222,22 @@ Fixed values used below:
 - Priority: Should
 - Goals: G-2, G-4
 - Acceptance criteria:
-  - AC-019.1: WHEN the training dataset is built THE SYSTEM SHALL pair each day's archived forecast (text) with whether doing nothing worked from recorded weather, using Apr–Aug 2026 for training and Sep–Oct 2026 as hold-out, with no date in both.
+  - AC-019.1: WHEN the training dataset is built THE SYSTEM SHALL pair each day's Previous Runs day-1-lead forecast (as in AC-018.1) with the chore's outcome label from the archive, using 1 Apr–31 Aug 2026 for training and 1 Sep 2026 to the snapshot's last archive day as hold-out (that end date is recorded in the dataset manifest), with no date in both.
   - AC-019.2: WHEN training finishes THE SYSTEM SHALL produce a merged GGUF model that loads in the local runtime and answers the bookmaker schema.
   - AC-019.3: WHEN the evaluation runs THE SYSTEM SHALL report band calibration with N per band, Brier score and the tool-call miss rate for base and fine-tuned E4B on the hold-out.
   - AC-019.4: WHERE the fine-tuned model is enabled THE SYSTEM SHALL record its model version on each bet it priced.
-  - AC-019.5: WHEN target bands are computed THE SYSTEM SHALL use success rates from Apr–Aug 2026 only, so no hold-out day influences any training target.
-  - AC-019.6: WHEN a training row is built THE SYSTEM SHALL render it as the same conversation the live bookmaker sees (including the rule band and the `get_forecast` tool call and result), and add a templated `disagreement_reason` whenever the target band is two or more bands from the rule band.
+  - AC-019.5: WHEN target bands are computed THE SYSTEM SHALL use success rates from Apr–Aug 2026 only, with the neighbour method in design.md (Fine-tune dataset), so no hold-out day influences any training target.
+  - AC-019.6: WHEN a training row is built THE SYSTEM SHALL render it as the same conversation the live bookmaker sees (including the rule band and the `get_forecast` tool call and result), and add a templated `disagreement_reason` whenever the target band is two or more bands from the rule band; the habits in every row come from a fixed synthetic profile, never from `config/household.json`.
+  - AC-019.7: WHEN the dataset is built THE SYSTEM SHALL write a manifest with the bookmaker prompt version, the `config/rules.json` hash, the snapshot end date, the synthetic habit profile and the number of rows per chore and band (training and hold-out).
+  - AC-019.8: IF any value from `config/household.json` appears in a training or hold-out row THEN THE SYSTEM SHALL fail the dataset build.
 
 ### REQ-020: Score screen
 - Story: As a household member and post reader, I want a score screen with points, savings and how honest Gemma is, so that the results are visible in one place.
 - Priority: Should
 - Goals: G-3, G-4
 - Acceptance criteria:
-  - AC-020.1: WHEN the user opens Score THE SYSTEM SHALL show total points, savings tiles (chores skipped, water, electricity, net time back with its note) and the judge overrule rate with N.
-  - AC-020.2: WHEN the user opens Score THE SYSTEM SHALL show band calibration (predicted odds vs share where doing nothing worked) separately for Gemma and the rule, with N per band.
+  - AC-020.1: WHEN the user opens Score THE SYSTEM SHALL show total points, savings tiles (chores skipped, water, electricity, net time back with its note) and the judge overrule rate with N, shown as "appeals off" while REQ-023 is disabled.
+  - AC-020.2: WHEN the user opens Score THE SYSTEM SHALL show band calibration (predicted odds vs share where doing nothing worked) separately for Gemma and the rule, with N per band, over settled do-nothing bets only (do-it decisions, cash-outs and undone bets excluded): Gemma's calibration uses bets with `odds_source = gemma` and their Gemma band; the rule's uses every settled do-nothing bet's rule band; every win counts as a success, lucky wins included.
   - AC-020.3: IF a band has fewer than 5 settled bets THEN THE SYSTEM SHALL show its N and mark it "too few to judge".
   - AC-020.4: WHEN there are no settled bets THE SYSTEM SHALL show an empty state instead of the chart.
 
@@ -241,6 +250,7 @@ Fixed values used below:
   - AC-021.2: WHEN the planner suggests Skip today THE SYSTEM SHALL first ask "Need anything washed before <day>?"; if yes, it SHALL show Wash today instead.
   - AC-021.3: WHEN the user follows Wash today on the best drying day THE SYSTEM SHALL add +5 points; Wash today and No good day are never bets.
   - AC-021.4: WHEN a Skip today bet settles THE SYSTEM SHALL count it a win only if the load dried outside on the chosen day.
+  - AC-021.5: WHEN a Skip today bet is placed THE SYSTEM SHALL use the band the laundry planner gives for the chosen day's drying, mapped to the fixed odds.
 
 ### REQ-022: Rescue alerts and cash-out
 - Story: As a household member, I want a warning when the forecast turns against an open bet, so that I can fold for a small cost.
@@ -290,7 +300,7 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-027.1: WHEN the user records a voice note THE SYSTEM SHALL send the audio only to the local runtime (Gemma 4 audio, or whisper.cpp as a stated fallback) and show the transcript with chores highlighted before creating cards.
   - AC-027.2: THE SYSTEM SHALL never send audio off the laptop.
-  - AC-027.3: IF microphone access is unavailable (e.g. plain HTTP) THEN THE SYSTEM SHALL hide the mic button and keep typed capture.
+  - AC-027.3: IF microphone access is unavailable (always on plain HTTP; voice needs the Tailscale Serve HTTPS option) THEN THE SYSTEM SHALL hide the mic button and keep typed capture.
 
 ### REQ-028: Show Gemma's reasoning
 - Story: As a post reader, I want to see what Gemma saw and why it decided, so that its role is visible and checkable.
@@ -311,17 +321,17 @@ Fixed values used below:
 ## Non-functional requirements
 | ID | Category | Requirement (measurable) | Verification |
 |---|---|---|---|
-| NFR-001 | Security | App server binds only to 127.0.0.1 and the home-LAN interface; the model runtime binds only to 127.0.0.1. All routes require a session (REQ-001). Token ≥ 128 bits CSPRNG, constant-time comparison. 0 high/critical findings in `npm audit --audit-level=high`; gitleaks clean. Known limit (plain HTTP cookie sniffing on the LAN) documented in README with the Tailscale Serve option. | Integration tests for 401/403/rate limit; `ss -ltnp` check during setup; CI audit and gitleaks |
-| NFR-002 | Privacy / data classification | Photos, chore text, habits and audio are **household-private**: stored only in the git-ignored data folder, never sent off the laptop. Committed test fixtures are recorded only from staged or synthetic inputs and reviewed by hand. The only outbound host at runtime is Open-Meteo, with coordinates rounded to 2 decimals. 0 analytics or telemetry. Photos EXIF-stripped and ≤ 1024 px. | Test that stored photos have no EXIF; network capture during one capture → settle cycle shows only Open-Meteo hosts |
+| NFR-001 | Security | App server binds only to 127.0.0.1 and the home-LAN interface; the model runtime binds only to 127.0.0.1. All routes require a session (REQ-001). Token ≥ 128 bits CSPRNG, constant-time comparison, ≤ 3 devices per token; Host allowlist (AC-001.9). 0 high/critical findings in `npm audit --audit-level=high`; gitleaks clean. Known limit (plain HTTP cookie sniffing on the LAN) documented in README with the Tailscale Serve option. | Integration tests for 401/403/rate limit; `ss -ltnp` check during setup; CI audit and gitleaks |
+| NFR-002 | Privacy / data classification | Photos, chore text, habits and audio are **household-private**: stored only in the git-ignored data folder, never sent off the laptop. Committed test fixtures are recorded only from staged or synthetic inputs and reviewed by hand. The only outbound host at runtime is Open-Meteo, with coordinates rounded to 2 decimals. 0 analytics or telemetry. Photos EXIF-stripped and ≤ 1024 px. | Test that stored photos have no EXIF; CI test that the weather client refuses non-allowlisted hosts (AC-014.7); network capture during one capture → settle cycle shows only Open-Meteo hosts |
 | NFR-003 | Reliability | 100% of open bets and their settle times survive a server or laptop restart, and every schema migration keeps existing rows (tested on a copy of the live database before it is applied). With Open-Meteo down, odds use the cached forecast (REQ-014); with Gemma down, odds fall back to the rule and settlements wait (REQ-013, AC-008.8). SQLite writes are transactional. | Restart test with open bets; fault-injection tests for weather and Gemma offline |
 | NFR-004 | Performance | Rule odds on a new card ≤ 1 s (AC-004.1). Photo judgement (inspector + bookmaker, incl. the tool call) ≤ 15 s in ≥ 19 of 20 tries on the builder's laptop; each model call times out at 30 s and each Gemma job at 45 s. Schema-valid JSON ≥ 19 of 20 per job. App screens interactive ≤ 3 s on the phone over home Wi-Fi. | T-001 spike measurements, re-run before the freeze; logged latencies (NFR-007) |
-| NFR-005 | Scale | Sized for 1 household, ≤ 3 paired devices, ≤ 100 bets/week (design assumption, not enforced). Backtest (Apr–Oct 2026, all supported chores, E4B + E2B + fine-tuned) completes in ≤ 8 h on the laptop, resumable, paused from 07:00 so morning settlements get the GPU. | Backtest run time and call-count estimate in T-015 |
+| NFR-005 | Scale | Sized for 1 household, ≤ 3 paired devices per pairing token (enforced, AC-001.2), ≤ 100 bets/week (not enforced). Backtest (Apr–Oct 2026, all supported chores, E4B + E2B; the fine-tuned model is evaluated on the hold-out in AC-019.3) completes in ≤ 8 h on the laptop, resumable, paused from 07:00 so morning settlements get the GPU. | Backtest run time and call-count estimate in T-015 |
 | NFR-006 | Cost | 0 € running cost; Open-Meteo ≤ 1,000 calls/day (limit 10,000); fine-tune on the laptop GPU, Colab free tier as fallback. | Call counter in logs |
 | NFR-007 | Observability | Local structured JSON logs; every Gemma call logs job, model version, prompt version, latency, schema-valid flag and retries; never tokens, session IDs or photo bytes. Gemma status visible in the UI (AC-013.5). | Log inspection test |
 | NFR-008 | Compliance / licensing | Repo MIT; README lists third-party licences (Gemma 4 Apache 2.0, Open-Meteo CC BY 4.0 non-commercial, fonts SIL OFL, Lucide ISC). Points only: no stakes, purchases or value. Challenge rules (repo window, public, tags) met. | Release checklist before publishing |
 | NFR-009 | Accessibility | WCAG 2.2 AA on all mobile screens: text contrast ≥ 4.5:1 (use `ink-3-text`, `amber-text` tokens), touch targets ≥ 44 × 44 px, win/lose never by colour alone, odds always with words, `prefers-reduced-motion` respected. | `ux-reviewer` pass; automated contrast check on tokens |
 | NFR-010 | Testability | Every Gemma job runs against a fake returning recorded JSON fixtures; CI runs with no GPU, no model and no network. Points, rule baseline, settlement and savings logic have unit tests covering every AC above. | CI green without GPU or network |
-| NFR-011 | Portability / setup | Supported: Windows 11 + WSL2 (Ubuntu), NVIDIA GPU ≥ 8 GB VRAM, ≥ 16 GB RAM [ASSUMPTION A-11], Node.js LTS; phone: current iOS Safari or Android Chrome. Model pinned by tag and digest. From a clean clone, setup (excluding model download) ≤ 30 min following the README. | Fresh-clone run-through before publishing |
+| NFR-011 | Portability / setup | Supported: Windows 11 + WSL2 (Ubuntu), NVIDIA GPU ≥ 8 GB VRAM, ≥ 16 GB RAM [ASSUMPTION A-11], Node.js 24 (pinned); phone: current iOS Safari or Android Chrome. Model pinned by tag and digest. From a clean clone, setup (excluding model download) ≤ 30 min following the README. | Fresh-clone run-through before publishing |
 | NFR-012 | Reproducibility | Backtest and fine-tune evaluation are reproducible: pinned model digests, fixed seeds, fixed date split, weather data snapshot saved with attribution; re-running gives the same reported numbers. | Re-run from the snapshot matches the report |
 
 ## Out of scope
@@ -334,6 +344,6 @@ Fixed values used below:
 - [x] Q-12: Source of "recorded weather" at settle time: the forecast API's past hours, labelled "modelled recent weather"; the backtest uses the archive (answered 2026-10-21, ADR-0008).
 
 ## Assumptions (requirements)
-- A-9: Undo is available for 5 minutes after placing; after that, cash-out is the way out (stops undoing bets that are going badly).
+- A-9: Undo is available for 5 minutes after placing; after that the bet is locked (stops undoing bets that are going badly). Cash-out applies only when REQ-022 is enabled.
 - A-10: Without a forecast younger than 24 h, no new bets are allowed (odds would be meaningless); existing bets are unaffected.
 - A-11: The builder's laptop has ≥ 16 GB RAM (VRAM 8 GB+ confirmed).
