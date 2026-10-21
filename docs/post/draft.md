@@ -37,27 +37,22 @@ the repo is public, the tags are devchallenge + hf26challenge, and the video lin
 
 <!-- builder: the theme rewards laziness. Open with the joke, then earn it with evidence. A possible first paragraph is below; rewrite it so it sounds like you. -->
 
-I suspect that on a lot of evenings I water the balcony plants right before the sky would have done it for me. I can't tell which evenings, and neither can a weather app. It says "20% rain". It does not say "this basil can wait until Thursday".
+I suspect that on a lot of evenings I water the balcony plants right before the sky would have done it for me. A weather app can't tell me which evenings. It says "20% rain", not "this basil can wait until Thursday".
 
-So I built a bookmaker. It takes a chore, looks at the forecast and at a photo of the actual plant, and offers me odds that doing nothing will be fine. I can take the bet or do the chore. When the bet is due, it checks the weather that really happened, asks me for an after photo, and pays out points if I was right and takes them if I was wrong. Every bet is settled on evidence, and every loss stays on the record.
+So I built a bookmaker. It looks at the forecast and a photo of the actual plant, and offers odds that doing nothing will be fine. Later it checks what the weather really did, asks for an after photo, and pays me points if I was right or takes them if I wasn't. Wins get a PAID OUT stamp; losses stay on the record.
 
 ## What I Built
 
-**Should I Bother?** ("The Lazy Bookie") is a local app where Gemma 4 turns weather chores into bets on doing nothing. You type a sentence or take a photo. It answers with odds, a one-line reason and a settle time. If you bet and win, a red PAID OUT stamp lands on your slip and the app counts what the sky saved you: minutes, litres of water, kilowatt-hours.
+**Should I Bother?** ("The Lazy Bookie") is a local app where Gemma 4 turns weather chores into bets on doing nothing. Type a sentence or snap a photo; it answers with odds, a reason and a settle time. A win prints a receipt and counts what the sky saved me: minutes, litres, kilowatt-hours.
 
 <!-- builder: pick the single best slip image for this spot; the post outline asks for "one slip shown as an image". -->
 {{screenshot: a bet slip with odds, Gemma's reason and the payout table}} <!-- src: docs/images/04-place-a-bet.png (mockup stand-in) → real screenshot with a staged photo, T-021 -->
 
-How a chore becomes a bet, in six steps:
+Three rules keep it honest:
 
-1. **Capture.** "Water the plants and dry the laundry." Gemma splits it into one card per chore. Anything without a weather link ("call the bank") is labelled *not a weather chore*.
-2. **Safety check.** Heat, frost and storms are never bets. They become a red "Do it now" alert.
-3. **Odds.** Gemma reads the forecast through a tool call, looks at the photo if there is one, and picks one of five bands, from *very unlikely* to *very likely*. Code turns the band into fixed odds, so Gemma never invents a percentage.
-4. **Decide.** Bet on doing nothing, or tap "I'll do it". Undo is available for five minutes after betting.
-5. **Wait.** Open bets sit on the Slips screen with a countdown.
-6. **Settle.** At the settle time the app reads the recorded weather and asks for an after photo (full points) or one tap (half points). Gemma gives the verdict and shows its evidence. If I never answer, the bet settles itself after 24 hours at half points, so I can't report only my wins.
-
-What it is not: there is no money, no stake and no gambling. Points only. A win pays (100 − odds) × an evidence multiplier, so a bold bet pays more than a safe one, and a plant that wilts costs three times a normal loss.
+- **Safety is never a bet.** Heat, frost and storms become a red "Do it now" alert.
+- **Settlement needs evidence.** Recorded weather, then Gemma judges an after photo (full points) or one tap (half). No answer in 24 hours and it settles itself at half points, so I can't report only my wins.
+- **Points only.** No money. A win pays (100 − odds) × the evidence multiplier; a wilted plant costs three times a normal loss.
 
 The week in one sentence, to be written last:
 <!-- builder: write this after the numbers are in; keep it to one honest sentence. If doing nothing lost more often than it won, say so here and lead with that. -->
@@ -77,76 +72,59 @@ Over {{live_days}} days I placed {{bets_placed}} bets, settled {{bets}} of them,
 5. Settle with an after photo; Gemma's read; PAID OUT stamp; the savings strip updates.
 Use staged photos only. No shot may show the home. -->
 
-The tour, as screenshots, in case you don't want to press play:
+Screenshots:
 
 | Step | Screen |
 |---|---|
-| Today: one sentence, many cards | {{screenshot: Today screen with the capture bar and quick chips}} <!-- src: docs/images/02-today.png (mockup stand-in) → real screenshot, T-021 --> |
-| Voice: Gemma finds the chores in what I said | {{screenshot: voice capture sheet with chores highlighted}} <!-- src: docs/images/03-voice-capture.png (mockup stand-in); show only if voice capture shipped (flag), otherwise delete this row --> |
-| Bet sheet: "What Gemma saw", odds before and after the photo | {{screenshot: bet sheet where the photo moved the odds}} <!-- src: docs/images/04-place-a-bet.png (mockup stand-in) → real screenshot with a staged photo, T-021 --> |
-| Slips: countdown and settle now | {{screenshot: Slips screen with a waiting bet}} <!-- src: docs/images/05-slips.png (mockup stand-in) → real screenshot, T-021 --> |
-| Settle: before and after, recorded weather, Gemma's read | {{screenshot: settle screen with a before and an after photo}} <!-- src: docs/images/06-settle-a-bet.png (mockup stand-in) → real screenshot with staged photos, T-021 --> |
-| The payoff: receipt and PAID OUT stamp | {{screenshot: payout receipt with the stamp}} <!-- src: docs/images/07-you-won.png (mockup stand-in) → real screenshot, T-021 --> |
+| Today | {{screenshot: Today screen with the capture bar and quick chips}} <!-- src: docs/images/02-today.png (mockup stand-in) → real screenshot, T-021 --> |
+| Voice capture | {{screenshot: voice capture sheet with chores highlighted}} <!-- src: docs/images/03-voice-capture.png (mockup stand-in); show only if voice capture shipped (flag), otherwise delete this row --> |
+| Bet sheet: odds before and after the photo | {{screenshot: bet sheet where the photo moved the odds}} <!-- src: docs/images/04-place-a-bet.png (mockup stand-in) → real screenshot with a staged photo, T-021 --> |
+| Slips | {{screenshot: Slips screen with a waiting bet}} <!-- src: docs/images/05-slips.png (mockup stand-in) → real screenshot, T-021 --> |
+| Settle: before, after, Gemma's read | {{screenshot: settle screen with a before and an after photo}} <!-- src: docs/images/06-settle-a-bet.png (mockup stand-in) → real screenshot with staged photos, T-021 --> |
+| The payoff | {{screenshot: payout receipt with the stamp}} <!-- src: docs/images/07-you-won.png (mockup stand-in) → real screenshot, T-021 --> |
 
 ## Code
 
-The code is on GitHub under the MIT licence: https://github.com/adricasi/ShouldIBother <!-- src: docs/spec/product.md · Q-7 repo name; builder: confirm the repo is public (T-020) before publishing -->
+The code is MIT-licensed: https://github.com/adricasi/ShouldIBother <!-- src: docs/spec/product.md · Q-7 repo name; builder: confirm the repo is public (T-020) before publishing -->
 
-Setup in one breath: clone, `npm ci`, install Ollama, `npm run setup` (pulls the pinned Gemma tags and checks their digests), turn on WSL2 mirrored networking and one Windows firewall rule for the phone, `npm start`, scan the QR code. <!-- builder: the steps here must match README.md (T-020). Add one true sentence about the step that bit you during setup, or nothing. -->
+Setup in one breath: clone, `npm ci`, install Ollama, `npm run setup`, WSL2 mirrored networking plus a firewall rule for the phone, `npm start`, scan the QR code. <!-- builder: the steps here must match README.md (T-020). Add one true sentence about the step that bit you during setup, or nothing. -->
 
-What you need: a laptop with an NVIDIA GPU (8 GB of VRAM or more) and enough RAM for Gemma 4 E4B, plus a phone on the same Wi-Fi. My machine: {{gpu_model}} with {{vram_gb}} GB of VRAM. <!-- src: docs/results/backtest.md · run environment (GPU, VRAM). builder: if the report does not list the hardware, add a line to the report first -->
+You need an NVIDIA GPU laptop (8 GB of VRAM or more) and a phone on the same Wi-Fi. Mine: {{gpu_model}} with {{vram_gb}} GB of VRAM. <!-- src: docs/results/backtest.md · run environment (GPU, VRAM). builder: if the report does not list the hardware, add a line to the report first -->
 
-The fine-tuned adapter (public weather data only) is here: {{adapter_url}} <!-- src: docs/spec/product.md · Q-11 Hugging Face repo, published by hand in T-020; delete this sentence if the adapter is not published -->
-
-Licences: repo MIT; Gemma 4 Apache 2.0; fonts (Big Shoulders Display, IBM Plex Mono, Figtree) SIL OFL; icons Lucide (ISC); weather data Open-Meteo, CC BY 4.0 (see the end of this post).
+The fine-tuned adapter (public weather data only): {{adapter_url}} <!-- src: docs/spec/product.md · Q-11 Hugging Face repo, published by hand in T-020; delete this sentence if the adapter is not published -->
 
 ## How I Built It
 
-### The short version
+Everything runs on one laptop: a Node.js process serves a React app to my phone over home Wi-Fi, stores everything in SQLite, and talks to **Gemma 4 E4B** through **Ollama** on the laptop GPU. Gemma 4 E2B is the smaller comparison in the backtest. The only request that leaves the laptop is the weather lookup.
 
-Everything runs on one laptop. A single Node.js process (TypeScript, Fastify) serves a React web app to my phone over home Wi-Fi, keeps everything in SQLite, and talks to **Gemma 4 E4B** through **Ollama** on a laptop GPU. Gemma 4 E2B runs alongside it in the backtest as the smaller comparison. The only request that ever leaves the laptop is the one to the Open-Meteo weather API.
-
-The rule I held myself to: **Gemma decides, code executes.** Gemma makes every judgement. Code fetches the weather, stores bets, counts points and savings, and enforces a safety backstop that Gemma cannot overrule.
+The rule: **Gemma decides, code executes.** Gemma makes every judgement. Code fetches the weather, stores bets, counts points and savings, and enforces a safety backstop that Gemma cannot overrule.
 
 ### Six jobs, one model
 
-| Job | What Gemma gets | What comes back | What code does with it |
-|---|---|---|---|
-| **Listener** | A typed sentence (or a voice note, if the audio tier shipped) | One card per chore; non-weather chores flagged | Shows cards; unknown chores become "coming later" |
-| **Inspector** | A photo of the plant or the washing | Observations: soil dryness, wilting, cover from rain, dampness, or "unsure" with a question | Shows them as "What Gemma saw" |
-| **Bookmaker** | Chore, habits, the inspector's notes, the rule's band, and a `get_forecast` **function call** | An odds band, a reason of at most 140 characters, a settle time | Maps the band to fixed odds, clamps the settle time, locks the bet |
-| **Safety guard** | The chore and the forecast | Alert or not, with a reason | Shows a "Do it now" card; a fixed heat / frost / storm backstop applies even if Gemma is off |
-| **Judge** | Before and after photos or a tap answer, the recorded weather, the bet | Win, small loss, normal loss, harmful loss, or "unsure" with a question | Computes points; never replaced by a rule |
-| **Laundry planner** | A four-day drying forecast and "need it by" | Wash today, skip today, or no good day | Shows the card; only *skip today* is a bet |
+| Job | What Gemma gets | What comes back |
+|---|---|---|
+| **Listener** | A typed sentence (or a voice note, if audio shipped) | One card per chore |
+| **Inspector** | A photo of the plant or washing | What it sees, or "unsure" plus a question |
+| **Bookmaker** | Chore, habits, inspector notes, the rule's band, a `get_forecast` **function call** | An odds band, a short reason, a settle time |
+| **Safety guard** | The chore and the forecast | Alert or not (a fixed backstop applies even if Gemma is off) |
+| **Judge** | Before / after photos or a tap, recorded weather | Win, a loss grade, or "unsure" plus a question |
+| **Laundry planner** | A four-day drying forecast | Wash today, skip today, or no good day |
 
 <!-- builder: the safety guard and the laundry planner are tier 3 and tier 5 and sit behind flags. If either is off at the freeze (Sat 14:00), mark its row "next" instead of listing it as built. The post must not claim a job that is not in the shipped app. Same for voice: say "typed" unless the Gemma audio path shipped; if whisper.cpp was the fallback, say so here. -->
 
-Two details I'm happy about:
-
-- **Function calling is enforced, not hoped for.** The bookmaker has exactly one tool, `get_forecast`, and it is read-only. If Gemma answers without calling it, the app retries once and then shows the rule's odds, clearly labelled. Those misses are counted. The miss rate is in the results below.
-- **Photos can only help.** The first odds come from the forecast alone within seconds. A photo then moves the band up or down. The app stores the band with and without the photo on every bet, which is what makes the photo ablation in The Lazy Payoff possible.
-
 ### Bands, not percentages
 
-I didn't trust a 4B model to produce calibrated percentages on its own, and pretending it could would be the dishonest part of this project. So Gemma picks one of five bands and code maps each band to a fixed number:
+I didn't trust a 4B model to produce calibrated percentages, so Gemma picks one of five bands and code maps each to fixed odds:
 
-| Band | Odds that doing nothing works |
-|---|---|
-| Very likely | 85% |
-| Likely | 70% |
-| Toss-up | 50% |
-| Unlikely | 35% |
-| Very unlikely | 15% |
+| Band | Very likely | Likely | Toss-up | Unlikely | Very unlikely |
+|---|---|---|---|---|---|
+| Odds that doing nothing works | 85% | 70% | 50% | 35% | 15% |
 
-Every bet also stores a **rule baseline**: odds computed by plain code from forecast numbers, with no model involved. For watering it looks at rain in millimetres, the highest hourly rain probability and the day's maximum temperature. For washing on the line it uses a drying index built from wind, humidity, sunshine and rain. For the AC it looks at the night minimum and the wind. The thresholds live in `config/rules.json`, I wrote them once, and I never tuned them, so the rule is an honest baseline and not something I fitted to look bad. If Gemma lands two or more bands away from the rule, it has to explain why or ask me a question.
+Every bet also stores a **rule baseline**: odds from plain code on forecast numbers, thresholds written once and never tuned. If Gemma lands two or more bands from the rule, it must explain or ask. Gemma's odds are only worth anything if they beat the rule; the results below show whether they do. <!-- builder: this sentence is safe whichever way it goes; keep it. -->
 
-Gemma's odds are only worth anything if they beat the rule. The results below show whether they do. <!-- builder: this sentence is safe whichever way it goes; keep it. -->
+### Does a small model keep its promises?
 
-### Schema-validated JSON and an "unsure" path
-
-Every Gemma job has a versioned prompt file and a zod schema. Answers are enums plus short strings; code never acts on free text. If the JSON is invalid, the app retries once with the validation error, then fails clearly. Inspector and judge are allowed to say **unsure**, and then the card asks a yes/no question instead of guessing. User text, photos and tool results are passed to the model as untrusted data in delimiters, and points, settle bounds and safety are computed by code, so "ignore your instructions" in a photo caption cannot move a score.
-
-Does a small model keep that promise? I ran 20 tries per job on the laptop:
+Every job has a versioned prompt and a schema, and the inspector and judge may say *unsure* and ask instead of guessing. 20 tries per job on the laptop:
 
 | Job | Valid JSON (of 20) | Median latency |
 |---|---|---|
@@ -156,6 +134,16 @@ Does a small model keep that promise? I ran 20 tries per job on the laptop:
 | Judge | {{valid_json_judge}} <!-- src: docs/results/live-week.md · valid-JSON count out of 20, judge --> | {{latency_judge}} <!-- src: docs/results/live-week.md · median latency per job, judge --> |
 
 <!-- builder: add a safety guard row only if it shipped. If a job missed the 19-of-20 bar, say so in a sentence and state what the app does about it (the T-001 fallbacks: text-only odds, two-step tool use, or injected forecast). The tool-call miss rate is reported once, in the backtest table. -->
+
+{% details Under the hood: retries, untrusted input, fallbacks %}
+
+- The bookmaker's only tool is a read-only `get_forecast`; an answer without a call is retried once, then the card shows labelled rule odds. The first odds come from the forecast alone, and a photo then moves the band. The app stores the band with and without the photo on every bet, which makes the ablation below possible.
+- Invalid JSON gets one retry with the validation error, then a clear failure. The card keeps the labelled rule odds and offers Retry; settlements wait until Gemma is back.
+- User text, photos and tool results go to the model as untrusted data inside delimiters. Points, settle bounds and safety are computed by code, so "ignore your instructions" in a photo caption cannot move a score.
+- Each job is allowed at most four model calls and a 45-second deadline, and jobs run one at a time through a single queue so the GPU is never shared.
+- The tool-call miss rate (answers that came without a `get_forecast` call) is reported once, in the backtest table.
+
+{% enddetails %}
 
 ### Architecture
 
@@ -196,67 +184,63 @@ flowchart LR
   OFFLINE -- "GGUF import" --> OLLAMA
 ```
 
-The phone pairs with the laptop with a one-time token printed as a QR code. Photos are stripped of EXIF data and shrunk before they are stored, and they are served only to paired devices.
+The phone pairs with a one-time QR token; photos lose their EXIF data and are served only to paired devices.
 
-### Settling on evidence
+### Would it have worked in the autumn?
 
-Settling a bet takes two inputs: what the weather did, and what actually happened to the plant or the washing.
+A live week is a small sample, so I also replayed April to October 2026 for Gràcia without peeking: each decision uses only a forecast from a model run that started before it. The headline is the **September to October** hold-out, which the fine-tune never saw.
 
-- **Weather:** Open-Meteo's recent hours for my neighbourhood. I call this *modelled recent weather*, because it is not a station on my balcony.
-- **Outcome:** an after photo (full points) or one tap (half points), judged by Gemma against the before photo.
+{% details How the backtest works %}
 
-Savings only count on **won** bets. Time only counts when a step is skipped, and every bet costs about 30 seconds of app time that I subtract. The assumptions table is in The Lazy Payoff.
-
-### The backtest: would this have worked in the autumn?
-
-A live week is a small sample. So I also replayed April to October 2026 for my neighbourhood in Barcelona, and I was strict about not letting the model peek:
-
-- Each simulated decision is made at a fixed time of day for that chore, using only the forecast from a weather-model run that **started before that time** (Open-Meteo's Previous Runs API, day-1 lead).
-- The outcome is read afterwards from recorded weather, using one small function per chore that asks "would the weather have done the chore?"
+- Each chore has a fixed decision time of day. Forecasts come from Open-Meteo's Previous Runs API (day-1 lead).
+- The outcome is read afterwards from recorded weather, with one small function per chore that asks "would the weather have done the chore?"
 - Four strategies play the same days: Gemma 4 E4B, Gemma 4 E2B, the rule baseline, and a **fixed routine** (the habit baseline: water every other day, tumble-dry every load, AC on every warm evening).
 - No photos and no household data go into the backtest.
-- The headline is the **September to October** hold-out, which the fine-tune never saw. April to August is shown separately and labelled in-sample.
+- April to August is shown separately and labelled in-sample.
 
 <!-- builder: if Previous Runs lacked a variable and the harness fell back to the Historical Forecast API, the report labels those results "short-lead forecast (optimistic)" (or "perfect-forecast upper bound"). Copy that label next to the numbers; never drop it. -->
 
+{% enddetails %}
+
 ### Fine-tuning taught Gemma the local base rates
 
-A general model knows how rain works. It does not know how often a forecast of a few millimetres on a June evening in Gràcia actually leaves a balcony pot moist the next morning. That is a base rate, and base rates are exactly what a small model can learn.
-
-So I fine-tuned the bookmaker:
-
-- **Method:** QLoRA on Gemma 4 E4B, text only, on the same laptop GPU. The merged model is converted to GGUF and imported into Ollama.
-- **Data:** public Barcelona weather only, from Open-Meteo. Each training row is the conversation the live bookmaker sees: the prompt, the chore, a synthetic habit profile, the rule's band, and the `get_forecast` call with the forecast as it was known at decision time.
-- **Targets:** for every training day, I look at the 30 most similar forecasts for the same chore in the training period, count how often the weather did the chore, and turn that success rate into one of the five bands. Reasons are templated from the forecast numbers (for example "6 mm of rain overnight; pots will be watered"), not written by a model.
-- **Split:** April to August for training, September to October as the hold-out. No hold-out day touches any target.
-- **No home data:** the habits in every row come from a made-up profile, and the dataset build fails if any value from my real household config appears in a row. The training data and the adapter carry public weather and nothing else.
+A general model knows how rain works, not how often a few millimetres on a June evening in Gràcia leave a pot moist by morning. That is a base rate, and a small model can learn it. I fine-tuned the bookmaker with QLoRA on public Barcelona weather: April to August to train, September to October held out.
 
 {{rows_train}} training rows and {{rows_holdout}} hold-out rows, across {{chores_in_dataset}} chores. <!-- src: docs/results/finetune.md · dataset manifest: total rows (training, hold-out) and number of chores; per-chore and per-band counts are in the same manifest -->
 
-**The honest caveat.** The labels come from *recorded weather*, not from observed plants. The fine-tuned model learns "the weather did the chore", which is a proxy for "my basil survived". On a real balcony, plants wilt for reasons the weather record cannot see: the pot, the sun angle, the soil, the species. So the fine-tune improves the bookmaker's *weather base rates* and I report it that way. It says nothing about how much better it would be at keeping a specific plant alive. <!-- builder: keep this paragraph close to as is. It is the honest-limit moment the judges will remember. -->
+**The honest caveat.** The labels come from *recorded weather*, not from observed plants. The model learns "the weather did the chore", a proxy for "my basil survived"; plants also wilt for reasons the weather record cannot see (the pot, the sun angle, the species). So I report the fine-tune as a change in *weather base rates*, and it says nothing about keeping a specific plant alive. <!-- builder: keep this paragraph close to as is. It is the honest-limit moment the judges will remember. -->
 
-Some chores have thin data in the training months (the heater in April to August, for example), so every fine-tune table shows its N.
+
+{% details How the fine-tune works %}
+
+- **Method:** QLoRA on Gemma 4 E4B, text only, on the same laptop GPU. The merged model is converted to GGUF and imported into Ollama.
+- **Data:** public Open-Meteo weather only. Each row is the conversation the live bookmaker sees: the prompt, the chore, a synthetic habit profile, the rule's band, and the `get_forecast` call with the forecast as known at decision time.
+- **Targets:** for each training day I take the 30 most similar forecasts for the same chore in the training period, count how often the weather did the chore, and turn that success rate into one of the five bands. Reasons are templated from the forecast numbers (for example "6 mm of rain overnight; pots will be watered"), not written by a model.
+- **Split:** no hold-out day touches any target.
+- **No home data:** habits come from a made-up profile, and the dataset build fails if any value from my real household config appears in a row.
+- Some chores have thin data in the training months (the heater in April to August), so every fine-tune table shows its N.
+
+{% enddetails %}
 
 ## Why Does Open Innovation Matter?
 
-This app looks at the inside of my home, listens to my voice and learns my habits. That is exactly the data I do not want in somebody else's cloud, and it is the reason this only works with an open model.
+This app sees the inside of my home, hears my voice and learns my habits: exactly the data I don't want in someone else's cloud.
 
-- **My photos, voice and habits never leave the laptop.** Gemma runs on `127.0.0.1`. The weather client is allowed to call four Open-Meteo hosts and nothing else, and a CI test refuses any other host. In a full capture-to-settle cycle I checked the network traffic: {{outbound_hosts_seen}}. <!-- src: docs/results/live-week.md · T-020 network capture: hosts contacted during one capture → settle cycle (expected: Open-Meteo only). builder: if the capture shows anything else, say so and fix it before publishing -->
-- **It works offline, apart from the forecast.** With Open-Meteo unreachable, the app uses the latest cached forecast and shows its age. With Gemma unreachable, the card shows the rule's odds, labelled, and settlements wait until Gemma is back.
-- **It's free to run.** No API key, no subscription, no per-call bill. Open-Meteo's free tier covers it for non-commercial use.
-- **The model can be swapped or fine-tuned.** The app talks to Gemma through one small interface, so another model is a config change. And I actually did the second part: the fine-tuned bookmaker learned local base rates from public weather data and can be published without anyone's photos or habits in it.
+- **My photos, voice and habits never leave the laptop.** Gemma runs on `127.0.0.1`, and a CI test refuses any host but Open-Meteo. Network capture of a full cycle: {{outbound_hosts_seen}}. <!-- src: docs/results/live-week.md · T-020 network capture: hosts contacted during one capture → settle cycle (expected: Open-Meteo only). builder: if the capture shows anything else, say so and fix it before publishing -->
+- **Offline, apart from the forecast, and free to run.** No API key, subscription or per-call bill. Without Open-Meteo it uses the cached forecast; without Gemma, labelled rule odds.
+- **The model can be swapped or fine-tuned.** One small interface, and I did fine-tune it, on public weather data, so the result can be shared without anyone's photos or habits in it.
 
-The honest limits: you need a GPU laptop and some patience with WSL2 networking, and the phone talks to the laptop over plain HTTP on the home network, protected by a pairing token. The README documents a tailnet-private HTTPS option for people who want one. "Private by design" does not mean "easy to install".
+The honest limit: you need a GPU laptop and patience with WSL2 networking, and the phone talks to it over plain HTTP behind a pairing token.
 
 ## My Agent Session
 
 {{devrelay_session_url}} <!-- src: docs/spec/tasks.md T-021 · the DevRelay session link of the build, shared by the builder -->
 
-I built this spec-first: an idea brief, then a written specification with numbered requirements and testable acceptance criteria, then a task list. Coding agents implemented the tasks one at a time against a recorded fake Gemma, so CI never needed a GPU, while I ran the real model in my own time slots and reviewed and merged their work. <!-- builder: rewrite in your own voice and name the tools you really used. Add one concrete moment from the session (a spec change an agent forced, a bug it caught) if you have one. Do not describe tools you did not use. -->
+I built this spec-first: a written specification with numbered requirements and testable acceptance criteria, then a task list. Coding agents implemented the tasks against a recorded fake Gemma, so CI never needed a GPU, while I ran the real model and reviewed and merged their work. <!-- builder: rewrite in your own voice and name the tools you really used. Add one concrete moment from the session (a spec change an agent forced, a bug it caught) if you have one. Do not describe tools you did not use. -->
 
 ## The Lazy Payoff
 
-Every figure below comes from a results file in the repo, and every table shows its N. Savings are measured against stated assumptions, not against a vague "typical household". Losses are reported along with wins.
+Every figure comes from a results file in the repo and shows its N. Losses are reported along with wins.
 
 <!-- builder: write the lead sentence last. Follow the evidence: if Gemma beat the rule, say by how much and with what N; if it did not, say that the honest result is the story. -->
 
@@ -265,11 +249,11 @@ Every figure below comes from a results file in the repo, and every table shows 
 | Metric | Value |
 |---|---|
 | Days from first to last bet | {{live_days}} <!-- src: docs/results/live-week.md · days between first and last bet --> |
-| Bets placed (do nothing, not undone) | {{bets_placed}} <!-- src: docs/results/live-week.md · bets placed --> |
+| Bets placed | {{bets_placed}} <!-- src: docs/results/live-week.md · bets placed --> |
 | Bets settled | {{bets}} <!-- src: docs/results/live-week.md · settled do-nothing bets --> |
 | Won | {{wins}} <!-- src: docs/results/live-week.md · settled do-nothing bets won --> |
 | Lost (small / normal / harmful) | {{losses_small}} / {{losses_normal}} / {{losses_harmful}} <!-- src: docs/results/live-week.md · losses by severity (small, normal, harmful) --> |
-| "Lucky wins" among the wins (the weather did not deliver, doing nothing still worked) | {{lucky_wins}} <!-- src: docs/results/live-week.md · lucky_win count (computed by code from the outcome labels) --> |
+| Lucky wins (the weather didn't deliver, doing nothing still worked) | {{lucky_wins}} <!-- src: docs/results/live-week.md · lucky_win count (computed by code from the outcome labels) --> |
 | Settled by after photo / by tap / automatically | {{settled_photo}} / {{settled_tap}} / {{settled_auto}} <!-- src: docs/results/live-week.md · settlements by evidence type --> |
 | Chore types betted on | {{chore_types}} <!-- src: docs/results/live-week.md · number and names of distinct chore types among settled bets --> |
 | Points | {{points_total}} <!-- src: docs/results/live-week.md · total points --> |
@@ -292,14 +276,14 @@ Every figure below comes from a results file in the repo, and every table shows 
 
 ### What those savings assume
 
-A win saves the steps it skipped, nothing more. I used these per-chore figures, and I mark which come from a source and which are my own typical estimates.
+A win saves only the steps it skipped; each bet costs about 30 seconds of app time, which I subtract. Linked figures have a source; the rest are my typical estimates.
 
 | Chore (won bet) | What doing nothing skipped | Time | Water | Electricity | Where the figure comes from |
 |---|---|---|---|---|---|
-| Water the balcony pots (5) | Watering by hand | 5 min | 3-5 L | none | **Typical estimate** (minutes and litres are mine) |
-| Line-dry today instead of the tumble dryer | The dryer run. I hang the washing either way | 0 min | none | 2-5 kWh | Haier: about 2.2 kWh per 9 kg load for a heat-pump dryer, about 5.3 kWh vented. Which end applies depends on the dryer in my baseline. |
-| Leave the laundry out tonight | Bringing it in and finishing it on the rack or in the dryer | about 10 min | none | 1-2 kWh | **Typical estimate** |
-| Skip the AC on a cool, breezy night | The AC for an evening | 0 min | none | 2-3 kWh | Costway: 0.4-0.8 kWh per hour for a small split unit. The evening total assumes a few hours of running, which is **my estimate**. |
+| Water the balcony pots (5) | Watering by hand | 5 min | 3-5 L | none | **Typical estimate** |
+| Line-dry today instead of the tumble dryer | The dryer run (I hang the washing either way) | 0 min | none | 2-5 kWh | Haier: about 2.2 kWh per 9 kg load heat-pump, about 5.3 kWh vented |
+| Leave the laundry out tonight | Bringing it in and finishing indoors | about 10 min | none | 1-2 kWh | **Typical estimate** |
+| Skip the AC on a cool night | The AC for an evening | 0 min | none | 2-3 kWh | Costway: 0.4-0.8 kWh per hour, small split unit; hours of running are **my estimate** |
 | Skip the heater on a sunny day | The heater for a day | 0 min | none | 3-4 kWh | **Typical estimate** |
 
 Sources: [Haier, tumble dryer running costs](https://www.haier-europe.com/en_GB/blogs/news/how-much-does-a-tumble-dryer-cost-to-run) · [Costway, split air conditioner consumption](https://www.costway.com/blog/mini-split-air-conditioners/split-air-conditioner-electricity-consumption.html) · catalogue figures: `docs/discovery/product-concept.md`, Chore catalogue.
@@ -307,11 +291,11 @@ Sources: [Haier, tumble dryer running costs](https://www.haier-europe.com/en_GB/
 
 My baseline for the electricity figures is {{baseline_dryer_type}} drying and {{baseline_ac_heater}} for cooling and heating. <!-- src: config/household.json · dryer type and whether an AC or heater is used this season (A-6, the builder's own habits). builder: decide whether you are happy to publish this, or describe it generically -->
 
-**Why "hanging laundry saves electricity, not time".** Hanging washing on a line instead of running the dryer saves a few kilowatt-hours and exactly zero minutes: you still have to hang it up. The app counts it as 0 minutes. Time is only counted when a step truly disappears, such as not watering. I'd rather report a smaller honest number than a big one that a reader can pick apart in a comment.
+**Hanging laundry saves electricity, not time.** Line-drying instead of running the dryer saves kilowatt-hours and zero minutes: you still hang it up. The app counts 0 minutes, because I would rather report a smaller honest number than a big one a reader can pick apart.
 
 ### The backtest
 
-Gemma against the rule and against my old fixed routine, on the same days, deciding only from forecasts available before each decision. **Hold-out: September to October 2026.** <!-- src: docs/results/backtest.md · date range of the hold-out (the snapshot's last archive day is in the manifest) -->
+Gemma against the rule and my old fixed routine, on the same days. **Hold-out: September to October 2026.** <!-- src: docs/results/backtest.md · date range of the hold-out (the snapshot's last archive day is in the manifest) -->
 
 | Strategy | Skips taken | Skips that worked | Plant-risk days | Time saved | Water saved | Electricity saved |
 |---|---|---|---|---|---|---|
@@ -322,7 +306,7 @@ Gemma against the rule and against my old fixed routine, on the same days, decid
 
 Simulated days per strategy: {{bt_days}}; decisions per strategy: {{bt_decisions}}. <!-- src: docs/results/backtest.md · Sep-Oct, number of simulated days and number of decisions (N) -->
 
-The number that matters most is the *plant-risk days* column: a strategy that skips everything saves a lot and kills the basil. {{bt_headline_sentence}} <!-- src: docs/results/backtest.md · the one-sentence comparison of E4B vs rule vs fixed routine on plant-risk days and skips that worked. builder: write it from the table, honest about ties and losses -->
+*Plant-risk days* matter most: a strategy that skips everything saves a lot and kills the basil. {{bt_headline_sentence}} <!-- src: docs/results/backtest.md · the one-sentence comparison of E4B vs rule vs fixed routine on plant-risk days and skips that worked. builder: write it from the table, honest about ties and losses -->
 
 **Calibration: when Gemma said "likely", how often was it?**
 
@@ -338,13 +322,13 @@ Brier score, E4B base vs rule: {{bt_brier_e4b}} vs {{bt_brier_rule}} (lower is b
 
 **E2B vs E4B.** The smaller model against the bigger one: {{bt_e2b_vs_e4b_sentence}} <!-- src: docs/results/backtest.md · E2B vs E4B comparison on the rows above (skips that worked, plant-risk days, Brier). builder: one honest sentence, including "no real difference" if that is the result -->
 
-Bands with fewer than 5 cases are marked "too few to judge" in the app and should be treated the same way here. The fixed routine has no odds, so it has no calibration.
+Bands with fewer than 5 cases count as "too few to judge". The fixed routine has no odds, so no calibration.
 
 <!-- builder: the April-August (in-sample) numbers are in docs/results/backtest.md too. Show them only as a short sentence or a second table, always labelled "in-sample" for the rule thresholds and the fine-tune. The headline stays on September to October. -->
 
 ### Fine-tuning: base vs fine-tuned
 
-Same hold-out, same prompt, same band-to-odds mapping. Only the weights differ. These weather labels are a proxy for plant health (see the caveat above).
+Same hold-out, prompt and band mapping; only the weights differ. The labels are weather, a proxy for plant health.
 
 | Band (odds) | Base E4B: N | Base E4B: worked | Fine-tuned: N | Fine-tuned: worked |
 |---|---|---|---|---|
@@ -366,8 +350,6 @@ Same hold-out, same prompt, same band-to-odds mapping. Only the weights differ. 
 
 ### Does the photo help?
 
-Every bet that had a photo stores the odds band with the photo and without it, so the same bet can be compared with and without what Gemma saw.
-
 | What the photo did to the band | Bets (N) | Doing nothing worked |
 |---|---|---|
 | Raised it | {{photo_raised_n}} <!-- src: docs/results/live-week.md · photo ablation, bets where the band with the photo was higher than without, N --> | {{photo_raised_worked}} <!-- src: docs/results/live-week.md · photo ablation, share worked, band raised --> |
@@ -382,8 +364,8 @@ Every bet that had a photo stores the odds band with the photo and without it, s
 |---|---|
 | Verdicts given by Gemma | {{judge_verdicts}} <!-- src: docs/results/live-week.md · settled bets with a Gemma verdict (N) --> |
 | Verdicts I appealed | {{judge_appeals}} <!-- src: docs/results/live-week.md · appeals filed --> |
-| Appeals where the second verdict differed | {{judge_overruled}} <!-- src: docs/results/live-week.md · judge overrule rate numerator, with N above --> |
-| Verdicts that came back "unsure" and asked me a question | {{judge_unsure}} <!-- src: docs/results/live-week.md · judge verdicts with status unsure --> |
+| Appeals that changed the verdict | {{judge_overruled}} <!-- src: docs/results/live-week.md · judge overrule rate numerator, with N above --> |
+| Verdicts that came back "unsure" | {{judge_unsure}} <!-- src: docs/results/live-week.md · judge verdicts with status unsure --> |
 
 <!-- builder: appeals are a Could feature (REQ-023, flag `appeals`). If it did not ship, delete the second and third rows and write "appeals off: I could not overrule the judge, so agreement is untested" instead. Never imply the judge was checked if it was not. -->
 
@@ -401,20 +383,26 @@ Every bet that had a photo stores the odds band with the photo and without it, s
 
 ### What these numbers do not show
 
+Small N, one household, weather labels rather than observed plants:
+
+{% details The limits, in full %}
+
 - **One household, one city.** Everything is my balcony in Gràcia, Barcelona. N is small, and I show it everywhere so you can decide how much to trust it.
 - **Modelled weather, not a station.** Both the live settlements and the backtest use Open-Meteo's modelled data for my neighbourhood.
 - **Labels are weather, not plants.** The backtest and the fine-tune ask "did the weather do the chore?". Only the live bets look at a real plant, and there are few of them.
 - **Savings are estimates with stated assumptions.** Every figure in the assumptions table is either linked to a source or marked as a typical estimate.
 - **The fixed routine is a habit baseline written down as a rule.** It is a stand-in for "what I did before", not for what everyone does.
 
+{% enddetails %}
+
 ## Prize Categories
 
-- **Best Use of Gemma.** Gemma 4 E4B makes every judgement in the app, not just one feature: text (the listener), images (the inspector and the judge), function calling (the bookmaker's `get_forecast`), and schema-validated JSON with an "unsure" path. It runs locally through Ollama, and I fine-tuned it with QLoRA on public weather data and evaluated base against fine-tuned on a hold-out. <!-- builder: add "audio" only if Gemma 4 audio shipped; if whisper.cpp was the fallback, say that instead and drop the audio claim. Mention E2B as the comparison model only because it appears in the backtest. -->
-- **Overall.** The submission is in the Overall pool by default; the case for it is the measured, honest result: a bet-and-settle loop on real evidence, with losses reported.
+- **Best Use of Gemma.** Gemma 4 E4B makes every judgement in the app, using text, images, function calling and schema-validated JSON. It runs locally through Ollama, and I fine-tuned it and compared base against fine-tuned on a hold-out. <!-- builder: add "audio" only if Gemma 4 audio shipped; if whisper.cpp was the fallback, say that instead and drop the audio claim. Mention E2B as the comparison model only because it appears in the backtest. -->
+- **Overall.** A bet-and-settle loop on real evidence, with the losses reported.
 
 <!-- builder: the other featured categories are listed on https://dev.to/challenges/hf26. Add one only if this project genuinely uses that partner's tool (for example, if a category covers Hugging Face and you publish the adapter there, decide whether that counts). Do not claim a category just to enter it. -->
 
 ---
 
-**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); Open-Meteo's free tier is for non-commercial use, and this project is non-commercial. Code: MIT. Model: Gemma 4, Apache 2.0. Fonts: Big Shoulders Display, IBM Plex Mono and Figtree, SIL Open Font License. Icons: Lucide, ISC. All photos in this post are staged or synthetic; none are of my home.
+**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); non-commercial use. Code: MIT. Gemma 4: Apache 2.0. Fonts: Big Shoulders Display, IBM Plex Mono, Figtree (SIL OFL). Icons: Lucide (ISC). All photos here are staged or synthetic; none are of my home.
 <!-- builder: check Open-Meteo's attribution wording at https://open-meteo.com/en/licence and use their exact text. The same attribution must be in the app and README (AC-014.6, T-020). -->
