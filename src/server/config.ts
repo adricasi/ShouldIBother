@@ -28,8 +28,19 @@ const householdSchema = z.object({
   airConditioning: z.boolean(),
   heaterThisSeason: z.boolean(),
   dryer: z.enum(["heat-pump", "condenser", "vented", "none"]),
+  /**
+   * Neighbourhood-level coordinates for the forecast; rounded to 2 decimals before every request
+   * (AC-014.1). Absent: Gràcia, Barcelona (product.md, Constraints).
+   */
+  location: z
+    .object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) })
+    .strict()
+    .optional(),
 });
 export type Household = z.infer<typeof householdSchema>;
+
+/** Where the household is when the config does not say: Gràcia, Barcelona (product.md). */
+export const DEFAULT_LOCATION = { latitude: 41.4, longitude: 2.16 } as const;
 
 /**
  * `config/household.json` holds the real household values and is git-ignored (NFR-002); the

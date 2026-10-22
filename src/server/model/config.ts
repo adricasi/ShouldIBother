@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { z } from "zod";
 
 import { CONFIG_DIR, readJsonFile } from "../config.js";
@@ -70,8 +72,9 @@ export function parseModelsConfig(raw: unknown): ModelsConfig {
   return result.data;
 }
 
+/** A missing file is the defaults: no model named, so the app runs on the fake model. */
 export function loadModelsConfig(path: string = DEFAULT_MODELS_PATH): ModelsConfig {
-  return parseModelsConfig(readJsonFile(path));
+  return parseModelsConfig(existsSync(path) ? readJsonFile(path) : {});
 }
 
 /** The Ollama tag of the primary model, or undefined while `config/models.json` names none. */

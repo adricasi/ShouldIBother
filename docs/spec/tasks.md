@@ -96,7 +96,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Done when: one integration test drives the whole flow with a fake clock; unit tests for payout rounding and loss points (AC-009.1–AC-009.4); restart test: an open bet survives a server restart and settles (NFR-003); `npm run dev` shows the flow in a phone-width browser; CI green.
 
 ## Milestone 2: Core loop with real Gemma (tiers 1–2)
-- [ ] T-005: Weather service, all rules and the safety backstop
+- [x] T-005: Weather service, all rules and the safety backstop
   - Who / when: Agent W1 · Thu AM (stacked on T-008); merged Thu PM
   - Requirements: REQ-004, REQ-012 (AC-012.1, AC-012.2), REQ-014 (incl. AC-014.7), REQ-016 (AC-016.1, AC-016.4, AC-016.5); NFR-002, NFR-006; ADR-0008
   - Depends on: T-004, T-008
@@ -138,7 +138,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `OllamaClient` (images, tools, JSON schema, per-call timeout and job deadline, warm-up at start); prompt tuning on the real model, then **freeze `prompts/bookmaker.vN.md`** for the dataset (T-031); Ollama `keep_alive` set long for the live week; record fixtures from real answers to **staged or synthetic inputs only** (no real household text or photos), keyed by job + scenario, reviewed by hand, into `test/fixtures/gemma/`; `sib eval <job>` with 20-case sets for listener and bookmaker (text); pair the phone over LAN; place the first real bets. The inspector and photo latency are T-030.
   - Done when: `sib eval` reports ≥ 19/20 valid JSON and tool-call use for listener and bookmaker (or the T-001 fallback is applied and recorded); fixtures re-recorded, reviewed and CI green; first real bet placed from the phone; `ss -ltnp` shows Ollama on 127.0.0.1 only (NFR-001).
 
-- [ ] T-011: Weather snapshot code and outcome labels
+- [x] T-011: Weather snapshot code and outcome labels
   - Who / when: Agent W2 · Thu AM (branches from `docs/spec`), written and tested against synthetic Open-Meteo fixtures (cloud sessions can't reach Open-Meteo). Touches only `src/domain/outcomes.ts`, `src/backtest/**` and their tests; no new dependencies and no CLI wiring (it exports functions; T-031 adds `sib snapshot` and `sib dataset` to `src/cli.ts`).
   - Requirements: REQ-018 (AC-018.1, AC-018.2, AC-018.4), REQ-019 (AC-019.1, AC-019.5), REQ-008 (AC-008.6 label function); NFR-012; ADR-0008
   - Depends on: —

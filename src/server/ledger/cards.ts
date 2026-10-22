@@ -1,11 +1,9 @@
-import { oddsOfBand, type Band } from "../../domain/bands.js";
-import { CHORES, type ChoreType } from "../../domain/chores.js";
-import { bandTable } from "../../domain/rules/index.js";
-import { madridWallTime } from "../../domain/time.js";
+import { oddsOfBand } from "../../domain/bands.js";
+import { CHORES, NOTICES, isChoreType, offerNotice, type ChoreType } from "../../domain/chores.js";
+import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
-import { ruleQuoteFor } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import { launchBookmaker } from "./gemma-cards.js";
 import { latestQuote } from "./quotes.js";
@@ -13,107 +11,188 @@ import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
 
 /** How far ahead the forecast is read; the longest window is "now to next day 12:00". */
-export const FORECAST_HOURS = 48;
+const FORECAST_HOURS = 48;
 const MAX_TODAY_CARDS = 20;
 
-/** A card to create: a weather chore the app can quote, or one that gets no odds. */
-export type PlannedCard =
-  | { readonly kind: "weather"; readonly choreType: ChoreType; readonly label: string }
-  | {
-      readonly kind: "not_weather" | "coming_later";
-      /** The listener's chore type, kept as written. */
-      readonly choreType: string;
-      readonly label: string;
-    };
+/** Cards without odds (alerts, notices) leave Today after this long; they are not bets in waiting. */
+const QUIET_CARD_TTL_MS = 12 * 60 * 60 * 1000;
 
-/**
- * Creates the cards of one capture in a single transaction. Each weather card gets the rule quote
- * at once (AC-004.1, AC-013.1) and a background bookmaker job; the other cards have no odds and
- * no bet action (AC-002.2, AC-002.3). All or nothing: if the forecast is missing, no card exists.
- */
-export async function createCards(
+function insertCard(
   deps: LedgerDeps,
-  planned: readonly PlannedCard[],
-): Promise<CardView[]> {
+  fields: {
+    /** A chore type of this version, or the listener's type for a card that has no odds. */
+    readonly choreType: string;
+    readonly kind: CardRow["kind"];
+    /** What the person wrote about the chore (the listener's label); the chore's title if absent. */
+    readonly label?: string;
+    readonly alertReason?: string;
+    readonly notice?: string;
+  },
+): CardRow {
   const now = deps.now();
-  const table = bandTable(deps.rules);
-  let hours: Awaited<ReturnType<LedgerDeps["weather"]["getForecast"]>>["hours"] = [];
-  if (planned.some((card) => card.kind === "weather")) {
-    try {
-      hours = (await deps.weather.getForecast({ fromMs: now, hours: FORECAST_HOURS })).hours;
-    } catch (error) {
-      if (error instanceof WeatherUnavailableError) {
-        throw new HttpError(503, "No forecast available", "The weather could not be fetched.");
-      }
-      throw error;
-    }
-  }
-
-  const rules = new Map<number, { band: Band; reason: string; settleAt: number }>();
-  planned.forEach((card, index) => {
-    if (card.kind !== "weather") {
-      return;
-    }
-    const settleAt = CHORES[card.choreType].ruleSettleAt(now);
-    const rule = ruleQuoteFor(card.choreType, hours, now, settleAt, deps.rules);
-    if (rule === null) {
-      throw new HttpError(503, "No forecast available", "The forecast does not cover this chore.");
-    }
-    rules.set(index, { band: rule.band, reason: rule.reason, settleAt });
-  });
-
-  const insert = deps.db.transaction((): { card: CardRow; quote: QuoteRow | undefined }[] =>
-    planned.map((card, index) => {
-      const rule = rules.get(index);
-      const cardId = Number(
-        deps.db
-          .prepare(
-            `INSERT INTO cards (input_text, chore_type, kind, created_at, gemma_state)
-             VALUES (?, ?, ?, ?, ?)`,
-          )
-          .run(
-            card.label,
-            card.choreType,
-            card.kind,
-            now,
-            card.kind === "weather" ? "thinking" : null,
-          ).lastInsertRowid,
-      );
-      let quoteId: number | undefined;
-      if (rule !== undefined) {
-        quoteId = Number(
-          deps.db
-            .prepare(
-              `INSERT INTO quotes (card_id, source, band, odds, with_photo, reason, settle_at, created_at)
-               VALUES (?, 'rule', ?, ?, 0, ?, ?, ?)`,
-            )
-            .run(cardId, rule.band, oddsOfBand(table, rule.band), rule.reason, rule.settleAt, now)
-            .lastInsertRowid,
-        );
-      }
-      return {
-        card: deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId)!,
-        quote:
-          quoteId === undefined
-            ? undefined
-            : deps.db.prepare<[number], QuoteRow>("SELECT * FROM quotes WHERE id = ?").get(quoteId),
-      };
-    }),
+  const id = Number(
+    deps.db
+      .prepare(
+        `INSERT INTO cards (input_text, chore_type, kind, alert_reason, notice, gemma_state, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        fields.label ?? (isChoreType(fields.choreType) ? CHORES[fields.choreType].title : ""),
+        fields.choreType,
+        fields.kind,
+        fields.alertReason ?? null,
+        fields.notice ?? null,
+        // Only a bettable weather card is quoted by Gemma; alerts and notices never are, so the
+        // fixed backstop always wins (AC-012.1).
+        fields.kind === "weather" ? "thinking" : null,
+        now,
+      ).lastInsertRowid,
   );
-  const created = insert();
-  for (const { card } of created) {
-    if (card.kind === "weather") {
-      launchBookmaker(deps, card.id);
-    }
-  }
-  return created.map(({ card, quote }) => cardView(card, quote, table));
+  return deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(id)!;
 }
 
-/** A quick chip creates its card without the listener (AC-002.5). */
-export function createQuickCard(deps: LedgerDeps, choreType: ChoreType): Promise<CardView> {
-  return createCards(deps, [{ kind: "weather", choreType, label: CHORES[choreType].title }]).then(
-    ([card]) => card!,
+/** A card with no odds and no bet action that says why (AC-014.4, AC-016.4, AC-016.5). */
+function noOddsCard(
+  deps: LedgerDeps,
+  choreType: ChoreType,
+  notice: string,
+  label?: string,
+): CardView {
+  const card = insertCard(deps, {
+    choreType,
+    kind: "coming_later",
+    notice,
+    ...(label === undefined ? {} : { label }),
+  });
+  return cardView(card, undefined, bandTable(deps.rules));
+}
+
+/**
+ * A card from the listener that has no odds and no bet action: "Not a weather chore" (AC-002.2)
+ * or "Coming later" for a chore outside this version's list (AC-002.3).
+ */
+export function createUnbettableCard(
+  deps: LedgerDeps,
+  kind: "not_weather" | "coming_later",
+  listenerType: string,
+  label: string,
+): CardView {
+  const card = insertCard(deps, { choreType: listenerType, kind, label });
+  return cardView(card, undefined, bandTable(deps.rules));
+}
+
+/** Chores that exist only behind a flag or a later task; until then they read "Coming later". */
+function isOfferedYet(deps: LedgerDeps, choreType: ChoreType): boolean {
+  switch (choreType) {
+    case "plants":
+    case "laundry_line":
+      return true;
+    case "ac":
+    case "heater":
+      return deps.flags.heater;
+    case "laundry_tonight":
+      // T-013 builds the sunset offer window and turns this on behind `laundryTonight`.
+      return false;
+  }
+}
+
+/** AC and heater are skipped only when the household baseline says they are used (AC-016.5). */
+function isNotNeeded(deps: LedgerDeps, choreType: ChoreType): boolean {
+  return (
+    (choreType === "ac" && !deps.household.airConditioning) ||
+    (choreType === "heater" && !deps.household.heaterThisSeason)
   );
+}
+
+/**
+ * Creates the card of a chore, either as a bettable card with its rule quote, or as a card that
+ * has no odds and says why. A quick chip uses this without the listener (AC-002.5); the listener
+ * (T-006) calls it once per chore it finds. In order:
+ *
+ * 1. AC or heater the household does not use this season: "Not needed this season" (AC-016.5).
+ * 2. A chore not offered yet: "Coming later".
+ * 3. Line-dry outside 07:00 to 15:00: says when it can be offered (AC-016.4).
+ * 4. No forecast younger than 24 h: "No forecast, can't set odds", no betting (AC-014.4).
+ * 5. The fixed heat, frost or storm backstop: a "Do it now" alert with its reason, no odds, no bet
+ *    action, whatever Gemma would say (AC-012.1).
+ * 6. Otherwise the rule band is quoted at once (AC-004.1, AC-013.1): the card and quote are
+ *    written together.
+ */
+export async function createChoreCard(
+  deps: LedgerDeps,
+  choreType: ChoreType,
+  label?: string,
+): Promise<CardView> {
+  const now = deps.now();
+  const chore = CHORES[choreType];
+  const table = bandTable(deps.rules);
+
+  if (isNotNeeded(deps, choreType)) {
+    return noOddsCard(deps, choreType, NOTICES.notNeeded, label);
+  }
+  if (!isOfferedYet(deps, choreType)) {
+    return noOddsCard(deps, choreType, NOTICES.comingLater, label);
+  }
+  const offer = chore.offer?.(now);
+  if (offer !== undefined && !offer.offered) {
+    return noOddsCard(deps, choreType, offerNotice(choreType, now, offer.nextAtMs), label);
+  }
+
+  let forecast;
+  try {
+    forecast = await deps.weather.getForecast({ fromMs: now, hours: FORECAST_HOURS });
+  } catch (error) {
+    if (error instanceof WeatherUnavailableError) {
+      return noOddsCard(deps, choreType, NOTICES.noForecast, label);
+    }
+    throw error;
+  }
+
+  const window = chore.ruleWindow(now);
+  const alert = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
+  if (alert !== null) {
+    const card = insertCard(deps, {
+      choreType,
+      kind: "alert",
+      alertReason: alert.reason,
+      ...(label === undefined ? {} : { label }),
+    });
+    return cardView(card, undefined, table);
+  }
+  const rule = ruleQuote(choreType, forecast.hours, window.fromMs, window.toMs, deps.rules);
+  if (rule === null) {
+    return noOddsCard(deps, choreType, NOTICES.noForecast, label);
+  }
+
+  const insert = deps.db.transaction((): { card: CardRow; quote: QuoteRow } => {
+    const card = insertCard(deps, {
+      choreType,
+      kind: "weather",
+      ...(label === undefined ? {} : { label }),
+    });
+    const quoteId = Number(
+      deps.db
+        .prepare(
+          `INSERT INTO quotes (card_id, source, band, odds, with_photo, reason, settle_at, created_at)
+           VALUES (?, 'rule', ?, ?, 0, ?, ?, ?)`,
+        )
+        .run(card.id, rule.band, oddsOfBand(table, rule.band), rule.reason, window.toMs, now)
+        .lastInsertRowid,
+    );
+    return {
+      card,
+      quote: deps.db.prepare<[number], QuoteRow>("SELECT * FROM quotes WHERE id = ?").get(quoteId)!,
+    };
+  });
+  const { card, quote } = insert();
+  // Gemma quotes in the background; the person sees the rule odds at once (AC-013.1).
+  launchBookmaker(deps, card.id);
+  return cardView(card, quote, table);
+}
+
+/** A quick chip's card (AC-002.5): no listener involved. */
+export function createQuickCard(deps: LedgerDeps, choreType: ChoreType): Promise<CardView> {
+  return createChoreCard(deps, choreType);
 }
 
 export function getCardView(deps: LedgerDeps, cardId: number): CardView {
@@ -122,28 +201,27 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
     throw new HttpError(404, "Card not found");
   }
   const quote = latestQuote(deps, cardId);
-  if (quote === undefined && card.kind === "weather") {
+  if (card.kind === "weather" && quote === undefined) {
     throw new HttpError(404, "Card not found");
   }
   return cardView(card, quote, bandTable(deps.rules));
 }
 
 /**
- * Weather cards with no bet yet and a settle time still ahead, and today's cards that have no
- * odds (so "Not a weather chore" and "Coming later" are seen), newest first.
+ * Cards on Today, newest first: weather cards with no bet yet and a settle time still ahead, and
+ * the cards without odds (alerts, notices) for the next hours.
  */
 export function listOpenCards(deps: LedgerDeps): CardView[] {
   const cards = deps.db
     .prepare<[number], CardRow>(
       `SELECT c.* FROM cards c
-       WHERE c.kind IN ('weather', 'not_weather', 'coming_later')
-         AND NOT EXISTS (SELECT 1 FROM bets b WHERE b.card_id = c.id AND b.status != 'undone')
+       WHERE NOT EXISTS (SELECT 1 FROM bets b WHERE b.card_id = c.id AND b.status != 'undone')
+         AND c.kind IN ('weather', 'alert', 'coming_later', 'not_weather')
        ORDER BY c.id DESC LIMIT ?`,
     )
-    .all(MAX_TODAY_CARDS * 2);
+    .all(MAX_TODAY_CARDS);
   const table = bandTable(deps.rules);
   const now = deps.now();
-  const startOfDay = madridWallTime(now, 0, 0);
   const views: CardView[] = [];
   for (const card of cards) {
     if (card.kind === "weather") {
@@ -151,11 +229,8 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
       if (quote !== undefined && quote.settle_at > now) {
         views.push(cardView(card, quote, table));
       }
-    } else if (card.created_at >= startOfDay) {
+    } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
       views.push(cardView(card, undefined, table));
-    }
-    if (views.length >= MAX_TODAY_CARDS) {
-      break;
     }
   }
   return views;

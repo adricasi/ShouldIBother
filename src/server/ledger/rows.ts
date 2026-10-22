@@ -7,6 +7,8 @@ export interface CardRow {
   chore_type: string;
   kind: "weather" | "not_weather" | "coming_later" | "alert";
   alert_reason: string | null;
+  /** Why a card without odds has none (migration 0004). */
+  notice: string | null;
   created_at: number;
   /** Null on cards from before migration 0005 (read as "Gemma offline"). */
   gemma_state: "thinking" | "answered" | "question" | "offline" | null;

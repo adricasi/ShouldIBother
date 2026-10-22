@@ -2,5 +2,6 @@
   "_comment": "Placeholder baseline (A-6) until onboarding exists. Household-private once real values are set: do not publish real values.",
   "airConditioning": false,
   "heaterThisSeason": false,
-  "dryer": "heat-pump"
+  "dryer": "heat-pump",
+  "location": { "latitude": 41.4, "longitude": 2.16 }
 }

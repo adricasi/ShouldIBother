@@ -14,7 +14,7 @@ import type { JobFailure } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
-import { ruleBandOrFallback, ruleQuoteFor } from "./chore-rules.js";
+import { ruleBandOrFallback, ruleQuoteAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
@@ -168,7 +168,7 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
     const createdAt = deps.now();
     if (settleAt !== ruleRow.settle_at) {
       // Gemma moved the settle time: the rule band is stored for the final window (AC-004.2).
-      const rule = ruleQuoteFor(choreType, hours, nowMs, settleAt, deps.rules);
+      const rule = ruleQuoteAt(choreType, hours, nowMs, settleAt, deps.rules);
       if (rule !== null) {
         deps.db
           .prepare(

@@ -180,6 +180,11 @@ h3 {
   border: var(--border-strong) solid var(--color-leaf);
 }
 
+.slip.alert {
+  background: var(--color-coral-soft);
+  border: var(--border-strong) solid var(--color-coral);
+}
+
 .slip-head {
   display: flex;
   justify-content: space-between;
@@ -330,4 +335,9 @@ h3 {
   font-family: var(--font-mono);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.attribution {
+  text-align: center;
+  margin-top: var(--space-4);
 }

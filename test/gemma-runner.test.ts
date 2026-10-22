@@ -67,7 +67,7 @@ function tool(required: boolean, executed: unknown[] = []): JobTool {
 const request = (overrides: Partial<JobRequest<{ answer: "yes" | "no" }>> = {}) => ({
   job: "test",
   prompt,
-  user: "<untrusted_data>household secret text</untrusted_data>",
+  user: "<untrusted_data>private household text</untrusted_data>",
   schema: answerSchema,
   inputSummary: "a test input",
   ...overrides,
@@ -96,7 +96,7 @@ const decisions = () =>
 describe("Gemma job runner: validation, retry and the decision log (REQ-028)", () => {
   it("AC-028.2: stores job, model, digest, prompt version, latency and the raw validated output", async () => {
     const { runner } = setup(() => answer(GOOD, { modelDigest: "sha256:abc" }));
-    const result = await runner.run(request({ cardId: undefined }));
+    const result = await runner.run(request());
     expect(result).toMatchObject({ ok: true, output: { answer: "yes" }, retries: 0, calls: 1 });
     expect(decisions()).toEqual([
       expect.objectContaining({
@@ -184,7 +184,7 @@ describe("Gemma job runner: validation, retry and the decision log (REQ-028)", (
     const { runner } = setup(() => answer(GOOD));
     const lines: unknown[] = [];
     runner.setLogger((entry) => lines.push(entry));
-    await runner.run(request({ cardId: undefined }));
+    await runner.run(request());
     expect(lines).toEqual([
       expect.objectContaining({
         job: "test",
@@ -196,7 +196,7 @@ describe("Gemma job runner: validation, retry and the decision log (REQ-028)", (
         failure: null,
       }),
     ]);
-    expect(JSON.stringify(lines)).not.toContain("household secret text");
+    expect(JSON.stringify(lines)).not.toContain("private household text");
   });
 });
 

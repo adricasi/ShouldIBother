@@ -22,6 +22,9 @@ const card: Card = {
   chore_type: "plants",
   title: "Water plants",
   created_at: "2026-10-22T08:00:00.000Z",
+  kind: "weather",
+  alert_reason: null,
+  notice: null,
   quote: {
     id: 1,
     source: "rule",
@@ -62,6 +65,8 @@ const emptyToday: Today = {
   now: "2026-10-22T08:00:00.000Z",
   flags: {},
   points: { total: 0 },
+  forecast: null,
+  attribution: "Weather data by Open-Meteo.com",
   cards: [],
   open_bets: [],
   due_bets: [],
@@ -133,7 +138,7 @@ describe("Today screen", () => {
     expect(html).toContain("likely");
     expect(html).toContain("Bet: do nothing");
     expect(html).toContain("Win +15");
-    expect(html).toContain(formatSettleTime(card.quote.settle_at));
+    expect(html).toContain(formatSettleTime(card.quote?.settle_at ?? ""));
   });
 
   it("lists waiting bets and the tap answers of a due bet", () => {
@@ -185,5 +190,73 @@ describe("Today screen", () => {
 
   it("formats times in Madrid time", () => {
     expect(formatSettleTime("2026-10-23T06:00:00.000Z")).toBe("Fri 23 Oct, 08:00");
+  });
+});
+
+describe("T-005: chips, alerts, notices, forecast age and attribution on Today", () => {
+  const alertCard: Card = {
+    ...card,
+    id: 2,
+    kind: "alert",
+    alert_reason: "Heat: up to 36 °C is forecast.",
+    quote: null,
+  };
+  const noticeCard: Card = {
+    ...card,
+    id: 3,
+    kind: "coming_later",
+    title: "Skip the AC",
+    notice: "Not needed this season",
+    quote: null,
+  };
+
+  it("offers a quick chip for each Must chore: water the plants and line-dry today", () => {
+    const html = screen(emptyToday);
+    expect(html).toContain("Water plants");
+    expect(html).toContain("Line-dry today");
+  });
+
+  it("AC-012.1: an alert shows Do it now with its reason and no bet action", () => {
+    const html = screen({ ...emptyToday, cards: [alertCard] });
+    expect(html).toContain("Do it now");
+    expect(html).toContain("Heat: up to 36 °C is forecast.");
+    expect(html).not.toContain("Bet: do nothing");
+    expect(html).not.toContain("I&#x27;ll do it");
+  });
+
+  it("AC-014.4, AC-016.5: a card without odds shows its notice and no bet action", () => {
+    const html = screen({ ...emptyToday, cards: [noticeCard] });
+    expect(html).toContain("Skip the AC");
+    expect(html).toContain("Not needed this season");
+    expect(html).not.toContain("Bet: do nothing");
+    expect(html).not.toContain("%");
+  });
+
+  it("AC-014.3: shows how old the forecast is, and says so when a fresh one failed", () => {
+    const fresh = screen({
+      ...emptyToday,
+      forecast: {
+        fetched_at: "2026-10-22T05:00:00.000Z",
+        age_label: "Forecast from 3 h ago",
+        stale: true,
+      },
+    });
+    expect(fresh).toContain("Forecast from 3 h ago");
+    expect(fresh).toContain("could not be reached");
+    const ok = screen({
+      ...emptyToday,
+      forecast: {
+        fetched_at: "2026-10-22T07:50:00.000Z",
+        age_label: "Forecast from 10 min ago",
+        stale: false,
+      },
+    });
+    expect(ok).toContain("Forecast from 10 min ago");
+    expect(ok).not.toContain("could not be reached");
+    expect(screen(emptyToday)).not.toContain("Forecast from");
+  });
+
+  it("AC-014.6: shows the Open-Meteo attribution", () => {
+    expect(screen(emptyToday)).toContain("Weather data by Open-Meteo.com");
   });
 });

@@ -319,7 +319,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect((await today()).cards).toEqual([]);
   });
 
-  it("answers 400 problem+json to invalid bodies, and 503 when there is no forecast", async () => {
+  it("answers 400 problem+json to invalid bodies, and a no-odds card when there is no forecast", async () => {
     await setup();
     const invalid = [
       harness.post("/api/cards/quick", { chore_type: "car" }),
@@ -335,9 +335,14 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect(unknownAnswer.statusCode).toBe(404);
 
     harness.weather.failWith = new Error("Open-Meteo is down");
+    // AC-014.4: no forecast means a card that says so, with no odds and no bet action.
     const down = await harness.post("/api/cards/quick", { chore_type: "plants" });
-    expect(down.statusCode).toBe(503);
-    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 0 });
+    expect(down.statusCode).toBe(201);
+    expect(down.json<{ kind: string; quote: unknown; notice: string }>()).toMatchObject({
+      kind: "coming_later",
+      quote: null,
+      notice: "No forecast, can't set odds",
+    });
   });
 
   it("rejects an answer that is not one of the chore's taps", async () => {

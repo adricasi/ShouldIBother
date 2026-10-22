@@ -1,5 +1,5 @@
 import { nameOfBand, type BandTable } from "../../domain/bands.js";
-import { CHORES, isChoreType } from "../../domain/chores.js";
+import { CHORES, NOTICES, isChoreType } from "../../domain/chores.js";
 import { canUndo } from "../../domain/bet-state.js";
 import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 
@@ -126,18 +126,15 @@ function gemmaView(card: CardRow) {
     question: state === "question" ? card.gemma_question : null,
     note:
       state === "offline"
-        ? (FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? FAILURE_NOTES["unavailable"]!)
+        ? (FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? "Gemma is not running.")
         : null,
     /** Retry is offered whenever the card shows rule odds because Gemma did not answer (AC-013.3). */
     can_retry: state === "offline",
   };
 }
 
-/** Plain words on a card that has no odds (AC-002.2, AC-002.3). */
-const NO_ODDS_NOTICES: Readonly<Record<string, string>> = {
-  not_weather: "Not a weather chore",
-  coming_later: "Coming later",
-};
+/** Plain words on a typed chore that has no weather link (AC-002.2). */
+const NOT_WEATHER_NOTICE = "Not a weather chore";
 
 export function cardView(card: CardRow, quote: QuoteRow | undefined, table: BandTable) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
@@ -146,8 +143,17 @@ export function cardView(card: CardRow, quote: QuoteRow | undefined, table: Band
     chore_type: card.chore_type,
     kind: card.kind,
     title: chore?.title ?? card.input_text,
-    notice: NO_ODDS_NOTICES[card.kind] ?? null,
     created_at: new Date(card.created_at).toISOString(),
+    /** Set on a "Do it now" alert: the reason, and the card has no odds and no bet action (AC-012.1). */
+    alert_reason: card.alert_reason,
+    /** Set on a card without odds that explains why (AC-014.4, AC-016.4, AC-016.5). */
+    notice:
+      card.kind === "coming_later"
+        ? (card.notice ?? NOTICES.comingLater)
+        : card.kind === "not_weather"
+          ? (card.notice ?? NOT_WEATHER_NOTICE)
+          : card.notice,
+    /** Null on every card that cannot be bet on. */
     quote: quote === undefined ? null : quoteView(quote, table, gemmaStateOf(card)),
     gemma: gemmaView(card),
   };

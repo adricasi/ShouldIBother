@@ -1,4 +1,5 @@
 import type { RulesConfig } from "../../domain/rules/index.js";
+import type { Household } from "../config.js";
 import type { Db } from "../db.js";
 import type { Flags } from "../flags.js";
 import type { JobRunner } from "../gemma/runner.js";
@@ -39,6 +40,8 @@ export interface LedgerDeps {
   /** Runs the Gemma jobs: queue, deadline, retry, decision log. */
   readonly gemma: JobRunner;
   readonly rules: RulesConfig;
+  /** The household baseline: whether the AC and heater are used this season (AC-016.5). */
+  readonly household: Household;
   readonly flags: Flags;
   readonly background: BackgroundTasks;
 }

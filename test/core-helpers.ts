@@ -1,6 +1,7 @@
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 
 import { buildApp } from "../src/server/app.js";
+import { type Household } from "../src/server/config.js";
 import { buildAllowlist } from "../src/server/auth/allowlist.js";
 import { AuthStore } from "../src/server/auth/store.js";
 import { createCore, type Core } from "../src/server/core.js";
@@ -10,6 +11,7 @@ import { parseFlags, type FlagName } from "../src/server/flags.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 import { loadRules } from "../src/server/rules.js";
+import type { WeatherClient } from "../src/server/weather/client.js";
 import { FakeWeatherClient, type FakeWeatherProfile } from "../src/server/weather/fake.js";
 
 import {
@@ -21,6 +23,13 @@ import {
   cookieHeaderFrom,
 } from "./helpers.js";
 
+/** The committed example baseline, spelled out so a real `household.json` never changes a test. */
+export const EXAMPLE_HOUSEHOLD: Household = {
+  airConditioning: false,
+  heaterThisSeason: false,
+  dryer: "heat-pump",
+};
+
 export interface CoreHarnessOptions {
   /** A database file; omitted: in-memory. Pass the same path to simulate a restart. */
   dbPath?: string;
@@ -31,6 +40,10 @@ export interface CoreHarnessOptions {
   model?: FakeModelClient;
   /** Timeouts and tool settings of the job runner. */
   runner?: NonNullable<Parameters<typeof createCore>[0]["runner"]>;
+  /** The household baseline; the committed example (no AC, no heater) when omitted. */
+  household?: Household;
+  /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
+  liveWeather?: (db: Db, now: () => number) => WeatherClient;
 }
 
 export interface CoreHarness {
@@ -72,9 +85,10 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
   const core = createCore({
     db,
     now: clock.now,
-    weather,
+    weather: options.liveWeather?.(db, clock.now) ?? weather,
     model,
     rules: loadRules(),
+    household: options.household ?? EXAMPLE_HOUSEHOLD,
     flags,
     ...(options.runner === undefined ? {} : { runner: options.runner }),
   });
