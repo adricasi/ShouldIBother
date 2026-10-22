@@ -44,6 +44,8 @@ export interface OpenMeteoHttpOptions {
   readonly clock?: () => number;
   /** The allowed hosts; the production list unless a test narrows it. */
   readonly allowedHosts?: readonly string[];
+  readonly attemptTimeoutMs?: number;
+  readonly deadlineMs?: number;
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -70,6 +72,8 @@ export class OpenMeteoHttp {
   private readonly random: () => number;
   private readonly clock: () => number;
   private readonly allowedHosts: readonly string[];
+  private readonly attemptTimeoutMs: number;
+  private readonly deadlineMs: number;
 
   constructor(options: OpenMeteoHttpOptions) {
     this.doFetch = options.fetch ?? fetch;
@@ -79,13 +83,15 @@ export class OpenMeteoHttp {
     this.random = options.random ?? Math.random;
     this.clock = options.clock ?? Date.now;
     this.allowedHosts = options.allowedHosts ?? OPEN_METEO_ALLOWED_HOSTS;
+    this.attemptTimeoutMs = options.attemptTimeoutMs ?? ATTEMPT_TIMEOUT_MS;
+    this.deadlineMs = options.deadlineMs ?? REQUEST_DEADLINE_MS;
   }
 
   async getJson(url: string): Promise<unknown> {
     // Before anything else, so a wrong host never costs a request or a budget unit.
     assertAllowedUrl(url, this.allowedHosts);
     const target = new URL(url);
-    const deadline = AbortSignal.timeout(REQUEST_DEADLINE_MS);
+    const deadline = AbortSignal.timeout(this.deadlineMs);
     let failure = "no attempt was made";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.aborted; attempt += 1) {
@@ -102,7 +108,7 @@ export class OpenMeteoHttp {
         ms: this.clock() - startedAt,
       });
       try {
-        const signal = AbortSignal.any([deadline, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)]);
+        const signal = AbortSignal.any([deadline, AbortSignal.timeout(this.attemptTimeoutMs)]);
         const response = await this.doFetch(url, {
           redirect: "error",
           signal,

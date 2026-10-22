@@ -137,6 +137,8 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
     now: "2026-10-22T08:01:00.000Z",
     flags: {},
     points: { total: 0 },
+    forecast: null,
+    attribution: "Weather data by Open-Meteo.com",
     cards: [],
     open_bets: [bet],
     due_bets: [],
@@ -181,6 +183,9 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
               chore_type: "plants",
               title: "Water plants",
               created_at: "2026-10-22T08:00:00.000Z",
+              kind: "weather",
+              alert_reason: null,
+              notice: null,
               quote: {
                 id: 1,
                 source: "rule",

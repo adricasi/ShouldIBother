@@ -30,7 +30,13 @@ export const cardSchema = z.object({
   chore_type: z.string(),
   title: z.string(),
   created_at: z.string(),
-  quote: quoteSchema,
+  kind: z.enum(["weather", "not_weather", "coming_later", "alert"]),
+  /** Set on a "Do it now" alert; the card has no odds and no bet action (AC-012.1). */
+  alert_reason: z.string().nullable(),
+  /** Set on a card without odds that says why (AC-014.4, AC-016.4, AC-016.5). */
+  notice: z.string().nullable(),
+  /** Null on every card that cannot be bet on. */
+  quote: quoteSchema.nullable(),
 });
 
 export const betSchema = z.object({
@@ -56,6 +62,12 @@ export const todaySchema = z.object({
   now: z.string(),
   flags: flagsSchema,
   points: z.object({ total: z.number() }),
+  /** The forecast behind the odds: when it was fetched and how old that is (AC-014.3). */
+  forecast: z
+    .object({ fetched_at: z.string(), age_label: z.string(), stale: z.boolean() })
+    .nullable(),
+  /** Open-Meteo attribution, shown in the app (AC-014.6). */
+  attribution: z.string(),
   cards: z.array(cardSchema),
   open_bets: z.array(betSchema),
   due_bets: z.array(betSchema),

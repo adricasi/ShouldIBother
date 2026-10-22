@@ -11,6 +11,7 @@ import { parseFlags, type FlagName } from "../src/server/flags.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 import { loadRules } from "../src/server/rules.js";
+import type { WeatherClient } from "../src/server/weather/client.js";
 import { FakeWeatherClient, type FakeWeatherProfile } from "../src/server/weather/fake.js";
 
 import {
@@ -39,6 +40,8 @@ export interface CoreHarnessOptions {
   model?: FakeModelClient;
   /** The household baseline; the committed example (no AC, no heater) when omitted. */
   household?: Household;
+  /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
+  liveWeather?: (db: Db, now: () => number) => WeatherClient;
 }
 
 export interface CoreHarness {
@@ -73,7 +76,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
   const core = createCore({
     db,
     now: clock.now,
-    weather,
+    weather: options.liveWeather?.(db, clock.now) ?? weather,
     model,
     rules: loadRules(),
     household: options.household ?? EXAMPLE_HOUSEHOLD,

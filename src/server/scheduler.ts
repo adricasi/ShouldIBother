@@ -1,5 +1,5 @@
 import { markDueBets } from "./ledger/bets.js";
-import { retryAwaitingWeather, type WeatherAttempts } from "./ledger/recorded-weather.js";
+import { retryAwaitingWeather } from "./ledger/recorded-weather.js";
 import type { LedgerDeps } from "./ledger/deps.js";
 
 /** Design: the scheduler loop runs every 60 s. */
@@ -25,7 +25,6 @@ export function createScheduler(
 ): Scheduler {
   let timer: NodeJS.Timeout | undefined;
   let weatherStep: Promise<number> | undefined;
-  const attempts: WeatherAttempts = new Map();
   const tick = (): number => markDueBets(deps.db, deps.now());
   const tickWeather = (): Promise<number> => {
     const { weather } = deps;
@@ -33,11 +32,9 @@ export function createScheduler(
       return Promise.resolve(0);
     }
     // One weather pass at a time: a slow Open-Meteo must not stack up passes.
-    weatherStep ??= retryAwaitingWeather({ db: deps.db, now: deps.now, weather }, attempts).finally(
-      () => {
-        weatherStep = undefined;
-      },
-    );
+    weatherStep ??= retryAwaitingWeather({ db: deps.db, now: deps.now, weather }).finally(() => {
+      weatherStep = undefined;
+    });
     return weatherStep;
   };
   return {

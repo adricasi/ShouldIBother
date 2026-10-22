@@ -96,7 +96,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Done when: one integration test drives the whole flow with a fake clock; unit tests for payout rounding and loss points (AC-009.1–AC-009.4); restart test: an open bet survives a server restart and settles (NFR-003); `npm run dev` shows the flow in a phone-width browser; CI green.
 
 ## Milestone 2: Core loop with real Gemma (tiers 1–2)
-- [ ] T-005: Weather service, all rules and the safety backstop
+- [x] T-005: Weather service, all rules and the safety backstop
   - Who / when: Agent W1 · Thu AM (stacked on T-008); merged Thu PM
   - Requirements: REQ-004, REQ-012 (AC-012.1, AC-012.2), REQ-014 (incl. AC-014.7), REQ-016 (AC-016.1, AC-016.4, AC-016.5); NFR-002, NFR-006; ADR-0008
   - Depends on: T-004, T-008

@@ -47,13 +47,22 @@ portproxy).
 
 ## The walking skeleton (T-004)
 `npm run dev` builds the app screens (`dist/web`) and starts the server, which serves them behind
-the same pairing guard. Until the real Ollama and Open-Meteo clients land (T-010, T-005) the server
-runs on the fake model (`test/fixtures/gemma/`) and fake weather, and says so at start-up. On the
-phone: tap the "Water plants" chip, read the rule odds, tap "Bet: do nothing"; once the settle time
+the same pairing guard. Until the real Ollama client lands (T-010) the server runs on the fake
+model (`test/fixtures/gemma/`) and says so at start-up; the weather is Open-Meteo, or fake weather
+without a network when you start with `SIB_FAKE_WEATHER=1`. On the
+phone: tap the "Water plants" or "Line-dry today" chip, read the rule odds, tap "Bet: do nothing"; once the settle time
 has passed (the scheduler checks every 60 s) the bet appears under "Settle now" with one-tap
 answers, and the fake judge's verdict and points are shown. After changing a screen, run
 `npm run build:web` and reload. `npm run dev` builds the app screens once, when it starts: after
 editing a screen, restart it (each restart prints a new pairing link) or run `npm run build:web`.
+
+## Weather and attribution
+Odds come from the Open-Meteo forecast for the neighbourhood coordinates in `config/household.json`
+(`location`, rounded to 2 decimals before every request). The weather client calls only the four
+Open-Meteo hosts of its allowlist (forecast, Previous Runs, Historical Forecast, archive) and counts
+its calls (budget 1,000 a day). The app shows this attribution on Today:
+
+> Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0.
 
 ## Development workflow (AI-assisted, spec-driven)
 Built with the personal ai-toolkit (`~/ai-toolkit`). In Claude Code:

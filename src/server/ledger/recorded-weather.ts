@@ -15,8 +15,30 @@ export function betWeatherWindow(bet: Pick<BetRow, "placed_at" | "settle_at">): 
   return { fromMs: bet.placed_at, toMs: bet.settle_at };
 }
 
-/** When each waiting bet was last tried; in memory, so a restart simply tries again at once. */
-export type WeatherAttempts = Map<number, number>;
+/**
+ * When a waiting bet was last tried, kept in `weather_cache` (row `recorded-attempt|<bet id>`)
+ * so the 30 minutes hold across a restart and whoever tried last (the settlement or the scheduler).
+ */
+function attemptKey(betId: number): string {
+  return `recorded-attempt|${betId}`;
+}
+
+function lastAttemptAt(db: WeatherDeps["db"], betId: number): number | undefined {
+  return db
+    .prepare<[string], { fetched_at: number }>("SELECT fetched_at FROM weather_cache WHERE key = ?")
+    .get(attemptKey(betId))?.fetched_at;
+}
+
+function noteAttempt(db: WeatherDeps["db"], betId: number, nowMs: number): void {
+  db.prepare(
+    `INSERT INTO weather_cache (key, fetched_at, body) VALUES (?, ?, '{}')
+     ON CONFLICT (key) DO UPDATE SET fetched_at = excluded.fetched_at`,
+  ).run(attemptKey(betId), nowMs);
+}
+
+function forgetAttempt(db: WeatherDeps["db"], betId: number): void {
+  db.prepare("DELETE FROM weather_cache WHERE key = ?").run(attemptKey(betId));
+}
 
 async function recordedFor(deps: WeatherDeps, bet: BetRow): Promise<RecordedWeather | undefined> {
   try {
@@ -38,9 +60,8 @@ async function recordedFor(deps: WeatherDeps, bet: BetRow): Promise<RecordedWeat
 export async function collectRecordedWeather(
   deps: WeatherDeps,
   bet: BetRow,
-  attempts?: WeatherAttempts,
 ): Promise<RecordedWeather | undefined> {
-  attempts?.set(bet.id, deps.now());
+  noteAttempt(deps.db, bet.id, deps.now());
   const recorded = await recordedFor(deps, bet);
   if (recorded === undefined && bet.status === "due") {
     deps.db
@@ -55,10 +76,7 @@ export async function collectRecordedWeather(
  * have passed since its last try (AC-014.5). With the weather complete the bet moves on to
  * `awaiting_gemma`, where the judge picks it up. Returns how many bets moved on.
  */
-export async function retryAwaitingWeather(
-  deps: WeatherDeps,
-  attempts: WeatherAttempts,
-): Promise<number> {
+export async function retryAwaitingWeather(deps: WeatherDeps): Promise<number> {
   const now = deps.now();
   const waiting = deps.db
     .prepare<[], BetRow>(
@@ -67,18 +85,18 @@ export async function retryAwaitingWeather(
     .all();
   let released = 0;
   for (const bet of waiting) {
-    const last = attempts.get(bet.id);
+    const last = lastAttemptAt(deps.db, bet.id);
     if (last !== undefined && now - last < RECORDED_WEATHER_RETRY_MS) {
       continue;
     }
-    attempts.set(bet.id, now);
+    noteAttempt(deps.db, bet.id, now);
     if ((await recordedFor(deps, bet)) !== undefined) {
       released += deps.db
         .prepare(
           "UPDATE bets SET status = 'awaiting_gemma' WHERE id = ? AND status = 'awaiting_weather'",
         )
         .run(bet.id).changes;
-      attempts.delete(bet.id);
+      forgetAttempt(deps.db, bet.id);
     }
   }
   return released;
