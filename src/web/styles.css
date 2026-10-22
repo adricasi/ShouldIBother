@@ -610,3 +610,91 @@ label.button.disabled {
   align-items: center;
   cursor: pointer;
 }
+
+.score-tiles {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.score-tiles > div {
+  flex: 1 1 40%;
+}
+
+.calibration {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.calibration table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+}
+
+.calibration caption {
+  text-align: left;
+  padding-bottom: var(--space-2);
+}
+
+.calibration th,
+.calibration td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-hair) dashed var(--color-line);
+  font-size: var(--text-small);
+  vertical-align: middle;
+}
+
+.calibration thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.calibration tbody th {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.calibration td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The bar repeats the figure printed beside it; a tick marks the odds the band promised. */
+.bar-track {
+  position: relative;
+  display: inline-block;
+  width: 96px;
+  height: 10px;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  background: var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--color-leaf);
+  border-radius: var(--radius-pill);
+}
+
+.bar-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--color-ink);
+}
+
+.bar-figure {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}

@@ -28,7 +28,12 @@ export function Nav({ flags, current = "today", entries = FLAGGED_ENTRIES }: Nav
         </li>
         {visibleEntries(entries, flags).map((entry) => (
           <li key={entry.id}>
-            <a href={`#/${entry.id}`}>{entry.label}</a>
+            <a
+              href={`#/${entry.id}`}
+              {...(current === entry.id ? { "aria-current": "page" as const } : {})}
+            >
+              {entry.label}
+            </a>
           </li>
         ))}
       </ul>
