@@ -6,3 +6,7 @@ package-lock.json
 .claude/
 .agents/
 .devcontainer/
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/

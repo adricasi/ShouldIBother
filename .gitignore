@@ -30,3 +30,29 @@ coverage/
 .agents/
 CLAUDE.md
 .mcp.json
+
+# --- household-private data (NFR-002): database, photos, logs, snapshots ---
+# The default data folder is ~/.should-i-bother/ (outside the repo); these cover SIB_DATA_DIR
+# pointed inside the checkout.
+data/
+.should-i-bother/
+
+# --- python (training/) ---
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# --- local databases, snapshots and training artifacts (NFR-002) ---
+*.db
+*.sqlite
+*.sqlite-*
+*-wal
+*-shm
+*.jsonl
+training/out*/
+checkpoints/
+adapters/
+
+# --- real household baseline (the committed fallback is config/household.example.json) ---
+config/household.json
