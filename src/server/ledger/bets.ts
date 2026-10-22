@@ -102,6 +102,9 @@ export function placeBet(
  */
 export function undoBet(deps: LedgerDeps, betId: number): BetView {
   const now = deps.now();
+  // Due is decided at read time everywhere (Today, Slips, settle), so a bet whose settle time
+  // passed inside its 5 minutes is refused here for the same reason it is listed as due.
+  markDueBets(deps.db, now);
   const undo = deps.db.transaction((): BetRow => {
     const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);
     if (bet === undefined) {

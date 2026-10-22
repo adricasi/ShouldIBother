@@ -114,6 +114,23 @@ describe("REQ-007: Slips with countdown", () => {
     expect((await slips()).settled.map((b) => b.id)).toEqual([bet.id]);
   });
 
+  it("a do-it decision has no tap answers; a bet on doing nothing keeps its three", async () => {
+    await setup();
+    const doIt = await freshBet("do_it");
+    const bet = await freshBet();
+    harness.clock.current =
+      Math.max(Date.parse(doIt.settle_at), Date.parse(bet.settle_at)) + MINUTE;
+    const result = await slips();
+    const answersOf = (id: number): string[] | undefined =>
+      result.settle_now.find((b) => b.id === id)?.tap_answers.map((a) => a.id);
+    expect(answersOf(doIt.id)).toEqual([]);
+    expect(answersOf(bet.id)).toEqual(["moist", "dry", "wilting"]);
+    const today = (await harness.get("/api/today")).json<{
+      due_bets: { id: number; tap_answers: unknown[] }[];
+    }>();
+    expect(today.due_bets.find((b) => b.id === doIt.id)?.tap_answers).toEqual([]);
+  });
+
   it("AC-007.2: bets waiting for Gemma stay under Settle now with their status", async () => {
     await setup();
     const bet = await freshBet();

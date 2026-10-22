@@ -233,6 +233,25 @@ describe("REQ-006: bet, do it, or undo", () => {
     expect(row(bet.id)).toMatchObject({ status: "settled" });
   });
 
+  it("AC-006.5: a bet whose settle time passed inside the 5 minutes is due, so Undo is refused like everywhere else", async () => {
+    await setup();
+    const card = await quickCard();
+    const now = harness.clock.now();
+    const id = Number(
+      harness.db
+        .prepare(
+          `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, rule_band, placed_at,
+             undo_until, settle_at, status)
+           VALUES (?, 'do_nothing', 3, 70, 'rule', 'r', 3, ?, ?, ?, 'open')`,
+        )
+        .run(card.id, now, now + 5 * MINUTE, now + 2 * MINUTE).lastInsertRowid,
+    );
+    harness.clock.advance(3 * MINUTE); // inside the window, but past the settle time; no tick ran
+    const late = await harness.delete(`/api/bets/${id}`);
+    expect(late.statusCode).toBe(409);
+    expect(row(id)).toMatchObject({ status: "due" });
+  });
+
   it("answers 404 for an unknown bet, 409 for a second undo and 400 for a bad id", async () => {
     await setup();
     expect((await harness.delete("/api/bets/999")).statusCode).toBe(404);
@@ -264,6 +283,28 @@ describe("REQ-006: bet, do it, or undo", () => {
       harness.db.prepare("UPDATE bets SET status = 'open' WHERE id = ?").run(bet.id),
     ).toThrow(/state machine/);
   });
+});
+
+describe("cards that are not weather bets", () => {
+  it.each(["not_weather", "coming_later"] as const)(
+    "a %s card has no bet or do-it action: 409 and nothing stored",
+    async (cardKind) => {
+      await setup();
+      const cardId = Number(
+        harness.db
+          .prepare(
+            "INSERT INTO cards (input_text, chore_type, kind, created_at) VALUES ('x', 'plants', ?, ?)",
+          )
+          .run(cardKind, harness.clock.now()).lastInsertRowid,
+      );
+      for (const kind of ["do_nothing", "do_it"]) {
+        const response = await harness.post("/api/bets", { card_id: cardId, quote_id: 1, kind });
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toMatchObject({ title: "No bet on this card" });
+      }
+      expect(harness.db.prepare("SELECT COUNT(*) AS n FROM bets").get()).toEqual({ n: 0 });
+    },
+  );
 });
 
 describe("REQ-012 AC-012.2: no bet on a card in alert state", () => {

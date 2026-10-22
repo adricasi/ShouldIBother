@@ -80,7 +80,8 @@ export function betView(bet: BetRow, card: CardRow, table: BandTable, nowMs: num
     settle_at: new Date(bet.settle_at).toISOString(),
     status: bet.status,
     payouts: payoutsAt(bet.odds),
-    tap_answers: chore?.tapAnswers ?? [],
+    // A do-it decision has no question: the judge decides from the recorded weather (AC-008.9).
+    tap_answers: bet.kind === "do_nothing" ? (chore?.tapAnswers ?? []) : [],
   };
 }
 

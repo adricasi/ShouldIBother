@@ -14,6 +14,8 @@ const MAX_SETTLED = 100;
 export function getSlips(deps: LedgerDeps) {
   const now = deps.now();
   // Due is decided at read time, like on Today, so the group below never lags the scheduler.
+  // This read therefore writes, by design: `markDueBets` is idempotent and only moves open → due.
+  // TODO(T-023): list `cashed_out` bets here (as settled, -10) when the flagged cash-out lands.
   markDueBets(deps.db, now);
   const settling = listSettlingBets(deps);
   const isReady = (bet: BetRow): boolean => bet.settle_at <= now;

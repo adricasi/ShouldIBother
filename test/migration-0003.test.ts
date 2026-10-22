@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
+/** Locked for good, even for a write of the same value. */
 const LOCKED = [
   "card_id",
   "kind",
@@ -12,14 +13,18 @@ const LOCKED = [
   "reason",
   "gemma_band",
   "rule_band",
-  "band_without_photo",
-  "model_version",
-  "prompt_version",
-  "savings_snapshot",
   "placed_at",
   "undo_until",
   "settle_at",
 ] as const;
+
+/** Filled later by their tasks: NULL → value once, then locked. */
+const WRITE_ONCE = {
+  savings_snapshot: ["'{\"minutes\":5}'", "'{\"minutes\":9}'"],
+  model_version: ["'gemma-4-e4b'", "'other'"],
+  prompt_version: ["'bookmaker.v1'", "'bookmaker.v2'"],
+  band_without_photo: ["3", "4"],
+} as const;
 
 /** A different value that is valid for the column's CHECK, so only the trigger can refuse it. */
 const CHANGED: Record<(typeof LOCKED)[number], string> = {
@@ -31,10 +36,6 @@ const CHANGED: Record<(typeof LOCKED)[number], string> = {
   reason: "'changed'",
   gemma_band: "4",
   rule_band: "4",
-  band_without_photo: "4",
-  model_version: "'other'",
-  prompt_version: "'other'",
-  savings_snapshot: "'{}'",
   placed_at: "99",
   undo_until: "99",
   settle_at: "99",
@@ -90,6 +91,53 @@ describe("migration 0003: locked bet columns and the state machine", () => {
       /locked columns/,
     );
     expect(db.prepare("SELECT * FROM bets WHERE id = 1").get()).toEqual(before);
+  });
+
+  it.each(Object.entries(WRITE_ONCE))(
+    "AC-006.2: %s may be filled once from NULL, then it is locked",
+    (column, [first, second]) => {
+      const db = openDatabase(":memory:");
+      migrate(db, MIGRATIONS);
+      seed(db);
+      const value = (): unknown =>
+        (db.prepare(`SELECT ${column} AS v FROM bets WHERE id = 1`).get() as { v: unknown }).v;
+      expect(value()).toBeNull();
+      // NULL → value is allowed once (a bet placed before the filling task existed).
+      expect(() => db.exec(`UPDATE bets SET ${column} = ${first} WHERE id = 1`)).not.toThrow();
+      const filled = value();
+      expect(filled).not.toBeNull();
+      // value → other value, value → same value and value → NULL are all refused.
+      for (const next of [second!, first!, "NULL"]) {
+        expect(() => db.exec(`UPDATE bets SET ${column} = ${next} WHERE id = 1`)).toThrow(
+          /locked columns/,
+        );
+      }
+      expect(value()).toEqual(filled);
+    },
+  );
+
+  it("AC-006.2: filling one write-once column does not unlock or block the others", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seed(db);
+    db.exec("UPDATE bets SET model_version = 'gemma-4-e4b' WHERE id = 1");
+    expect(() =>
+      db.exec(
+        "UPDATE bets SET prompt_version = 'bookmaker.v1', band_without_photo = 3 WHERE id = 1",
+      ),
+    ).not.toThrow();
+    expect(() => db.exec("UPDATE bets SET prompt_version = 'bookmaker.v2' WHERE id = 1")).toThrow(
+      /locked columns/,
+    );
+    // The core columns were never touched by any of it.
+    expect(db.prepare("SELECT band, odds, reason, settle_at FROM bets WHERE id = 1").get()).toEqual(
+      {
+        band: 3,
+        odds: 70,
+        reason: "rain",
+        settle_at: 30,
+      },
+    );
   });
 
   it("AC-006.2: the primary key of a bet cannot be changed either", () => {
