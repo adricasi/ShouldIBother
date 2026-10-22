@@ -41,8 +41,15 @@ describe("NFR-003: an open bet survives a server restart and settles", () => {
     await pair(first);
     const card = (await first.post("/api/cards/quick", { chore_type: "plants" })).json<{
       id: number;
+      quote: { id: number };
     }>();
-    const bet = (await first.post("/api/bets", { card_id: card.id, kind: "do_nothing" })).json<{
+    const bet = (
+      await first.post("/api/bets", {
+        card_id: card.id,
+        quote_id: card.quote.id,
+        kind: "do_nothing",
+      })
+    ).json<{
       id: number;
       odds: number;
       settle_at: string;
@@ -55,12 +62,12 @@ describe("NFR-003: an open bet survives a server restart and settles", () => {
     running = await createCoreHarness({ dbPath, clock });
     running.cookie = cookie; // the paired phone's session lives in the database too
 
-    const reopened = (await running.get("/api/today")).json<Today>();
-    expect(reopened.open_bets).toEqual([
-      expect.objectContaining({ id: bet.id, odds: bet.odds, settle_at: bet.settle_at }),
+    // The bet is in the file exactly as placed, still open: nothing has moved it yet.
+    expect(running.db.prepare("SELECT id, odds, status, settle_at FROM bets").all()).toEqual([
+      { id: bet.id, odds: bet.odds, status: "open", settle_at: Date.parse(bet.settle_at) },
     ]);
 
-    // The scheduler's first pass after the restart marks it due, then it settles.
+    // The scheduler's first pass after the restart marks it due (Today would too, at read time).
     running.core.scheduler.tick();
     expect((await running.get("/api/today")).json<Today>().due_bets.map((b) => b.id)).toEqual([
       bet.id,
@@ -79,8 +86,15 @@ describe("NFR-003: an open bet survives a server restart and settles", () => {
     await pair(first);
     const card = (await first.post("/api/cards/quick", { chore_type: "plants" })).json<{
       id: number;
+      quote: { id: number };
     }>();
-    const bet = (await first.post("/api/bets", { card_id: card.id, kind: "do_nothing" })).json<{
+    const bet = (
+      await first.post("/api/bets", {
+        card_id: card.id,
+        quote_id: card.quote.id,
+        kind: "do_nothing",
+      })
+    ).json<{
       settle_at: string;
     }>();
     await first.close();

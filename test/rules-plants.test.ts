@@ -73,6 +73,21 @@ describe("REQ-004: plants rule band (design.md, first match wins, half-open inte
     expect(plantsFacts(hours, 11.5 * HOUR_MS, 24 * HOUR_MS)?.rainMm).toBe(4);
   });
 
+  it("has no band unless the forecast covers the whole window (no false odds from a part)", () => {
+    const hours = fakeForecastHours({ temperatureC: 30 }, 0, 24); // covers [0 h, 24 h)
+    expect(plantsFacts(hours, 0, 24 * HOUR_MS)).not.toBeNull();
+    // Ends too early: the window runs to 30 h.
+    expect(plantsFacts(hours, 0, 30 * HOUR_MS)).toBeNull();
+    expect(plantsRuleQuote(hours, 0, 30 * HOUR_MS, rules)).toBeNull();
+    // Starts too late: the forecast begins after `from`.
+    expect(plantsFacts(hours.slice(3), 0, 24 * HOUR_MS)).toBeNull();
+    // A hole in the middle (hour 10 missing).
+    const holed = hours.filter((_hour, index) => index !== 10);
+    expect(plantsFacts(holed, 0, 24 * HOUR_MS)).toBeNull();
+    // `from` inside the first hour is covered by it.
+    expect(plantsFacts(hours, 0.5 * HOUR_MS, 24 * HOUR_MS)).not.toBeNull();
+  });
+
   it("has no band when the forecast does not cover the window", () => {
     expect(plantsFacts([], 0, HOUR_MS)).toBeNull();
     expect(plantsRuleQuote([], 0, HOUR_MS, rules)).toBeNull();

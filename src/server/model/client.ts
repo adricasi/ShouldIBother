@@ -2,6 +2,10 @@
 export interface ChatMessage {
   readonly role: "system" | "user" | "assistant" | "tool";
   readonly content: string;
+  /** On an assistant message: the tool calls it made, so the tool loop can be replayed. */
+  readonly toolCalls?: readonly ToolCall[];
+  /** On a tool message: the name of the tool whose result this is. */
+  readonly toolName?: string;
 }
 
 export interface ToolDefinition {

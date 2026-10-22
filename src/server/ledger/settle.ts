@@ -3,6 +3,8 @@ import { MULTIPLIER, pointsFor } from "../../domain/points.js";
 import { judgeBet, JUDGE_PROMPT } from "../gemma/judge.js";
 import { HttpError } from "../problem.js";
 
+import { markDueBets } from "./bets.js";
+
 import type { LedgerDeps } from "./deps.js";
 import { logDecision } from "./decisions.js";
 import type { BetRow, CardRow } from "./rows.js";
@@ -38,6 +40,8 @@ export async function settleByTap(
   betId: number,
   answerId: string,
 ): Promise<Settled> {
+  // A tap right after the settle time must not wait for the next scheduler pass.
+  markDueBets(deps.db, deps.now());
   const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);
   if (bet === undefined) {
     throw new HttpError(404, "Bet not found");

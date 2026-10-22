@@ -79,9 +79,9 @@ export function App() {
           return undefined;
         });
       }}
-      onBet={(cardId) => {
+      onBet={(cardId, quoteId) => {
         void act(async () => {
-          await placeBet(cardId);
+          await placeBet(cardId, quoteId);
           return { kind: "info", text: "Bet placed. It waits until its settle time." };
         });
       }}

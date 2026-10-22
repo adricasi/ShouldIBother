@@ -52,7 +52,8 @@ runs on the fake model (`test/fixtures/gemma/`) and fake weather, and says so at
 phone: tap the "Water plants" chip, read the rule odds, tap "Bet: do nothing"; once the settle time
 has passed (the scheduler checks every 60 s) the bet appears under "Settle now" with one-tap
 answers, and the fake judge's verdict and points are shown. After changing a screen, run
-`npm run build:web` and reload.
+`npm run build:web` and reload. `npm run dev` builds the app screens once, when it starts: after
+editing a screen, restart it (each restart prints a new pairing link) or run `npm run build:web`.
 
 ## Development workflow (AI-assisted, spec-driven)
 Built with the personal ai-toolkit (`~/ai-toolkit`). In Claude Code:

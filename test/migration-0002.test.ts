@@ -89,4 +89,114 @@ describe("migration 0002: core schema", () => {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
     }
   });
+
+  const betColumns =
+    "card_id, kind, band, odds, odds_source, reason, rule_band, placed_at, undo_until, settle_at";
+  const seedCard = (db: ReturnType<typeof openDatabase>): void => {
+    db.prepare(
+      "INSERT INTO cards (input_text, chore_type, kind, created_at) VALUES ('x', 'plants', 'weather', 1)",
+    ).run();
+  };
+
+  it("a bet's odds always match its band (15, 35, 50, 70, 85)", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seedCard(db);
+    const insert = db.prepare(
+      `INSERT INTO bets (${betColumns}, status) VALUES (1, 'do_nothing', ?, ?, 'rule', 'r', 2, 1, 2, 3, ?)`,
+    );
+    const pairs: [number, number][] = [
+      [0, 15],
+      [1, 35],
+      [2, 50],
+      [3, 70],
+      [4, 85],
+    ];
+    for (const [band, odds] of pairs) {
+      insert.run(band, odds, "undone"); // undone, so the one-active-bet index does not interfere
+    }
+    expect(() => insert.run(2, 70, "undone")).toThrow();
+    expect(() => insert.run(0, 85, "undone")).toThrow();
+    // The same holds for quotes.
+    const quote = db.prepare(
+      "INSERT INTO quotes (card_id, source, band, odds, reason, settle_at, created_at) VALUES (1, 'rule', ?, ?, 'r', 3, 1)",
+    );
+    expect(() => quote.run(3, 70)).not.toThrow();
+    expect(() => quote.run(3, 50)).toThrow();
+  });
+
+  it("allows one active bet per card in the database, and a new one after an undo", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seedCard(db);
+    const insert = db.prepare(
+      `INSERT INTO bets (${betColumns}, status) VALUES (1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3, ?)`,
+    );
+    insert.run("open");
+    expect(() => insert.run("open")).toThrow(/UNIQUE/);
+    expect(() => insert.run("settled")).toThrow(/UNIQUE/);
+    db.prepare("UPDATE bets SET status = 'undone'").run();
+    expect(() => insert.run("open")).not.toThrow();
+    expect(() => insert.run("undone")).not.toThrow();
+  });
+
+  it("allows one original settlement per bet, and appeals as extra rows", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seedCard(db);
+    db.prepare(
+      `INSERT INTO bets (${betColumns}, status) VALUES (1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3, 'settled')`,
+    ).run();
+    const settle = db.prepare(
+      `INSERT INTO settlements (bet_id, evidence, multiplier, verdict, points, settled_at, appeal_of)
+       VALUES (1, 'tap', 0.5, 'win', 25, 4, ?)`,
+    );
+    settle.run(null);
+    expect(() => settle.run(null)).toThrow(/UNIQUE/);
+    expect(() => settle.run(1)).not.toThrow();
+  });
+
+  it("a photo belongs to a card or a bet", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seedCard(db);
+    const photo = db.prepare(
+      "INSERT INTO photos (id, card_id, bet_id, role, file, received_at, width, height) VALUES (?, ?, NULL, 'before', 'f.jpg', 1, 10, 10)",
+    );
+    expect(() => photo.run("a", null)).toThrow();
+    expect(() => photo.run("b", 1)).not.toThrow();
+  });
+
+  it("AC-015.2: deleting a photo removes the quotes and decisions made with it", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    seedCard(db);
+    db.exec(`
+      INSERT INTO photos (id, card_id, role, file, received_at, width, height) VALUES ('p1', 1, 'before', 'f.jpg', 1, 10, 10);
+      INSERT INTO gemma_decisions (job, card_id, photo_id, model, prompt_version, valid, latency_ms, created_at)
+        VALUES ('inspector', 1, 'p1', 'fake', 'inspector.v1', 1, 5, 2);
+      INSERT INTO quotes (card_id, source, band, odds, with_photo, photo_id, reason, settle_at, decision_id, created_at)
+        VALUES (1, 'rule', 2, 50, 0, NULL, 'no photo', 3, NULL, 1);
+      INSERT INTO quotes (card_id, source, band, odds, with_photo, photo_id, reason, settle_at, decision_id, created_at)
+        VALUES (1, 'gemma', 3, 70, 1, 'p1', 'with photo', 3, 1, 2);
+    `);
+    db.prepare("DELETE FROM photos WHERE id = 'p1'").run();
+    expect(db.prepare("SELECT reason FROM quotes").all()).toEqual([{ reason: "no photo" }]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM gemma_decisions").get()).toEqual({ n: 0 });
+  });
+
+  it("indexes the foreign-key columns that deletes and lookups use", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    const indexed = (table: string): string[] =>
+      (db.prepare(`PRAGMA index_list(${table})`).all() as { name: string }[]).flatMap(({ name }) =>
+        (db.prepare(`PRAGMA index_info(${name})`).all() as { name: string }[]).map((c) => c.name),
+      );
+    expect(indexed("photos")).toEqual(expect.arrayContaining(["card_id", "bet_id"]));
+    expect(indexed("gemma_decisions")).toEqual(
+      expect.arrayContaining(["card_id", "bet_id", "photo_id"]),
+    );
+    expect(indexed("settlements")).toEqual(expect.arrayContaining(["bet_id", "appeal_of"]));
+    expect(indexed("quotes")).toEqual(expect.arrayContaining(["card_id", "photo_id"]));
+  });
 });

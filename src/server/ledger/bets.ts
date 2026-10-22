@@ -9,10 +9,11 @@ import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
 
 /**
- * The minimal bet insert of the walking skeleton: locks the quote shown now (AC-006.1) and stores
+ * The minimal bet insert of the walking skeleton: locks the quote the user saw, named by
+ * `quoteId`, and refuses when it is no longer the card's latest (AC-006.1, AC-006.2); stores
  * the rule band next to it (AC-004.2). Undo, do-it and the state machine are T-008.
  */
-export function placeDoNothingBet(deps: LedgerDeps, cardId: number): BetView {
+export function placeDoNothingBet(deps: LedgerDeps, cardId: number, quoteId: number): BetView {
   const now = deps.now();
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId);
   if (card === undefined) {
@@ -24,6 +25,14 @@ export function placeDoNothingBet(deps: LedgerDeps, cardId: number): BetView {
   const quote = latestQuote(deps, cardId);
   if (quote === undefined) {
     throw new HttpError(409, "No odds on this card yet");
+  }
+  if (quote.id !== quoteId) {
+    // The card moved on (Gemma's odds replaced the rule's, say): the bet locks only what was seen.
+    throw new HttpError(
+      409,
+      "The odds changed",
+      "Look at the card again and confirm the new odds.",
+    );
   }
   if (quote.settle_at <= now) {
     throw new HttpError(409, "These odds are out of date", "Create a new card.");

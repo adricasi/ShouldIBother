@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import type { Writable } from "node:stream";
 
 import fastifyStatic from "@fastify/static";
@@ -75,6 +77,22 @@ export const LOGGER_OPTIONS = {
   serializers: { req: serializeRequest },
 };
 
+/** True when `pathname` (a URL path under the web root) resolves, links followed, inside it. */
+export function isInsideRoot(realRoot: string, pathname: string): boolean {
+  try {
+    const target = realpathSync(join(realRoot, decodeURIComponent(pathname)));
+    return target === realRoot || target.startsWith(`${realRoot}${sep}`);
+  } catch {
+    return false;
+  }
+}
+
+/** Built assets carry a content hash in their name (`/assets/index-<hash>.js`), the page does not. */
+export function staticCacheControl(root: string, path: string): string {
+  const inAssets = relative(root, path).split(sep)[0] === "assets";
+  return inAssets ? "private, max-age=31536000, immutable" : "private, no-cache";
+}
+
 /**
  * Builds the Fastify app. A feature's plugin is registered only when its flag is on
  * (REQ-029, AC-029.2): with the flag off the feature exposes no route at all, so a request
@@ -117,7 +135,20 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
 
   if (options.webRoot !== undefined) {
     // Registered last and without a wildcard: only files that exist at start-up get a route.
-    await app.register(fastifyStatic, { root: options.webRoot, wildcard: false });
+    const root = options.webRoot;
+    const realRoot = realpathSync(root);
+    await app.register(fastifyStatic, {
+      root,
+      wildcard: false,
+      // The files are behind the session guard, so a shared cache must never keep them.
+      dotfiles: "ignore",
+      // A symlink in the web root that points elsewhere must not leak the file it points to.
+      allowedPath: (pathname) => isInsideRoot(realRoot, pathname),
+      cacheControl: false,
+      setHeaders: (response, path) => {
+        void response.header("cache-control", staticCacheControl(root, path));
+      },
+    });
   }
   return app;
 }

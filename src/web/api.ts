@@ -127,10 +127,11 @@ export const createQuickCard = (choreType: string): Promise<Card> =>
     body: { chore_type: choreType },
   });
 
-export const placeBet = (cardId: number): Promise<Bet> =>
+/** `quoteId` is the quote the user is looking at; the server refuses if the card moved on. */
+export const placeBet = (cardId: number, quoteId: number): Promise<Bet> =>
   request("/api/bets", betSchema, {
     method: "POST",
-    body: { card_id: cardId, kind: "do_nothing" },
+    body: { card_id: cardId, quote_id: quoteId, kind: "do_nothing" },
   });
 
 export const settleBet = (betId: number, answer: string): Promise<Settled> =>

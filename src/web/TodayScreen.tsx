@@ -22,7 +22,7 @@ export interface TodayScreenProps {
   /** Settle results of this session, by bet id; shown where the bet was. */
   readonly results: Readonly<Record<number, Settled>>;
   readonly onQuickCard: (choreType: string) => void;
-  readonly onBet: (cardId: number) => void;
+  readonly onBet: (cardId: number, quoteId: number) => void;
   readonly onSettle: (betId: number, answerId: string) => void;
 }
 
@@ -49,7 +49,7 @@ function CardSlip({
 }: {
   card: Card;
   busy: boolean;
-  onBet: (id: number) => void;
+  onBet: (cardId: number, quoteId: number) => void;
 }) {
   const { quote } = card;
   return (
@@ -77,7 +77,7 @@ function CardSlip({
         className="button primary"
         disabled={busy}
         onClick={() => {
-          onBet(card.id);
+          onBet(card.id, quote.id);
         }}
       >
         Bet: do nothing

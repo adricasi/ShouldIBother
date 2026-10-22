@@ -68,6 +68,55 @@ describe("NFR-010: FakeModelClient answers from fixtures keyed by job and scenar
     expect(fake.calls.map((call) => call.job)).toEqual(["judge", "judge", "bookmaker"]);
   });
 
+  it("replays a scripted fixture, one step per call: tool call, answer, then nothing left", async () => {
+    const fake = new FakeModelClient({
+      fixturesDir: fixtures({
+        "bookmaker/tool-then-answer.json": {
+          description: "tool call, then answer",
+          steps: [
+            { toolCalls: [{ name: "get_forecast", arguments: { hours_ahead: 24 } }] },
+            { content: { band: 3 }, model: "m2" },
+          ],
+        },
+        "bookmaker/invalid-then-valid.json": {
+          description: "retry succeeds",
+          steps: [{ content: "not json" }, { content: { band: 2 } }, { error: "timeout" }],
+        },
+        "bookmaker/both.json": {
+          description: "mixes steps with a single response",
+          steps: [{ content: "x" }],
+          content: "y",
+        },
+      }),
+    });
+    fake.setScenario("bookmaker", "tool-then-answer");
+    const first = await fake.chat(request("bookmaker"));
+    expect(first.toolCalls).toEqual([{ name: "get_forecast", arguments: { hours_ahead: 24 } }]);
+    // The follow-up call carries the tool loop: the assistant's call and the tool's result.
+    const second = await fake.chat({
+      ...request("bookmaker"),
+      messages: [
+        { role: "user", content: "q" },
+        { role: "assistant", content: "", toolCalls: first.toolCalls },
+        { role: "tool", content: "{}", toolName: "get_forecast" },
+      ],
+    });
+    expect(second).toMatchObject({ content: '{"band":3}', toolCalls: [], model: "m2" });
+    await expect(fake.chat(request("bookmaker"))).rejects.toThrow("has 2 steps; call 3 has none");
+
+    fake.setScenario("bookmaker", "invalid-then-valid");
+    expect((await fake.chat(request("bookmaker"))).content).toBe("not json");
+    expect((await fake.chat(request("bookmaker"))).content).toBe('{"band":2}');
+    await expect(fake.chat(request("bookmaker"))).rejects.toBeInstanceOf(ModelTimeoutError);
+
+    // Selecting a scenario again starts its script over.
+    fake.setScenario("bookmaker", "invalid-then-valid");
+    expect((await fake.chat(request("bookmaker"))).content).toBe("not json");
+
+    fake.setScenario("bookmaker", "both");
+    await expect(fake.chat(request("bookmaker"))).rejects.toThrow();
+  });
+
   it("raises the runtime errors a fixture describes", async () => {
     const fake = new FakeModelClient({
       fixturesDir: fixtures({

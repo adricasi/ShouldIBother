@@ -27,7 +27,7 @@ CREATE TABLE bets (
   card_id            INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
   kind               TEXT    NOT NULL CHECK (kind IN ('do_nothing', 'do_it')),
   band               INTEGER NOT NULL CHECK (band BETWEEN 0 AND 4),
-  odds               INTEGER NOT NULL CHECK (odds IN (15, 35, 50, 70, 85)),
+  odds               INTEGER NOT NULL,
   odds_source        TEXT    NOT NULL CHECK (odds_source IN ('rule', 'gemma')),
   reason             TEXT    NOT NULL,
   gemma_band         INTEGER CHECK (gemma_band BETWEEN 0 AND 4),
@@ -41,10 +41,13 @@ CREATE TABLE bets (
   settle_at          INTEGER NOT NULL,
   status             TEXT    NOT NULL DEFAULT 'open' CHECK (status IN (
     'open', 'due', 'awaiting_weather', 'awaiting_gemma', 'settled', 'undone', 'cashed_out'
-  ))
+  )),
+  CHECK (odds = CASE band WHEN 0 THEN 15 WHEN 1 THEN 35 WHEN 2 THEN 50 WHEN 3 THEN 70 WHEN 4 THEN 85 END)
 );
 CREATE INDEX bets_status_settle_at ON bets (status, settle_at);
 CREATE INDEX bets_card_id ON bets (card_id);
+-- One active bet per card, also when two requests race (an undone bet frees the card).
+CREATE UNIQUE INDEX bets_one_active_per_card ON bets (card_id) WHERE status != 'undone';
 
 CREATE TABLE photos (
   id          TEXT    PRIMARY KEY,
@@ -54,8 +57,11 @@ CREATE TABLE photos (
   file        TEXT    NOT NULL,
   received_at INTEGER NOT NULL,
   width       INTEGER NOT NULL,
-  height      INTEGER NOT NULL
+  height      INTEGER NOT NULL,
+  CHECK (card_id IS NOT NULL OR bet_id IS NOT NULL)
 );
+CREATE INDEX photos_card_id ON photos (card_id);
+CREATE INDEX photos_bet_id ON photos (bet_id);
 
 CREATE TABLE gemma_decisions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,20 +82,26 @@ CREATE TABLE gemma_decisions (
   created_at     INTEGER NOT NULL
 );
 CREATE INDEX gemma_decisions_job ON gemma_decisions (job, created_at);
+CREATE INDEX gemma_decisions_card_id ON gemma_decisions (card_id);
+CREATE INDEX gemma_decisions_bet_id ON gemma_decisions (bet_id);
+CREATE INDEX gemma_decisions_photo_id ON gemma_decisions (photo_id);
 
 CREATE TABLE quotes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   card_id     INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
   source      TEXT    NOT NULL CHECK (source IN ('rule', 'gemma')),
   band        INTEGER NOT NULL CHECK (band BETWEEN 0 AND 4),
-  odds        INTEGER NOT NULL CHECK (odds IN (15, 35, 50, 70, 85)),
+  odds        INTEGER NOT NULL,
   with_photo  INTEGER NOT NULL DEFAULT 0 CHECK (with_photo IN (0, 1)),
+  photo_id    TEXT    REFERENCES photos(id) ON DELETE CASCADE,
   reason      TEXT    NOT NULL,
   settle_at   INTEGER NOT NULL,
   decision_id INTEGER REFERENCES gemma_decisions(id) ON DELETE SET NULL,
-  created_at  INTEGER NOT NULL
+  created_at  INTEGER NOT NULL,
+  CHECK (odds = CASE band WHEN 0 THEN 15 WHEN 1 THEN 35 WHEN 2 THEN 50 WHEN 3 THEN 70 WHEN 4 THEN 85 END)
 );
 CREATE INDEX quotes_card_id ON quotes (card_id, id);
+CREATE INDEX quotes_photo_id ON quotes (photo_id);
 
 CREATE TABLE settlements (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +120,9 @@ CREATE TABLE settlements (
   final       INTEGER NOT NULL DEFAULT 1 CHECK (final IN (0, 1))
 );
 CREATE INDEX settlements_bet_id ON settlements (bet_id);
+CREATE INDEX settlements_appeal_of ON settlements (appeal_of);
+-- One settlement per bet; an appeal is a second row with appeal_of set (REQ-022).
+CREATE UNIQUE INDEX settlements_one_original_per_bet ON settlements (bet_id) WHERE appeal_of IS NULL;
 
 CREATE TABLE weather_cache (
   key        TEXT    PRIMARY KEY,
