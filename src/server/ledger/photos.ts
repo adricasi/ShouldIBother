@@ -175,15 +175,23 @@ export function getPhotoRow(db: Db, id: string): PhotoRow {
  * the next checkpoint, or the next start, completes it. Returns whether it finished.
  */
 export function checkpointAfterDelete(deps: Pick<LedgerDeps, "db" | "photos">): boolean {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const [result] = deps.db.pragma("wal_checkpoint(TRUNCATE)") as { busy: number }[];
-    if (result === undefined || result.busy === 0) {
-      return true;
+  // The connection's busy timeout (5 s) would make a delete wait on a slow reader; the checkpoint
+  // is retried below instead, so it must not wait.
+  const timeout = deps.db.pragma("busy_timeout", { simple: true }) as number;
+  deps.db.pragma("busy_timeout = 0");
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const [result] = deps.db.pragma("wal_checkpoint(TRUNCATE)") as { busy: number }[];
+      if (result === undefined || result.busy === 0) {
+        return true;
+      }
+      if (attempt === 0) {
+        // A short, synchronous pause: this runs once per delete, never in a loop.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
     }
-    if (attempt === 0) {
-      // A short, synchronous pause: this runs once per delete, never in a loop.
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
-    }
+  } finally {
+    deps.db.pragma(`busy_timeout = ${String(timeout)}`);
   }
   deps.photos.warn(
     "The database checkpoint after a delete could not finish (another process is reading); deleted rows may stay in the WAL file until the next checkpoint",
