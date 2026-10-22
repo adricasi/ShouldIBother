@@ -1,5 +1,6 @@
-import type { Bet, Card, Settled, Today } from "./api.js";
-import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
+import type { Card, Settled, Today } from "./api.js";
+import { DueSlip, VERDICT_TITLES, WaitingLine } from "./BetParts.js";
+import { formatLongDate, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 
 export interface QuickChip {
@@ -22,16 +23,13 @@ export interface TodayScreenProps {
   /** Settle results of this session, by bet id; shown where the bet was. */
   readonly results: Readonly<Record<number, Settled>>;
   readonly onQuickCard: (choreType: string) => void;
+  /** The server's clock estimated now, for the Undo countdown. */
+  readonly nowMs: number;
   readonly onBet: (cardId: number) => void;
+  readonly onDoIt: (cardId: number) => void;
+  readonly onUndo: (betId: number) => void;
   readonly onSettle: (betId: number, answerId: string) => void;
 }
-
-const VERDICT_TITLES: Readonly<Record<string, string>> = {
-  win: "You win",
-  small_loss: "Small loss",
-  normal_loss: "Loss",
-  harmful_loss: "Harmful loss",
-};
 
 function OddsTile({ odds, bandName }: { odds: number; bandName: string }) {
   return (
@@ -46,10 +44,12 @@ function CardSlip({
   card,
   busy,
   onBet,
+  onDoIt,
 }: {
   card: Card;
   busy: boolean;
   onBet: (id: number) => void;
+  onDoIt: (id: number) => void;
 }) {
   const { quote } = card;
   return (
@@ -82,18 +82,21 @@ function CardSlip({
       >
         Bet: do nothing
       </button>
+      <button
+        type="button"
+        className="button secondary"
+        disabled={busy}
+        onClick={() => {
+          onDoIt(card.id);
+        }}
+      >
+        I&apos;ll do it
+      </button>
+      <p className="meta">
+        I&apos;ll do it scores {formatPoints(quote.payouts.do_it_if_not_needed)} if the weather
+        would not have helped, {formatPoints(quote.payouts.do_it_if_needed)} if it would have.
+      </p>
     </article>
-  );
-}
-
-function WaitingLine({ bet }: { bet: Bet }) {
-  return (
-    <li>
-      <span>{bet.title}</span>
-      <span className="meta">
-        {formatOdds(bet.band_name, bet.odds)} · settles {formatSettleTime(bet.settle_at)}
-      </span>
-    </li>
   );
 }
 
@@ -111,40 +114,6 @@ function ResultSlip({ result }: { result: Settled }) {
         </p>
       ) : null}
     </div>
-  );
-}
-
-function DueSlip({
-  bet,
-  busy,
-  onSettle,
-}: {
-  bet: Bet;
-  busy: boolean;
-  onSettle: (betId: number, answerId: string) => void;
-}) {
-  return (
-    <article className="slip due" aria-label={`${bet.title}, ready to settle`}>
-      <p className="eyebrow">Settle now · bet at {formatOdds(bet.band_name, bet.odds)}</p>
-      <h3>{bet.title}</h3>
-      <p className="question">How did it turn out?</p>
-      <div className="answers">
-        {bet.tap_answers.map((answer) => (
-          <button
-            key={answer.id}
-            type="button"
-            className="button secondary"
-            disabled={busy}
-            onClick={() => {
-              onSettle(bet.id, answer.id);
-            }}
-          >
-            {answer.label}
-          </button>
-        ))}
-      </div>
-      <p className="meta">One tap pays half of a win; losses cost the same either way.</p>
-    </article>
   );
 }
 
@@ -208,7 +177,13 @@ export function TodayScreen(props: TodayScreenProps) {
                 <p className="empty">No chores yet. Tap a chip to get odds.</p>
               ) : (
                 today.cards.map((card) => (
-                  <CardSlip key={card.id} card={card} busy={busy} onBet={props.onBet} />
+                  <CardSlip
+                    key={card.id}
+                    card={card}
+                    busy={busy}
+                    onBet={props.onBet}
+                    onDoIt={props.onDoIt}
+                  />
                 ))
               )}
             </section>
@@ -222,7 +197,13 @@ export function TodayScreen(props: TodayScreenProps) {
               ) : (
                 <ul className="waiting">
                   {today.open_bets.map((bet) => (
-                    <WaitingLine key={bet.id} bet={bet} />
+                    <WaitingLine
+                      key={bet.id}
+                      bet={bet}
+                      nowMs={props.nowMs}
+                      busy={busy}
+                      onUndo={props.onUndo}
+                    />
                   ))}
                 </ul>
               )}

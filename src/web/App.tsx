@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ApiError,
   createQuickCard,
+  fetchSlips,
   fetchToday,
   placeBet,
   settleBet,
+  undoBet,
+  type BetKind,
   type Settled,
+  type Slips,
   type Today,
 } from "./api.js";
+import type { Route } from "./Nav.js";
+import { estimateServerNow, startPolling } from "./polling.js";
+import { SlipsScreen } from "./SlipsScreen.js";
 import { TodayScreen, type Notice } from "./TodayScreen.js";
 
-/** Design: Today polls every 30 s while the page is visible. */
-const POLL_MS = 30_000;
+/** Countdowns are re-rendered this often between the 30 s polls. */
+const CLOCK_TICK_MS = 15_000;
 
 function describe(error: unknown): Notice {
   return {
@@ -21,16 +28,58 @@ function describe(error: unknown): Notice {
   };
 }
 
+function routeOf(hash: string): Route {
+  return hash === "#/slips" ? "slips" : "today";
+}
+
+function useRoute(): Route {
+  const [route, setRoute] = useState<Route>(() => routeOf(window.location.hash));
+  useEffect(() => {
+    const onChange = (): void => {
+      setRoute(routeOf(window.location.hash));
+    };
+    window.addEventListener("hashchange", onChange);
+    return () => {
+      window.removeEventListener("hashchange", onChange);
+    };
+  }, []);
+  return route;
+}
+
+/** The server's clock, estimated from the last answer and re-read every few seconds. */
+function useServerNow(serverNowIso: string | undefined): number {
+  const base = useMemo(
+    () => ({ serverMs: Date.parse(serverNowIso ?? new Date().toISOString()), localMs: Date.now() }),
+    [serverNowIso],
+  );
+  const [localNow, setLocalNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLocalNow(Date.now());
+    }, CLOCK_TICK_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  return estimateServerNow(base, Math.max(localNow, base.localMs));
+}
+
 export function App() {
+  const route = useRoute();
   const [today, setToday] = useState<Today | undefined>(undefined);
+  const [slips, setSlips] = useState<Slips | undefined>(undefined);
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const [results, setResults] = useState<Record<number, Settled>>({});
   const [busy, setBusy] = useState(false);
+  const todayNow = useServerNow(today?.now);
+  const slipsNow = useServerNow(slips?.now);
 
-  /** Reloads Today. A poll that succeeds clears an old error; an action's reload keeps its notice. */
+  /** Reloads Today and Slips. A poll that succeeds clears an old error; an action's reload keeps its notice. */
   const refresh = useCallback(async (isPoll: boolean) => {
     try {
-      setToday(await fetchToday());
+      const [nextToday, nextSlips] = await Promise.all([fetchToday(), fetchSlips()]);
+      setToday(nextToday);
+      setSlips(nextSlips);
       if (isPoll) {
         setNotice((current) => (current?.kind === "error" ? undefined : current));
       }
@@ -39,19 +88,16 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => {
-    void refresh(true);
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") {
+  // Both screens refresh every 30 s while the page is visible, and at once when it comes back.
+  useEffect(
+    () =>
+      startPolling(() => {
         void refresh(true);
-      }
-    }, POLL_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [refresh]);
+      }),
+    [refresh],
+  );
 
-  /** Runs one action, then reloads Today so the screen shows what the server now holds. */
+  /** Runs one action, then reloads so the screens show what the server now holds. */
   const act = useCallback(
     async (action: () => Promise<Notice | undefined>) => {
       setBusy(true);
@@ -67,12 +113,54 @@ export function App() {
     [refresh],
   );
 
+  const place = (cardId: number, kind: BetKind): void => {
+    void act(async () => {
+      await placeBet(cardId, kind);
+      return {
+        kind: "info",
+        text:
+          kind === "do_it"
+            ? "Noted: you will do it. It is scored when it settles. You can undo it for 5 minutes."
+            : "Bet placed. It waits until its settle time. You can undo it for 5 minutes.",
+      };
+    });
+  };
+
+  const onSettle = (betId: number, answerId: string): void => {
+    void act(async () => {
+      const settled = await settleBet(betId, answerId);
+      setResults((previous) => ({ ...previous, [betId]: settled }));
+      return undefined;
+    });
+  };
+
+  const onUndo = (betId: number): void => {
+    void act(async () => {
+      await undoBet(betId);
+      return { kind: "info", text: "Undone. No points either way." };
+    });
+  };
+
+  if (route === "slips") {
+    return (
+      <SlipsScreen
+        slips={slips}
+        flags={today?.flags ?? {}}
+        nowMs={slipsNow}
+        busy={busy}
+        notice={notice}
+        onSettle={onSettle}
+        onUndo={onUndo}
+      />
+    );
+  }
   return (
     <TodayScreen
       today={today}
       busy={busy}
       notice={notice}
       results={results}
+      nowMs={todayNow}
       onQuickCard={(choreType) => {
         void act(async () => {
           await createQuickCard(choreType);
@@ -80,18 +168,13 @@ export function App() {
         });
       }}
       onBet={(cardId) => {
-        void act(async () => {
-          await placeBet(cardId);
-          return { kind: "info", text: "Bet placed. It waits until its settle time." };
-        });
+        place(cardId, "do_nothing");
       }}
-      onSettle={(betId, answerId) => {
-        void act(async () => {
-          const settled = await settleBet(betId, answerId);
-          setResults((previous) => ({ ...previous, [betId]: settled }));
-          return undefined;
-        });
+      onDoIt={(cardId) => {
+        place(cardId, "do_it");
       }}
+      onSettle={onSettle}
+      onUndo={onUndo}
     />
   );
 }
