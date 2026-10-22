@@ -9,6 +9,11 @@ import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./fo
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
+import { ChoreTile } from "./ui/ChoreTile.js";
+import { choreIconName, Icon } from "./ui/Icon.js";
+import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { PrivacyProvider } from "./ui/PrivacyNote.js";
+import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 
 export interface QuickChip {
   readonly choreType: string;
@@ -46,6 +51,8 @@ export interface TodayScreenProps {
   readonly onPhoto?: (cardId: number, file: File) => void;
   /** Delete a photo and what was derived from it (AC-015.2). */
   readonly onDeletePhoto?: (photoId: string) => void;
+  /** Reload Today after a failed first load (the error state's Try again). */
+  readonly onReload?: () => void;
   /** Laundry planner (flag `laundryPlanner`): "Need anything washed before <day>?" (AC-021.2). */
   readonly onPlanNeed?: (cardId: number, needed: boolean) => void;
   /** Laundry planner: follow Wash today (AC-021.3). */
@@ -210,7 +217,9 @@ function CardSlip({
     // AC-012.1: a "Do it now" alert has a reason and no bet action.
     return (
       <article className="slip alert" aria-label={`${card.title}, do it now`}>
-        <p className="eyebrow">Lazy Bookie · Safety</p>
+        <p className="eyebrow">
+          <Icon name="alert" /> Lazy Bookie · Safety
+        </p>
         <h3>Do it now: {card.title}</h3>
         <p role="alert">{card.alert_reason}</p>
         <p className="meta">The weather is too risky to bet on this one.</p>
@@ -233,21 +242,36 @@ function CardSlip({
   if (quote === null) {
     // AC-014.4, AC-016.4, AC-016.5: no odds, and no bet action, with the reason in words.
     return (
-      <article className="slip" aria-label={`${card.title}, no odds`}>
-        <p className="eyebrow">Lazy Bookie · No bet</p>
-        <h3>{card.title}</h3>
+      <article className="slip no-bet" aria-label={`${card.title}, no odds`}>
+        <div className="slip-head">
+          <ChoreTile title={card.title} choreType={card.chore_type} />
+          <div className="line-main">
+            <p className="eyebrow">Lazy Bookie · No bet</p>
+            <h3>{card.title}</h3>
+          </div>
+        </div>
         <p>{card.notice}</p>
       </article>
     );
   }
   return (
     <article
-      className="slip"
+      className="slip ticket"
       aria-label={`${card.title}, ${formatOdds(quote.band_name, quote.odds)}`}
     >
-      <p className="eyebrow">Lazy Bookie · Bet slip</p>
+      <div className="slip-top">
+        <p className="eyebrow">Lazy Bookie · Bet slip</p>
+        <p className="eyebrow">Nº {String(card.id).padStart(4, "0")}</p>
+      </div>
+      <hr className="rule" />
       <div className="slip-head">
-        <h3>{card.title}</h3>
+        <ChoreTile title={card.title} choreType={card.chore_type} />
+        <div className="line-main">
+          <h3>{card.title}</h3>
+          <p className="meta settles">
+            <Icon name="clock" /> Settles {formatSettleTime(quote.settle_at)}
+          </p>
+        </div>
         <OddsTile odds={quote.odds} bandName={quote.band_name} />
       </div>
       <p className="label-tag">{quote.label}</p>
@@ -255,26 +279,26 @@ function CardSlip({
       {plan === null ? null : <PlanDays plan={plan} />}
       <GemmaBlock card={card} busy={busy} onRetry={onRetry} onAnswer={onAnswer} />
       {plan === null ? <PhotoBlock card={card} busy={busy} actions={photoActions} /> : null}
-      <p className="meta">Settles {formatSettleTime(quote.settle_at)}</p>
+      <hr className="rule notched" />
       <p className="payouts">
         <span className="win">Win {formatPoints(quote.payouts.win_with_tap)}</span>
-        <span>
+        <span className="wrong">
           If wrong {formatPoints(quote.payouts.small_loss)} to{" "}
           {formatPoints(quote.payouts.harmful_loss)}
         </span>
       </p>
-      <button
-        type="button"
-        className="button primary"
-        disabled={busy}
-        onClick={() => {
-          onBet(card.id, quote.id);
-        }}
-      >
-        Bet: do nothing
-      </button>
-      {plan === null ? (
-        <>
+      <div className="button-row">
+        <button
+          type="button"
+          className="button primary"
+          disabled={busy}
+          onClick={() => {
+            onBet(card.id, quote.id);
+          }}
+        >
+          Bet: do nothing
+        </button>
+        {plan === null ? (
           <button
             type="button"
             className="button secondary"
@@ -285,11 +309,13 @@ function CardSlip({
           >
             I&apos;ll do it
           </button>
-          <p className="meta">
-            I&apos;ll do it scores {formatPoints(quote.payouts.do_it_if_not_needed)} if the weather
-            would not have helped, {formatPoints(quote.payouts.do_it_if_needed)} if it would have.
-          </p>
-        </>
+        ) : null}
+      </div>
+      {plan === null ? (
+        <p className="meta">
+          I&apos;ll do it scores {formatPoints(quote.payouts.do_it_if_not_needed)} if the weather
+          would not have helped, {formatPoints(quote.payouts.do_it_if_needed)} if it would have.
+        </p>
       ) : (
         <p className="meta">
           Skip today wins if the load dries outside on {plan.best_day?.weekday ?? "that day"}.
@@ -316,7 +342,7 @@ export function TodayScreen(props: TodayScreenProps) {
     ...(props.onSettleAnswer === undefined ? {} : { onAnswer: props.onSettleAnswer }),
   };
   return (
-    <>
+    <PrivacyProvider voice={today?.flags["voice"] === true}>
       <main className="screen">
         <header className="header">
           <div>
@@ -325,6 +351,7 @@ export function TodayScreen(props: TodayScreenProps) {
           </div>
           {today === undefined ? null : (
             <p className="points" aria-label={`${today.points.total} points`}>
+              <Icon name="trophy" />
               {formatPoints(today.points.total)} pts
             </p>
           )}
@@ -343,13 +370,12 @@ export function TodayScreen(props: TodayScreenProps) {
           </p>
         )}
 
-        {notice === undefined ? null : (
-          <p
-            className={`notice ${notice.kind}`}
-            role={notice.kind === "error" ? "alert" : "status"}
-          >
-            {notice.text}
-          </p>
+        {today === undefined && notice?.kind === "error" ? (
+          <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>
+            {notice.text} Your bets are safe; this screen tries again every 30 seconds.
+          </ErrorState>
+        ) : (
+          <NoticeBanner notice={notice} />
         )}
 
         <section aria-labelledby="chips-title">
@@ -367,6 +393,7 @@ export function TodayScreen(props: TodayScreenProps) {
                   props.onQuickCard(chip.choreType);
                 }}
               >
+                <Icon name={choreIconName(chip.label, chip.choreType)} />
                 {chip.label}
               </button>
             ))}
@@ -379,6 +406,7 @@ export function TodayScreen(props: TodayScreenProps) {
                   props.onQuickCard(PLANNER_CHIP);
                 }}
               >
+                <Icon name="shirt" />
                 Plan the wash
               </button>
             ) : null}
@@ -387,7 +415,9 @@ export function TodayScreen(props: TodayScreenProps) {
         </section>
 
         {today === undefined ? (
-          <p className="meta">Loading…</p>
+          notice?.kind === "error" ? null : (
+            <LoadingState what="today's slips" />
+          )
         ) : (
           <>
             <section aria-labelledby="slips-title">
@@ -395,7 +425,7 @@ export function TodayScreen(props: TodayScreenProps) {
                 Today&apos;s slips
               </h2>
               {today.cards.length === 0 ? (
-                <p className="empty">No chores yet. Tap a chip to get odds.</p>
+                <EmptyState icon="sun">No chores yet. Tap a chip to get odds.</EmptyState>
               ) : (
                 today.cards.map((card) => (
                   <CardSlip
@@ -418,7 +448,7 @@ export function TodayScreen(props: TodayScreenProps) {
                 Waiting
               </h2>
               {today.open_bets.length === 0 ? (
-                <p className="empty">Open bets wait here until they settle.</p>
+                <EmptyState icon="clock">Open bets wait here until they settle.</EmptyState>
               ) : (
                 <ul className="waiting">
                   {today.open_bets.map((bet) => (
@@ -439,7 +469,7 @@ export function TodayScreen(props: TodayScreenProps) {
                 Settle now
               </h2>
               {today.due_bets.length === 0 && settledResults.length === 0 ? (
-                <p className="empty">Bets ready to settle appear here.</p>
+                <EmptyState icon="ticket">Bets ready to settle appear here.</EmptyState>
               ) : null}
               {today.due_bets.map((bet) => (
                 <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
@@ -457,6 +487,6 @@ export function TodayScreen(props: TodayScreenProps) {
         {today === undefined ? null : <p className="meta attribution">{today.attribution}</p>}
       </main>
       <Nav flags={today?.flags ?? {}} />
-    </>
+    </PrivacyProvider>
   );
 }

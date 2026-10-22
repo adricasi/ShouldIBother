@@ -1,6 +1,9 @@
 import { useId, type ChangeEvent } from "react";
 
 import type { Card } from "./api.js";
+import { Icon } from "./ui/Icon.js";
+import { OddsMeter } from "./ui/OddsMeter.js";
+import { PrivacyNote } from "./ui/PrivacyNote.js";
 
 export interface PhotoActions {
   readonly onPhoto: (cardId: number, file: File) => void;
@@ -12,10 +15,13 @@ export function PhotoPicker({
   label,
   busy,
   onPick,
+  showPrivacy = true,
 }: {
   label: string;
   busy: boolean;
   onPick: (file: File) => void;
+  /** The privacy line under the button; off where several buttons share one line below them. */
+  showPrivacy?: boolean;
 }) {
   const inputId = useId();
   const change = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -37,8 +43,10 @@ export function PhotoPicker({
         onChange={change}
       />
       <label htmlFor={inputId} className={`button secondary compact${busy ? " disabled" : ""}`}>
+        <Icon name="camera" />
         {label}
       </label>
+      {showPrivacy ? <PrivacyNote /> : null}
     </>
   );
 }
@@ -89,20 +97,24 @@ export function PhotoBlock({
         </p>
       ) : null}
       {photo.odds_change === null ? null : (
-        <p
-          className="odds-change"
-          aria-label={`Odds changed from ${photo.odds_change.before} to ${photo.odds_change.after} percent`}
-        >
-          With the photo: {photo.odds_change.text}
-        </p>
+        <OddsMeter
+          before={photo.odds_change.before}
+          after={photo.odds_change.after}
+          text={photo.odds_change.text}
+        />
       )}
       {photo.saw.length === 0 ? null : (
         <div className="saw">
-          <p className="eyebrow">What Gemma saw</p>
+          <p className="eyebrow leaf">
+            <Icon name="sparkle" /> What Gemma saw
+          </p>
           <dl>
             {photo.saw.map((item) => (
               <div key={item.name} className="saw-row">
-                <dt>{item.label}</dt>
+                <dt>
+                  <Icon name="check" />
+                  {item.label}
+                </dt>
                 <dd>{item.value}</dd>
               </div>
             ))}
@@ -117,6 +129,7 @@ export function PhotoBlock({
         {photo.state === "inspecting" ? null : (
           <PhotoPicker
             label="Send another photo"
+            showPrivacy={false}
             busy={busy}
             onPick={(file) => {
               actions.onPhoto(card.id, file);
@@ -134,6 +147,7 @@ export function PhotoBlock({
           Delete photo
         </button>
       </div>
+      <PrivacyNote />
     </div>
   );
 }

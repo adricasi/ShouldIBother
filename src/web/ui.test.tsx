@@ -173,7 +173,8 @@ describe("Today screen", () => {
       notice: { kind: "error", text: "Gemma could not judge this bet yet" },
     });
     expect(html).toContain("PAID OUT");
-    expect(html).toContain("You win · +15");
+    expect(html).toContain('<span class="result-title">You win</span>');
+    expect(html).toContain('<span class="receipt-figure">+15</span>');
     expect(html).toContain("Likely · 70%");
     expect(html).toContain("One tap, paid at half");
     expect(html).toContain("Modelled recent weather (Open-Meteo)");
@@ -208,7 +209,8 @@ describe("Today screen", () => {
 
   it("AC-010.2: a loss shows the points, the reason and the fixed copy, without the stamp", () => {
     const html = screen(emptyToday, { results: { 9: lossReceipt } });
-    expect(html).toContain("Loss · −50");
+    expect(html).toContain('<span class="result-title">Loss</span>');
+    expect(html).toContain('<span class="receipt-figure">−50</span>');
     expect(html).toContain("The soil is dry.");
     expect(html).toContain("The weather did not cover this one");
     expect(html).not.toContain("PAID OUT");

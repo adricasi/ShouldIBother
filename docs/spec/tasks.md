@@ -195,7 +195,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: stamp animation (scale 1.6 → 1, −8°, 220–280 ms) with reduced-motion fade; flag `stampAnimation`. (Export and delete-all moved to T-009: they are Must.)
   - Done when: component tests for AC-017.1 and AC-017.2 (reduced motion → no transform animation).
 
-- [ ] T-018: UI polish to the Figma design and accessibility pass
+- [x] T-018: UI polish to the Figma design and accessibility pass
   - Who / when: Agent W1 (`ui-designer`, then `ux-reviewer`) · Fri night (stacked on T-017); merged Sat AM
   - Requirements: NFR-009, REQ-003 (AC-003.5), REQ-010, REQ-028 (AC-028.1)
   - Depends on: T-009

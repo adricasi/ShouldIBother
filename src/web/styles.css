@@ -1,5 +1,21 @@
 @import "../../docs/design/tokens.css";
 
+/* Web-local additions to the Figma tokens (token proposals for the next export). */
+:root {
+  --icon-size: 1.25em;
+  --ring-size: calc(var(--space-6) * 2);
+  --tear-size: var(--space-2);
+  --notch-size: var(--space-4);
+  --photo-height: calc(var(--space-6) * 8);
+  --motion-pulse: 1200ms ease-in-out;
+  --tabbar-height: calc(var(--space-2) * 7);
+}
+
+/* The tab bar is fixed: a focused control must never end up under it (WCAG 2.4.11). */
+html {
+  scroll-padding-bottom: calc(var(--tabbar-height) + var(--space-6) + env(safe-area-inset-bottom));
+}
+
 * {
   box-sizing: border-box;
 }
@@ -11,6 +27,13 @@ body {
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
 }
 
 h1,
@@ -23,7 +46,8 @@ p {
 .screen {
   max-width: 480px;
   margin: 0 auto;
-  padding: var(--space-5) var(--space-5) calc(var(--space-6) * 4);
+  padding: var(--space-5) var(--space-5)
+    calc(var(--tabbar-height) + var(--space-6) * 2 + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -49,16 +73,28 @@ h3 {
   font-weight: 900;
   font-size: var(--text-title);
   text-transform: uppercase;
+  line-height: 1.05;
 }
 
 .eyebrow,
 .label-tag,
 .odds-band {
   font-family: var(--font-mono);
+  font-weight: 500;
   font-size: var(--text-label);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-ink-3-text);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.eyebrow.leaf {
+  color: var(--color-leaf);
 }
 
 .section-title {
@@ -70,6 +106,9 @@ h3 {
 }
 
 .points {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-weight: 600;
   background: var(--color-sun-soft);
@@ -84,11 +123,57 @@ h3 {
 }
 
 .empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-size: var(--text-small);
   color: var(--color-ink-3-text);
   border: var(--border-hair) dashed var(--color-line);
   border-radius: var(--radius-md);
   padding: var(--space-4);
+}
+
+.loading,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.error-state {
+  background: var(--color-card);
+  border: var(--border-strong) solid var(--color-coral);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.error-state .section-title {
+  margin: 0;
+}
+
+.skeleton {
+  height: calc(var(--space-6) * 2);
+  background: var(--color-line);
+  border-radius: var(--radius-md);
+}
+
+.skeleton.tall {
+  height: calc(var(--space-6) * 5);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: skeleton-pulse var(--motion-pulse) infinite alternate;
+  }
+}
+
+@keyframes skeleton-pulse {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .notice {
@@ -117,6 +202,7 @@ h3 {
 .chip,
 .button {
   min-height: var(--tap-min);
+  min-width: var(--tap-min);
   font-family: var(--font-body);
   font-size: var(--text-body);
   font-weight: 700;
@@ -124,7 +210,11 @@ h3 {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
+  font-weight: 600;
   font-size: var(--text-small);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -136,6 +226,10 @@ h3 {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4);
@@ -177,7 +271,7 @@ h3 {
 }
 
 .slip.due {
-  border: var(--border-strong) solid var(--color-leaf);
+  border: var(--border-strong) solid var(--color-sun);
 }
 
 .slip.alert {
@@ -185,11 +279,110 @@ h3 {
   border: var(--border-strong) solid var(--color-coral);
 }
 
-.slip-head {
+.slip.no-bet {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* A bet slip is a receipt: straight corners, a dashed rule with notches, a torn bottom edge. */
+.slip.ticket {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  margin-bottom: calc(var(--space-4) + var(--tear-size));
+}
+
+.slip.ticket::after {
+  content: "";
+  position: absolute;
+  inset: 100% 0 auto;
+  height: var(--tear-size);
+  background: conic-gradient(from 135deg at top, var(--color-card) 90deg, transparent 0);
+  background-size: calc(var(--tear-size) * 2) var(--tear-size);
+}
+
+.slip-top {
   display: flex;
   justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rule {
+  position: relative;
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: var(--border-hair) dashed var(--color-line);
+}
+
+.rule.notched {
+  width: calc(100% + var(--space-4) * 2);
+  margin-inline: calc(var(--space-4) * -1);
+}
+
+.rule.notched::before,
+.rule.notched::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: var(--notch-size);
+  height: var(--notch-size);
+  background: var(--color-paper);
+  border-radius: var(--radius-pill);
+}
+
+.rule.notched::before {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.rule.notched::after {
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+.slip-head {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+.chore-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  background: var(--color-sun-soft);
+  color: var(--color-amber-text);
+  border-radius: var(--radius-sm);
+}
+
+.slip-head .line-main {
+  flex: 1;
+}
+
+.settles {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+}
+
+.pill {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+}
+
+.pill.ready {
+  background: var(--color-leaf-soft);
+  color: var(--color-leaf);
 }
 
 .odds-tile {
@@ -198,7 +391,7 @@ h3 {
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   text-align: center;
-  min-width: 84px;
+  min-width: calc(var(--space-6) * 3);
 }
 
 .odds-tile .odds-band {
@@ -215,14 +408,31 @@ h3 {
 .payouts {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
   font-family: var(--font-mono);
+  font-weight: 600;
   font-size: var(--text-small);
+  text-transform: uppercase;
 }
 
 .payouts .win {
   background: var(--color-sun-soft);
-  padding: 0 var(--space-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.payouts .wrong {
+  color: var(--color-ink-3-text);
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2);
+}
+
+.button-row .button {
+  white-space: nowrap;
 }
 
 .question {
@@ -233,6 +443,23 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.answers.row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.answers.row .button {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.question.prompt {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-title);
+  text-transform: uppercase;
 }
 
 .waiting {
@@ -249,8 +476,53 @@ h3 {
   justify-content: space-between;
   gap: var(--space-3);
   background: var(--color-card);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-3);
+}
+
+.waiting .waiting-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.waiting .waiting-line > .button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--ring-size);
+  height: var(--ring-size);
+}
+
+.ring > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.ring-track {
+  stroke: var(--color-line);
+}
+
+.ring-fill {
+  stroke: var(--color-leaf);
+  stroke-linecap: round;
+}
+
+.ring-center {
+  display: grid;
+  place-items: center;
 }
 
 .result {
@@ -286,12 +558,21 @@ h3 {
   justify-content: space-around;
 }
 
+.tabbar li {
+  flex: 1;
+}
+
 .tabbar a {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  min-height: 56px;
-  padding: 0 var(--space-4);
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--tabbar-height);
+  min-width: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
+  font-weight: 500;
   font-size: var(--text-label);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -304,16 +585,17 @@ h3 {
   font-weight: 600;
 }
 
+.tabbar a:focus-visible {
+  outline-color: var(--color-sun);
+  outline-offset: -3px;
+}
+
 .button.compact {
   width: auto;
   min-width: var(--tap-min);
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-small);
   white-space: nowrap;
-}
-
-.waiting li {
-  align-items: center;
 }
 
 .line-main {
@@ -335,6 +617,14 @@ h3 {
   font-family: var(--font-mono);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.line-points.plus {
+  color: var(--color-leaf);
+}
+
+.line-points.minus {
+  color: var(--color-amber-text);
 }
 
 .attribution {
@@ -362,8 +652,14 @@ h3 {
 }
 
 .gemma-status.offline {
-  color: var(--color-coral);
+  color: var(--color-ink);
   font-weight: 700;
+}
+
+.privacy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .gemma-question,
@@ -398,10 +694,10 @@ label.button.disabled {
 }
 
 .photo-thumb {
-  width: 96px;
-  height: 96px;
+  width: 100%;
+  height: var(--photo-height);
   object-fit: cover;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: var(--border-hair) solid var(--color-line);
 }
 
@@ -409,10 +705,58 @@ label.button.disabled {
   font-weight: 700;
 }
 
+.odds-meter {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.odds-meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-weight: 700;
+}
+
+.odds-meter-figures {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-title);
+}
+
+.odds-before {
+  color: var(--color-ink-3-text);
+}
+
+.odds-bar {
+  display: block;
+  height: var(--space-2);
+  background: var(--color-line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.odds-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-sun), var(--color-leaf));
+}
+
+.saw {
+  display: grid;
+  gap: var(--space-2);
+  background: var(--color-paper);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
 .saw dl {
   margin: 0;
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .saw-row {
@@ -422,8 +766,14 @@ label.button.disabled {
 }
 
 .saw-row dt {
-  color: var(--color-ink);
-  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-2);
+}
+
+.saw-row dt .icon {
+  color: var(--color-leaf);
 }
 
 .saw-row dd {
@@ -455,6 +805,9 @@ label.button.disabled {
 }
 
 .chips-static li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-small);
   background: var(--color-rain-soft);
@@ -486,6 +839,50 @@ label.button.disabled {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
+}
+
+.receipt-head .stamp {
+  flex: none;
+}
+
+.receipt-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.receipt-total .result-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-small);
+  letter-spacing: 0.08em;
+}
+
+.receipt-figure {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-hero);
+  line-height: 1;
+}
+
+.receipt-total.plus .receipt-figure {
+  color: var(--color-ink);
+}
+
+.receipt-total.minus .receipt-figure {
+  color: var(--color-amber-text);
+}
+
+.barcode {
+  height: var(--space-6);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-ink) 0 var(--space-1),
+    transparent var(--space-1) calc(var(--space-1) * 2),
+    var(--color-ink) calc(var(--space-1) * 2) calc(var(--space-1) * 2.5),
+    transparent calc(var(--space-1) * 2.5) calc(var(--space-1) * 4)
+  );
 }
 
 /* Static (T-009); `.stamp-animated` adds the landing animation behind the flag stampAnimation (T-017). */
@@ -564,6 +961,11 @@ label.button.disabled {
   text-align: right;
 }
 
+.receipt-rows .chips-static {
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
 .gemma-read ul,
 .assumptions {
   margin: 0;
@@ -576,9 +978,23 @@ label.button.disabled {
   padding: var(--space-3);
 }
 
+.week {
+  border-block: var(--border-hair) dashed var(--color-line);
+  padding-block: var(--space-3);
+}
+
+.week .section-title {
+  margin-bottom: var(--space-1);
+}
+
 .week .stat-tiles {
   flex-direction: row;
   gap: var(--space-3);
+}
+
+.week .stat-tiles > div {
+  background: transparent;
+  padding: var(--space-2) 0;
 }
 
 .stat-tiles > div {
@@ -606,11 +1022,18 @@ label.button.disabled {
   align-items: flex-start;
 }
 
+.settled-line .line-main {
+  flex: 1;
+}
+
 .receipt-details summary {
   min-height: var(--tap-min);
   display: flex;
   align-items: center;
   cursor: pointer;
+  font-weight: 700;
+  color: var(--color-leaf);
+  text-decoration: underline;
 }
 
 .score-tiles {
@@ -704,24 +1127,29 @@ label.button.disabled {
 /* Laundry planner (flag laundryPlanner): the four scored days of a plan card. */
 .plan-days {
   list-style: none;
-  margin: var(--space-2, 8px) 0;
+  margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--space-1, 4px);
+  gap: var(--space-2);
 }
 
 .plan-days li {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
 }
 
 .plan-days .plan-day {
-  min-width: 6.5rem;
+  min-width: calc(var(--space-6) * 4);
   font-weight: 600;
 }
 
-.plan-days li.best .plan-day::before {
-  content: "\2713\00a0";
+.plan-days .best-day {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-leaf);
 }

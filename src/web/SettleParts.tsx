@@ -1,5 +1,6 @@
 import type { Receipt, RecordedWeather, SavingsTotals } from "./api.js";
 import { stampClassName } from "./stamp.js";
+import { Icon, type IconName } from "./ui/Icon.js";
 import {
   formatDuration,
   formatKwh,
@@ -12,23 +13,32 @@ import {
 
 type Digest = RecordedWeather["digest"];
 
-/** The recorded weather as short chips: rain, temperature, wind, sun (AC-008.1). */
-export function weatherChips(digest: Digest): string[] {
-  const chips: string[] = [];
+interface WeatherChip {
+  readonly icon: IconName;
+  readonly text: string;
+}
+
+function weatherChipItems(digest: Digest): WeatherChip[] {
+  const chips: WeatherChip[] = [];
   if (digest.rain_mm !== null) {
     const wet = digest.wet_hours === null ? "" : `, ${digest.wet_hours} wet h`;
-    chips.push(`Rain ${digest.rain_mm} mm${wet}`);
+    chips.push({ icon: "drop", text: `Rain ${digest.rain_mm} mm${wet}` });
   }
   if (digest.temp_min_c !== null && digest.temp_max_c !== null) {
-    chips.push(`${digest.temp_min_c} to ${digest.temp_max_c} °C`);
+    chips.push({ icon: "thermo", text: `${digest.temp_min_c} to ${digest.temp_max_c} °C` });
   }
   if (digest.wind_max_kmh !== null) {
-    chips.push(`Wind up to ${digest.wind_max_kmh} km/h`);
+    chips.push({ icon: "wind", text: `Wind up to ${digest.wind_max_kmh} km/h` });
   }
   if (digest.sunshine_h !== null) {
-    chips.push(`Sun ${digest.sunshine_h} h`);
+    chips.push({ icon: "sun", text: `Sun ${digest.sunshine_h} h` });
   }
   return chips;
+}
+
+/** The recorded weather as short chips: rain, temperature, wind, sun (AC-008.1). */
+export function weatherChips(digest: Digest): string[] {
+  return weatherChipItems(digest).map((chip) => chip.text);
 }
 
 /** "Modelled recent weather" with its numbers; says so when they are not in yet. */
@@ -40,8 +50,11 @@ export function WeatherLine({ weather }: { weather: { label: string; digest: Dig
     <div className="weather-record">
       <p className="eyebrow">{weather.label}</p>
       <ul className="chips-static" aria-label="Recorded weather">
-        {weatherChips(weather.digest).map((chip) => (
-          <li key={chip}>{chip}</li>
+        {weatherChipItems(weather.digest).map((chip) => (
+          <li key={chip.text}>
+            <Icon name={chip.icon} />
+            {chip.text}
+          </li>
         ))}
       </ul>
     </div>
@@ -68,16 +81,17 @@ export function ReceiptCard({
       className={`receipt ${paid ? "paid" : "plain"}`}
       aria-label={`${receipt.title}, ${receipt.verdict_title}, ${formatPoints(receipt.points)} points`}
     >
-      <p className="eyebrow">Lazy Bookie · {paid ? "Payout receipt" : "Result"}</p>
+      <div className="slip-top">
+        <p className="eyebrow">Lazy Bookie · {paid ? "Payout receipt" : "Result"}</p>
+        <p className="eyebrow">Nº {String(receipt.bet_id).padStart(4, "0")}</p>
+      </div>
+      <hr className="rule" />
       <div className="receipt-head">
         <h3>{receipt.title}</h3>
         {receipt.stamp === null ? null : (
           <p className={stampClassName(animateStamp)}>{receipt.stamp}</p>
         )}
       </div>
-      <p className="result-title">
-        {receipt.verdict_title} · {formatPoints(receipt.points)}
-      </p>
       <dl className="receipt-rows">
         <div>
           <dt>Bet</dt>
@@ -98,7 +112,15 @@ export function ReceiptCard({
           <div>
             <dt>Weather</dt>
             <dd>
-              {receipt.weather.label}: {weatherChips(receipt.weather.digest).join(" · ")}
+              {receipt.weather.label}
+              <ul className="chips-static" aria-label="Recorded weather">
+                {weatherChipItems(receipt.weather.digest).map((chip) => (
+                  <li key={chip.text}>
+                    <Icon name={chip.icon} />
+                    {chip.text}
+                  </li>
+                ))}
+              </ul>
             </dd>
           </div>
         )}
@@ -133,6 +155,12 @@ export function ReceiptCard({
           </>
         )}
       </dl>
+      <hr className="rule" />
+      <p className={`receipt-total ${receipt.points < 0 ? "minus" : "plus"}`}>
+        <span className="result-title">{receipt.verdict_title}</span>
+        <span className="receipt-figure">{formatPoints(receipt.points)}</span>
+      </p>
+      {paid ? <div className="barcode" aria-hidden="true" /> : null}
       {receipt.saved === null ? null : (
         <p className="meta">
           {receipt.saved.assumption} ({receipt.saved.basis}).
@@ -140,7 +168,9 @@ export function ReceiptCard({
       )}
       {receipt.gemma_read === null ? null : (
         <div className="gemma-read">
-          <p className="eyebrow">Gemma&apos;s read</p>
+          <p className="eyebrow leaf">
+            <Icon name="sparkle" /> Gemma&apos;s read
+          </p>
           <p>{receipt.gemma_read.reason}</p>
           {receipt.gemma_read.evidence.length === 0 ? null : (
             <ul>
