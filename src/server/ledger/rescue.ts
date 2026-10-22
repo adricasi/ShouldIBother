@@ -4,9 +4,10 @@ import { PLAN_FORECAST_HOURS, planBetWindow } from "../../domain/laundry-plan.js
 import { CASH_OUT_POINTS } from "../../domain/points.js";
 import { bandDroppedEnough } from "../../domain/rescue.js";
 import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
-import { WeatherUnavailableError } from "../weather/client.js";
+import { WeatherUnavailableError, type Forecast } from "../weather/client.js";
 import { HttpError } from "../problem.js";
 
+import { cardLocationOf } from "./card-location.js";
 import { ruleWindowAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import { cashOutReceiptOf, type Receipt } from "./receipt.js";
@@ -61,6 +62,8 @@ export function remainingWindow(
 interface CheckCandidate extends BetRow {
   readonly chore_type: string;
   readonly card_sunset_at: number | null;
+  readonly location_lat: number | null;
+  readonly location_lon: number | null;
 }
 
 /**
@@ -76,7 +79,8 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
   const now = deps.now();
   const due = deps.db
     .prepare<[number, number], CheckCandidate>(
-      `SELECT b.*, c.chore_type AS chore_type, c.sunset_at AS card_sunset_at
+      `SELECT b.*, c.chore_type AS chore_type, c.sunset_at AS card_sunset_at,
+              c.location_lat AS location_lat, c.location_lon AS location_lon
        FROM bets b JOIN cards c ON c.id = b.card_id
        LEFT JOIN rescue_checks r ON r.bet_id = b.id
        WHERE b.kind = 'do_nothing' AND b.status = 'open' AND b.settle_at > ?
@@ -87,15 +91,31 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
   if (due.length === 0) {
     return 0;
   }
-  let forecast;
-  try {
-    forecast = await deps.weather.getForecast({ fromMs: now, hours: FORECAST_HOURS });
-  } catch (error) {
-    if (error instanceof WeatherUnavailableError) {
-      deps.log({ event: "rescue_check_skipped", reason: "forecast_unavailable" });
-      return 0;
+  // One forecast per place: a bet is checked where it was priced, even if the household moved
+  // since (onboarding, AC-014.1). Usually one place; null marks a place whose forecast is down.
+  const forecasts = new Map<string, Forecast | null>();
+  for (const bet of due) {
+    const key = `${String(bet.location_lat)}|${String(bet.location_lon)}`;
+    if (forecasts.has(key)) {
+      continue;
     }
-    throw error;
+    try {
+      forecasts.set(
+        key,
+        await deps.weather.getForecast({
+          fromMs: now,
+          hours: FORECAST_HOURS,
+          ...cardLocationOf(bet),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof WeatherUnavailableError) {
+        deps.log({ event: "rescue_check_skipped", reason: "forecast_unavailable" });
+        forecasts.set(key, null);
+        continue;
+      }
+      throw error;
+    }
   }
   const table = bandTable(deps.rules);
   // The forecast took time: the bets may have changed meanwhile (cashed out, undone, deleted, or
@@ -115,6 +135,10 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
   return deps.db.transaction((): number => {
     let checked = 0;
     for (const bet of due) {
+      const forecast = forecasts.get(`${String(bet.location_lat)}|${String(bet.location_lon)}`);
+      if (forecast === undefined || forecast === null) {
+        continue;
+      }
       const window = remainingWindow(
         bet,
         { chore_type: bet.chore_type, sunset_at: bet.card_sunset_at },

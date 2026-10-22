@@ -2,15 +2,19 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseSnapshot } from "../src/domain/savings.js";
 import { CONFIG_DIR } from "../src/server/config.js";
 import { migrate, openDatabase } from "../src/server/db.js";
+import { HouseholdStore } from "../src/server/household-store.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { EXAMPLE_HOUSEHOLD, createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
+import { LOCAL_HOST, LOCAL_ORIGIN } from "./helpers.js";
+import { seedBet } from "./support/settle.js";
+import { buildExport } from "../src/server/ledger/export.js";
 
 // Synthetic answers only: nothing here is a real household value.
 const ANSWERS = {
@@ -233,5 +237,180 @@ describe("the habit baseline feeds savings and seasonal chores (REQ-024, REQ-011
     await put({ ...ANSWERS, airConditioning: true, heaterThisSeason: false });
     expect((await quick("ac")).notice).not.toBe("Not needed this season");
     expect((await quick("heater")).notice).toBe("Not needed this season");
+  });
+});
+
+describe("access: the routes sit behind the session and the Origin check (REQ-001)", () => {
+  const routes = [
+    { method: "GET", url: "/api/onboarding" },
+    { method: "PUT", url: "/api/onboarding", payload: ANSWERS },
+    { method: "POST", url: "/api/onboarding/skip", payload: {} },
+  ] as const;
+
+  it.each(routes)(
+    "AC-001.3: $method $url without a session is 401 and returns no data",
+    async (route) => {
+      await setup({ flags: { onboarding: true } });
+      const response = await harness.request({
+        ...route,
+        payload: "payload" in route ? route.payload : undefined,
+        headers: { origin: LOCAL_ORIGIN },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.body).not.toContain("dryer");
+      expect(harness.db.prepare("SELECT COUNT(*) AS n FROM household_profile").get()).toEqual({
+        n: 0,
+      });
+    },
+  );
+
+  it.each(routes.filter((route) => route.method !== "GET"))(
+    "AC-001.4: $method $url without an allowed Origin is 403 and changes nothing",
+    async (route) => {
+      await setup({ flags: { onboarding: true } });
+      for (const origin of [undefined, "http://evil.example"]) {
+        const response = await harness.request({
+          ...route,
+          payload: route.payload,
+          headers: {
+            cookie: harness.cookie,
+            host: LOCAL_HOST,
+            ...(origin === undefined ? {} : { origin }),
+          },
+        });
+        expect(response.statusCode).toBe(403);
+      }
+      expect(harness.db.prepare("SELECT COUNT(*) AS n FROM household_profile").get()).toEqual({
+        n: 0,
+      });
+    },
+  );
+});
+
+describe("the stored profile", () => {
+  it("AC-024.2: a corrupt stored profile falls back to the baseline and says so once, without its values", () => {
+    const db = openDatabase(":memory:");
+    migrate(db, MIGRATIONS);
+    const warn = vi.fn();
+    const store = new HouseholdStore(db, EXAMPLE_HOUSEHOLD, () => 5, warn);
+    for (const text of ["{ not json", JSON.stringify({ dryer: "tumble", secret: "ZZ-marker" })]) {
+      db.prepare("DELETE FROM household_profile").run();
+      db.prepare(
+        "INSERT INTO household_profile (id, status, profile, updated_at) VALUES (1, 'completed', ?, 1)",
+      ).run(text);
+      expect(store.current()).toEqual(EXAMPLE_HOUSEHOLD);
+      expect(store.state()).toBe("completed");
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({
+      event: "household_profile_unreadable",
+      fallback: "config baseline",
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("ZZ-marker");
+    db.close();
+  });
+
+  it("AC-024.2: in the app, a corrupt row keeps the baseline for new bets and logs one warning", async () => {
+    const logLines: string[] = [];
+    await setup({
+      flags: { onboarding: true },
+      household: { ...EXAMPLE_HOUSEHOLD, dryer: "condenser" },
+      logLines,
+    });
+    harness.db
+      .prepare(
+        "INSERT INTO household_profile (id, status, profile, updated_at) VALUES (1, 'completed', '{{', 1)",
+      )
+      .run();
+    expect((await lineDryBet()).dryerText).toContain("condenser");
+    expect((await lineDryBet()).dryerText).toContain("condenser");
+    const warnings = logLines.filter((line) => line.includes("household_profile_unreadable"));
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("rounds the location the form starts from, also for a baseline with long coordinates", async () => {
+    await setup({
+      flags: { onboarding: true },
+      household: {
+        ...EXAMPLE_HOUSEHOLD,
+        location: { latitude: 41.40123456, longitude: 2.15876543 },
+      },
+    });
+    expect((await view()).household.location).toEqual({ latitude: 41.4, longitude: 2.16 });
+  });
+
+  it("refuses the same outdoor item twice", async () => {
+    await setup({ flags: { onboarding: true } });
+    const response = await put({ ...ANSWERS, outdoorItems: ["clothes_line", "clothes_line"] });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("answering after a skip replaces the skip", async () => {
+    await setup({ flags: { onboarding: true } });
+    await harness.post("/api/onboarding/skip", {});
+    expect((await put(ANSWERS)).statusCode).toBe(200);
+    expect((await view()).state).toBe("completed");
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM household_profile").get()).toEqual({
+      n: 1,
+    });
+  });
+
+  it("AC-011.1: the start-up backfill of a bet without a snapshot uses the answers when the flag is on", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-onboarding-backfill-"));
+    cleanups.push(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const dbPath = join(dir, "sib.db");
+    await setup({ flags: { onboarding: true }, dbPath });
+    await put({ ...ANSWERS, dryer: "vented" });
+    const betId = seedBet(harness, { chore: "laundry_line", withSnapshot: false });
+    await harness.close();
+    opened = false;
+    harness = await createCoreHarness({ flags: { onboarding: true }, dbPath });
+    opened = true;
+    const text = harness.db
+      .prepare<[number], { savings_snapshot: string }>(
+        "SELECT savings_snapshot FROM bets WHERE id = ?",
+      )
+      .get(betId)!.savings_snapshot;
+    expect(parseSnapshot(text)!.assumption).toContain("vented");
+  });
+});
+
+describe("AC-015.4: sib export carries the person's own answers", () => {
+  const NOW = Date.UTC(2026, 9, 22, 12, 0);
+
+  it("includes household_profile once there is a row, and not before", async () => {
+    await setup({ flags: { onboarding: true } });
+    expect(Object.keys(buildExport(harness.db, NOW))).not.toContain("household_profile");
+    await put(ANSWERS);
+    expect(buildExport(harness.db, NOW)).toMatchObject({
+      household_profile: {
+        status: "completed",
+        answers: { dryer: "vented", location: { latitude: 40.42, longitude: -3.7 } },
+      },
+    });
+  });
+
+  it("exports a skip as a status with no answers, and an unreadable row as no answers", async () => {
+    await setup({ flags: { onboarding: true } });
+    await harness.post("/api/onboarding/skip", {});
+    expect(buildExport(harness.db, NOW)).toMatchObject({
+      household_profile: { status: "skipped", answers: null },
+    });
+    harness.db.prepare("UPDATE household_profile SET status = 'completed', profile = '{{'").run();
+    expect(buildExport(harness.db, NOW)).toMatchObject({
+      household_profile: { status: "completed", answers: null },
+    });
+  });
+
+  it("the cards in the export carry the location they were made under", async () => {
+    await setup({ flags: { onboarding: true } });
+    await put(ANSWERS);
+    await harness.post("/api/cards/quick", { chore_type: "plants" });
+    expect(buildExport(harness.db, NOW).cards[0]).toMatchObject({
+      location_lat: 40.42,
+      location_lon: -3.7,
+    });
   });
 });

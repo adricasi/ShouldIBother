@@ -2,6 +2,7 @@ import { LAUNDRY_PLAN, type InstantWindow } from "../../domain/chores.js";
 import { planBetWindow } from "../../domain/laundry-plan.js";
 import { WeatherUnavailableError, type RecordedWeather } from "../weather/client.js";
 
+import { betLocationOf } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import type { BetRow } from "./rows.js";
 
@@ -54,7 +55,10 @@ function forgetAttempt(db: WeatherDeps["db"], betId: number): void {
 
 async function recordedFor(deps: WeatherDeps, bet: BetRow): Promise<RecordedWeather | undefined> {
   try {
-    const recorded = await deps.weather.getRecorded(betJudgedWindow(deps.db, bet));
+    const recorded = await deps.weather.getRecorded({
+      ...betJudgedWindow(deps.db, bet),
+      ...betLocationOf(deps, bet.id),
+    });
     return recorded.complete ? recorded : undefined;
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {

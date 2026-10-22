@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Bet, Card, Slips, Today } from "./api.js";
 import { Nav } from "./Nav.js";
-import { OnboardingScreen } from "./OnboardingScreen.js";
+import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
 import { ROUTE_TITLES, type Route } from "./route.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
@@ -532,5 +532,14 @@ describe("NFR-009: the household screen (flag onboarding on) has no axe violatio
     expect(await violationsOf(household(undefined))).toEqual([]);
     const failed = household(undefined, { kind: "error", text: "No answer." });
     expect(await violationsOf(failed)).toEqual([]);
+  });
+
+  it("Today with the household card above the chips", async () => {
+    const html = today(emptyToday, {
+      prompt: <OnboardingPrompt busy={false} onSkip={() => undefined} />,
+    });
+    expect(html).toContain("Tell me about your home");
+    document.title = ROUTE_TITLES.today;
+    expect(await violationsOf(html)).toEqual([]);
   });
 });

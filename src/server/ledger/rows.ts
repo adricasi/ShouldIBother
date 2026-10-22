@@ -28,6 +28,9 @@ export interface CardRow {
   /** When the person followed the planner's advice, and the points it earned (AC-021.3). */
   advice_followed_at: number | null;
   advice_points: number | null;
+  /** The rounded location the card was made under (migration 0013); null before it or flag off. */
+  location_lat: number | null;
+  location_lon: number | null;
 }
 
 export interface QuoteRow {

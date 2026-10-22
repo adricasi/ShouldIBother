@@ -142,7 +142,10 @@ export function createCore(deps: CoreDeps): Core {
   // Onboarding (REQ-024): with the flag off nothing reads the store and the baseline is the
   // config file, as before the feature existed.
   const householdStore = deps.flags.onboarding
-    ? (deps.householdStore ?? new HouseholdStore(deps.db, deps.household, deps.now))
+    ? (deps.householdStore ??
+      new HouseholdStore(deps.db, deps.household, deps.now, (entry) => {
+        logEntry(entry);
+      }))
     : undefined;
   const ledger: LedgerDeps = {
     log: (entry) => {

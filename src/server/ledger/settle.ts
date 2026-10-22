@@ -30,6 +30,7 @@ import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
 import { markDueBets } from "./bets.js";
+import { cardLocationOf } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { addAfterPhoto, type PhotoRow } from "./photos.js";
 import { receiptOf, type Receipt } from "./receipt.js";
@@ -493,6 +494,7 @@ export class Settler {
         const recorded = await this.deps.weather.getRecorded({
           fromMs: window.startMs,
           toMs: window.endMs,
+          ...cardLocationOf(card),
         });
         if (recorded.complete) {
           return luckyWinOf(choreType, window, recorded.hours);

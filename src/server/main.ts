@@ -70,7 +70,7 @@ export async function startServer(
     const household = loadHousehold();
     // Onboarding answers (flag `onboarding`) replace the baseline, location included.
     const householdStore = flags.onboarding
-      ? new HouseholdStore(runtime.db, household, now)
+      ? new HouseholdStore(runtime.db, household, now, (entry) => appRef?.log.warn(entry))
       : undefined;
     const modelsConfig = loadModelsConfig(`${configDir}models.json`);
     const selection = await selectModel(modelsConfig, {

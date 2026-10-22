@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 import { PLANNER_CHIP, type Card, type Receipt, type Today } from "./api.js";
 import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
@@ -28,6 +28,8 @@ export const QUICK_CHIPS: readonly QuickChip[] = [
 
 export interface TodayScreenProps {
   readonly today: Today | undefined;
+  /** A card above the chips: the household question while onboarding is pending (REQ-024). */
+  readonly prompt?: ReactNode;
   readonly busy: boolean;
   readonly notice: Notice | undefined;
   /** Receipts of the bets settled in this session, by bet id; shown where the bet was. */
@@ -377,6 +379,8 @@ export function TodayScreen(props: TodayScreenProps) {
         ) : (
           <NoticeBanner notice={notice} />
         )}
+
+        {props.prompt}
 
         <section aria-labelledby="chips-title">
           <h2 id="chips-title" className="section-title">

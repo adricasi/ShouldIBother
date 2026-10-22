@@ -5,12 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { onboardingSchema, type Onboarding } from "./api.js";
+import { onboardingSchema, type Bet, type Onboarding } from "./api.js";
 import { App } from "./App.js";
 import { Nav } from "./Nav.js";
-import { OnboardingScreen, ONBOARDING_PRIVACY_TEXT } from "./OnboardingScreen.js";
+import { OnboardingPrompt, OnboardingScreen, ONBOARDING_PRIVACY_TEXT } from "./OnboardingScreen.js";
 import { redirectFor, routeOf } from "./route.js";
-import { emptyWeek } from "./test-data.js";
+import { answerNeeded, emptyWeek } from "./test-data.js";
 
 // Synthetic answers only: no value of a real household.
 const pending: Onboarding = {
@@ -112,6 +112,40 @@ describe("AC-024.1: the household screen asks the five questions", () => {
   });
 });
 
+const payouts = {
+  win_with_photo: 30,
+  win_with_tap: 15,
+  small_loss: -25,
+  normal_loss: -50,
+  harmful_loss: -150,
+  do_it_if_not_needed: 5,
+  do_it_if_needed: -10,
+};
+
+/** A bet whose settle time has passed: Today shows its tap answers (DueSlip). */
+const dueBet: Bet = {
+  id: 8,
+  card_id: 1,
+  title: "Water plants",
+  kind: "do_nothing",
+  band: 3,
+  band_name: "likely",
+  odds: 70,
+  odds_source: "rule",
+  reason: "Rule: 3 mm of rain expected.",
+  placed_at: "2026-10-21T08:00:00.000Z",
+  undo_until: "2026-10-21T08:05:00.000Z",
+  undoable: false,
+  settle_at: "2026-10-22T06:00:00.000Z",
+  status: "due",
+  payouts,
+  tap_answers: [
+    { id: "moist", label: "Still moist, all fine" },
+    { id: "dry", label: "Soil is dry" },
+  ],
+  settle: answerNeeded,
+};
+
 describe("REQ-024 in the app", () => {
   let container: HTMLElement;
   let root: Root;
@@ -147,9 +181,9 @@ describe("REQ-024 in the app", () => {
       attribution: "Weather data by Open-Meteo.com",
       cards: [],
       open_bets: [],
-      due_bets: [],
+      due_bets: [dueBet],
     };
-    const slips = { now: today.now, settle_now: [], waiting: [], settled: [] };
+    const slips = { now: today.now, settle_now: [dueBet], waiting: [], settled: [] };
     vi.stubGlobal("fetch", (path: string, init?: { method?: string; body?: string }) => {
       calls.push({
         line: `${init?.method ?? "GET"} ${path}`,
@@ -164,7 +198,9 @@ describe("REQ-024 in the app", () => {
               ? state
               : path === "/api/onboarding/skip"
                 ? { ...state, state: "skipped" }
-                : null;
+                : path === "/api/bets/8/settle"
+                  ? { state: "awaiting_gemma", note: "Your answer is saved." }
+                  : null;
       return Promise.resolve(
         new Response(JSON.stringify(body), { status: body === null ? 404 : 200 }),
       );
@@ -193,9 +229,55 @@ describe("REQ-024 in the app", () => {
       target!.click();
     });
   };
+  const type = (selector: string, value: string): void => {
+    const input = container.querySelector<HTMLInputElement>(selector)!;
+    act(() => {
+      // React ignores a plain `.value =`; the prototype setter makes it see the change.
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value") as {
+        set: (this: HTMLInputElement, value: string) => void;
+      };
+      descriptor.set.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
 
-  it("AC-024.1: the first time the app is opened it asks, and Save sends the answers", async () => {
+  it("AC-024.1: the first time the app is opened Today asks in a card above the chips", async () => {
     const calls = stubServer(true, pending);
+    await render();
+    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
+    expect(container.textContent).toContain("Tell me about your home");
+    expect(container.querySelector('a[href="#/onboarding"]')?.textContent).toBe(
+      "Answer the questions",
+    );
+    expect(calls.map((call) => call.line)).toContain("GET /api/onboarding");
+  });
+
+  it("a due bet shows on Today and can be settled while onboarding is pending", async () => {
+    const calls = stubServer(true, pending);
+    await render();
+    expect(container.textContent).toContain("Tell me about your home");
+    expect(container.textContent).toContain("Water plants");
+    click("button", "Still moist, all fine");
+    await settle();
+    const settleCall = calls.find((call) => call.line === "POST /api/bets/8/settle");
+    expect(settleCall?.body).toEqual({ answer: "moist" });
+  });
+
+  it("the Today tab works from the household screen, and the Household screen is one tap from the card", async () => {
+    stubServer(true, pending);
+    await render();
+    click('a[href="#/onboarding"]');
+    await settle();
+    expect(container.querySelector("h1")?.textContent).toBe("Household");
+    click('a[href="#/today"]');
+    await settle();
+    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
+    expect(container.textContent).toContain("Water plants");
+  });
+
+  it("AC-024.1: Save sends the answers and returns to Today", async () => {
+    const calls = stubServer(true, pending);
+    window.location.hash = "#/onboarding";
     await render();
     expect(container.querySelector("h1")?.textContent).toBe("Household");
     // The first checkbox is "Plants on a balcony or terrace".
@@ -211,38 +293,79 @@ describe("REQ-024 in the app", () => {
       heaterThisSeason: false,
       location: { latitude: 41.4, longitude: 2.16 },
     });
+    expect(window.location.hash).toBe("#/today");
   });
 
-  it("AC-024.2: Skip for now posts the skip and the app carries on with Today", async () => {
+  it("AC-024.2: Skip for now on Today posts the skip, hides the card and keeps Today", async () => {
     const calls = stubServer(true, pending);
     await render();
     click("button", "Skip for now");
     await settle();
     expect(calls.map((call) => call.line)).toContain("POST /api/onboarding/skip");
-    expect(window.location.hash).toBe("#/today");
+    expect(container.textContent).not.toContain("Tell me about your home");
+    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
   });
 
-  it("AC-024.1: an invalid location is refused in words and nothing is sent", async () => {
+  it.each([
+    ["latitude", "95", "41.4", "#onboarding-latitude"],
+    ["longitude", "41.4", "0x10", "#onboarding-longitude"],
+    ["latitude", "1e1", "2.16", "#onboarding-latitude"],
+    ["latitude", "", "2.16", "#onboarding-latitude"],
+  ])(
+    "AC-024.1: a wrong %s (%s / %s) is refused in words, tied to its field, focused, and nothing is sent",
+    async (_name, latitude, longitude, bad) => {
+      const calls = stubServer(true, pending);
+      window.location.hash = "#/onboarding";
+      await render();
+      type("#onboarding-latitude", latitude);
+      type("#onboarding-longitude", longitude);
+      click("button", "Save my answers");
+      const field = container.querySelector<HTMLInputElement>(bad)!;
+      expect(container.querySelector("#location-error")?.textContent).toContain("Latitude");
+      expect(container.querySelector('[role="alert"]')?.id).toBe("location-error");
+      expect(field.getAttribute("aria-invalid")).toBe("true");
+      expect(field.getAttribute("aria-describedby")).toContain("location-error");
+      expect(document.activeElement).toBe(field);
+      expect(calls.some((call) => call.line.startsWith("PUT"))).toBe(false);
+    },
+  );
+
+  it("accepts a comma as the decimal mark and negative longitudes", async () => {
     const calls = stubServer(true, pending);
+    window.location.hash = "#/onboarding";
     await render();
-    const latitude = container.querySelector<HTMLInputElement>("#onboarding-latitude")!;
-    act(() => {
-      // React ignores a plain `.value =`; the prototype setter makes it see the change.
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value") as {
-        set: (this: HTMLInputElement, value: string) => void;
-      };
-      descriptor.set.call(latitude, "95");
-      latitude.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    type("#onboarding-latitude", "40,42");
+    type("#onboarding-longitude", "-3.70");
     click("button", "Save my answers");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Latitude");
-    expect(calls.some((call) => call.line.startsWith("PUT"))).toBe(false);
+    await settle();
+    const save = calls.find((call) => call.line === "PUT /api/onboarding");
+    expect((save?.body as { location: unknown }).location).toEqual({
+      latitude: 40.42,
+      longitude: -3.7,
+    });
   });
 
   it("AC-024.2: with the flag off the app never asks and never calls the onboarding routes", async () => {
     const calls = stubServer(false, pending);
     await render();
     expect(container.textContent).not.toContain("Household");
+    expect(container.textContent).not.toContain("Tell me about your home");
     expect(calls.some((call) => call.line.includes("/api/onboarding"))).toBe(false);
+  });
+
+  it("the card on Today has no axe violations", async () => {
+    stubServer(true, pending);
+    await render();
+    document.documentElement.lang = "en";
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  });
+
+  it("the prompt renders its two ways out", () => {
+    const html = renderToStaticMarkup(<OnboardingPrompt busy={false} onSkip={() => undefined} />);
+    expect(html).toContain("Answer the questions");
+    expect(html).toContain("Skip for now");
   });
 });

@@ -32,7 +32,7 @@ import {
 } from "./api.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
-import { OnboardingScreen } from "./OnboardingScreen.js";
+import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
 import { createRefresher } from "./refresher.js";
 import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
@@ -264,11 +264,13 @@ export function App() {
         void refresh(false);
       });
   };
-  // First open: Today asks once; Slips and Score stay reachable so a due bet is never blocked.
-  const askOnboarding =
-    onboardingOn &&
-    (route === "onboarding" || (route === "today" && onboarding?.state === "pending"));
-  if (askOnboarding) {
+  const skipOnboardingNow = (): void => {
+    answerOnboarding(
+      () => skipOnboarding(),
+      "Skipped. Savings use the baseline in the config file.",
+    );
+  };
+  if (onboardingOn && route === "onboarding") {
     return (
       <OnboardingScreen
         onboarding={onboarding}
@@ -281,12 +283,7 @@ export function App() {
             "Saved. New bets use these answers; bets already placed keep their figures.",
           );
         }}
-        onSkip={() => {
-          answerOnboarding(
-            () => skipOnboarding(),
-            "Skipped. Savings use the baseline in the config file.",
-          );
-        }}
+        onSkip={skipOnboardingNow}
         onReload={() => {
           void refreshOnboarding(false);
         }}
@@ -326,6 +323,10 @@ export function App() {
   return (
     <TodayScreen
       today={today}
+      // First open: Today asks in a card above the chips; everything below it keeps working.
+      {...(onboardingOn && onboarding?.state === "pending"
+        ? { prompt: <OnboardingPrompt busy={busy} onSkip={skipOnboardingNow} /> }
+        : {})}
       busy={busy}
       notice={notice}
       results={results}

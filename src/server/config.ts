@@ -41,7 +41,11 @@ export const householdSchema = z.object({
     .strict()
     .optional(),
   /** Asked in onboarding (AC-024.1); absent in the config file, which does not need it. */
-  outdoorItems: z.array(z.enum(OUTDOOR_ITEMS)).max(OUTDOOR_ITEMS.length).optional(),
+  outdoorItems: z
+    .array(z.enum(OUTDOOR_ITEMS))
+    .max(OUTDOOR_ITEMS.length)
+    .refine((items) => new Set(items).size === items.length, "each item once")
+    .optional(),
 });
 export type Household = z.infer<typeof householdSchema>;
 

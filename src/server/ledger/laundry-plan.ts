@@ -27,6 +27,7 @@ import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
+import { stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { FORECAST_PAST_HOURS, MAX_STORED_ANSWERS, parseAnswers } from "./forecast.js";
 import { FAILURE_NOTES, cardView, type CardView } from "./views.js";
@@ -191,6 +192,7 @@ export function createPlannerCard(deps: LedgerDeps, label?: string): CardView {
       )
       .run(label ?? PLANNER_TITLE, LAUNDRY_PLAN, JSON.stringify(plan), now).lastInsertRowid,
   );
+  stampCardLocation(deps, id);
   launchPlanner(deps, id, plan.attempt);
   return plannerCardView(deps, id);
 }

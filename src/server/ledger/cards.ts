@@ -13,6 +13,7 @@ import { addDays, madridDateOf } from "../../domain/time.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
+import { stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
 import { launchNewCardJobs } from "./gemma-cards.js";
@@ -70,6 +71,7 @@ function insertCard(
         now,
       ).lastInsertRowid,
   );
+  stampCardLocation(deps, id);
   return deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(id)!;
 }
 

@@ -20,11 +20,15 @@ interface Row {
  * bet is written when it is placed, so a changed profile reaches only the bets placed afterwards.
  */
 export class HouseholdStore {
+  private warnedUnreadable = false;
+
   constructor(
     private readonly db: Db,
     /** The config-file baseline. */
     private readonly baseline: Household,
     private readonly now: () => number,
+    /** Called once if a stored profile cannot be read; says that, never what the profile held. */
+    private readonly warn: (entry: Readonly<Record<string, unknown>>) => void = () => undefined,
   ) {}
 
   private row(): Row | undefined {
@@ -43,18 +47,34 @@ export class HouseholdStore {
     if (row?.status !== "completed" || row.profile === null) {
       return this.baseline;
     }
+    let parsed;
     try {
-      const parsed = householdSchema.safeParse(JSON.parse(row.profile));
-      return parsed.success ? parsed.data : this.baseline;
+      parsed = householdSchema.safeParse(JSON.parse(row.profile));
     } catch {
+      parsed = undefined;
+    }
+    if (parsed?.success !== true) {
+      // The baseline stays in force; one line says so, once per process, with no answer values.
+      if (!this.warnedUnreadable) {
+        this.warnedUnreadable = true;
+        this.warn({ event: "household_profile_unreadable", fallback: "config baseline" });
+      }
       return this.baseline;
     }
+    return parsed.data;
   }
 
-  /** What the form starts from: the answers, or the baseline, with the default location filled. */
+  /** What the form starts from: the answers or the baseline, location filled and rounded (2 decimals). */
   forForm(): Household {
     const household = this.current();
-    return { ...household, location: household.location ?? DEFAULT_LOCATION };
+    const place = household.location ?? DEFAULT_LOCATION;
+    return {
+      ...household,
+      location: {
+        latitude: roundCoordinate(place.latitude),
+        longitude: roundCoordinate(place.longitude),
+      },
+    };
   }
 
   /** Stores the answers; the location is kept at neighbourhood level (2 decimals, AC-014.1). */

@@ -27,6 +27,15 @@ export interface RecordedWeather {
   readonly hours: readonly HourlyWeather[];
 }
 
+/**
+ * A place for one request. Without it a client uses the household's current location; a bet or
+ * card placed under an earlier location names that one (onboarding can move the household, T-025).
+ */
+export interface WeatherLocation {
+  readonly latitude: number;
+  readonly longitude: number;
+}
+
 /** Where weather comes from. The Open-Meteo client serves the live app; tests and CI use the fake. */
 export interface WeatherClient {
   /**
@@ -37,11 +46,13 @@ export interface WeatherClient {
     readonly fromMs: number;
     readonly hours: number;
     readonly pastHours?: number;
+    readonly location?: WeatherLocation;
   }): Promise<Forecast>;
   /** Recorded hours of `[fromMs, toMs)` for settlement. Throws when the service cannot be reached. */
   getRecorded(request: {
     readonly fromMs: number;
     readonly toMs: number;
+    readonly location?: WeatherLocation;
   }): Promise<RecordedWeather>;
   /** When the newest usable forecast was fetched, without a network call (Today's forecast age). */
   latestForecastFetchedAt(): number | undefined;

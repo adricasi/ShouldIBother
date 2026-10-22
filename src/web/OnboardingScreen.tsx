@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import type { Onboarding, OnboardingAnswers } from "./api.js";
 import { Nav } from "./Nav.js";
@@ -36,11 +36,45 @@ const DRYER_CHOICES = [
 export const ONBOARDING_PRIVACY_TEXT =
   "Your answers stay on your computer. Only your location, rounded to 2 decimals (about 1 km), goes to Open-Meteo to ask for the forecast.";
 
+/** Plain decimals only: no hex, exponent, sign-plus or blanks inside (a comma counts as a point). */
+const DECIMAL = /^-?\d+(?:[.,]\d+)?$/;
+
 function parseCoordinate(text: string, limit: number): number | undefined {
-  const value = Number(text.trim().replace(",", "."));
-  return text.trim() !== "" && Number.isFinite(value) && Math.abs(value) <= limit
-    ? value
-    : undefined;
+  const trimmed = text.trim();
+  if (!DECIMAL.test(trimmed)) {
+    return undefined;
+  }
+  const value = Number(trimmed.replace(",", "."));
+  return Math.abs(value) <= limit ? value : undefined;
+}
+
+/** The card on Today while onboarding is pending: ask, link to the form, or skip (AC-024.1/2). */
+export function OnboardingPrompt({
+  busy,
+  onSkip,
+}: {
+  readonly busy: boolean;
+  readonly onSkip: () => void;
+}) {
+  return (
+    <section className="onboarding-prompt" aria-labelledby="onboarding-prompt-title">
+      <h2 id="onboarding-prompt-title" className="section-title">
+        Tell me about your home
+      </h2>
+      <p>
+        What is outside your door, your dryer, whether you use the AC or the heater, and where you
+        live. Savings are then measured against your own habits.
+      </p>
+      <div className="button-row">
+        <a className="button primary" href="#/onboarding">
+          Answer the questions
+        </a>
+        <button type="button" className="button secondary" disabled={busy} onClick={onSkip}>
+          Skip for now
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function Form({
@@ -63,6 +97,10 @@ function Form({
   const [latitude, setLatitude] = useState(String(initial.location.latitude));
   const [longitude, setLongitude] = useState(String(initial.location.longitude));
   const [invalid, setInvalid] = useState(false);
+  const latitudeBad = invalid && parseCoordinate(latitude, 90) === undefined;
+  const longitudeBad = invalid && parseCoordinate(longitude, 180) === undefined;
+  const latitudeInput = useRef<HTMLInputElement>(null);
+  const longitudeInput = useRef<HTMLInputElement>(null);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -70,6 +108,8 @@ function Form({
     const lon = parseCoordinate(longitude, 180);
     if (lat === undefined || lon === undefined) {
       setInvalid(true);
+      // The first wrong field gets the focus, so the error is not left behind a keyboard or reader.
+      (lat === undefined ? latitudeInput : longitudeInput).current?.focus();
       return;
     }
     setInvalid(false);
@@ -104,6 +144,7 @@ function Form({
             {choice.label}
           </label>
         ))}
+        <p className="meta">Used by upcoming features; nothing changes yet.</p>
       </fieldset>
 
       <fieldset>
@@ -160,11 +201,12 @@ function Form({
           <label htmlFor="onboarding-latitude">Latitude</label>
           <input
             id="onboarding-latitude"
+            ref={latitudeInput}
             type="text"
             inputMode="decimal"
             value={latitude}
-            aria-describedby="location-help"
-            aria-invalid={invalid && parseCoordinate(latitude, 90) === undefined}
+            aria-describedby={latitudeBad ? "location-help location-error" : "location-help"}
+            aria-invalid={latitudeBad}
             onChange={(event) => {
               setLatitude(event.target.value);
             }}
@@ -172,19 +214,21 @@ function Form({
           <label htmlFor="onboarding-longitude">Longitude</label>
           <input
             id="onboarding-longitude"
+            ref={longitudeInput}
             type="text"
             inputMode="decimal"
             value={longitude}
-            aria-describedby="location-help"
-            aria-invalid={invalid && parseCoordinate(longitude, 180) === undefined}
+            aria-describedby={longitudeBad ? "location-help location-error" : "location-help"}
+            aria-invalid={longitudeBad}
             onChange={(event) => {
               setLongitude(event.target.value);
             }}
           />
         </div>
         {invalid ? (
-          <p className="notice error" role="alert">
-            Latitude is a number from -90 to 90 and longitude from -180 to 180.
+          <p className="notice error" role="alert" id="location-error">
+            Latitude is a number from -90 to 90 and longitude from -180 to 180, with digits and one
+            point, for example 41.40.
           </p>
         ) : null}
       </fieldset>
