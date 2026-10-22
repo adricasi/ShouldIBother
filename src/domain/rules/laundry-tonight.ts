@@ -3,7 +3,7 @@ import { isDewHour } from "../outcomes.js";
 import type { ForecastHour } from "../weather.js";
 
 import type { RulesConfig } from "./schema.js";
-import { coveredHours, hourDryingIndex, mean, roundTo } from "./window.js";
+import { allValues, coveredHours, dryingIndices, mean, roundTo } from "./window.js";
 
 /** What the "leave laundry out tonight" rule saw between sunset and 08:00. */
 export interface LaundryTonightFacts {
@@ -23,14 +23,19 @@ export function laundryTonightFacts(
   if (hours === null) {
     return null;
   }
+  const indices = dryingIndices(hours, config.dryingIndex, config.wetHourMm);
+  const precipitation = allValues(hours, "precipitationMm");
+  const temperature = allValues(hours, "temperatureC");
+  const dewPoint = allValues(hours, "dewPointC");
+  if (indices === null || precipitation === null || temperature === null || dewPoint === null) {
+    return null;
+  }
   const spread = config.chores.laundryTonight.dew.tempMinusDewPointCAtMost;
   return {
-    wetHours: hours.filter((hour) => hour.precipitationMm >= config.wetHourMm).length,
-    dewHours: hours.filter((hour) => isDewHour(hour.temperatureC, hour.dewPointC, spread)).length,
-    meanDryingIndex: roundTo(
-      mean(hours.map((hour) => hourDryingIndex(hour, config.dryingIndex, config.wetHourMm))),
-      6,
-    ),
+    wetHours: precipitation.filter((mm) => mm >= config.wetHourMm).length,
+    dewHours: temperature.filter((value, index) => isDewHour(value, dewPoint[index] ?? 0, spread))
+      .length,
+    meanDryingIndex: roundTo(mean(indices), 6),
   };
 }
 

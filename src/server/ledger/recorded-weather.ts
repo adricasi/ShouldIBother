@@ -63,6 +63,9 @@ export async function collectRecordedWeather(
 ): Promise<RecordedWeather | undefined> {
   noteAttempt(deps.db, bet.id, deps.now());
   const recorded = await recordedFor(deps, bet);
+  if (recorded !== undefined) {
+    forgetAttempt(deps.db, bet.id);
+  }
   if (recorded === undefined && bet.status === "due") {
     deps.db
       .prepare("UPDATE bets SET status = 'awaiting_weather' WHERE id = ? AND status = 'due'")

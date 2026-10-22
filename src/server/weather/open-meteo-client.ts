@@ -13,10 +13,17 @@ import {
   type WeatherClient,
 } from "./client.js";
 import { OpenMeteoHttp, type CallLogEntry } from "./http.js";
-import { FORECAST_DAYS, FORECAST_URL, HOURLY_VARIABLES, QUERY } from "./open-meteo.js";
+import {
+  FORECAST_DAYS,
+  FORECAST_PAST_DAYS,
+  FORECAST_URL,
+  HOURLY_VARIABLES,
+  QUERY,
+} from "./open-meteo.js";
 import {
   OpenMeteoFormatError,
   REQUIRED_FOR_SETTLEMENT,
+  type HourlyTable,
   forecastHours,
   parseHourlyTable,
   recordedHours,
@@ -84,7 +91,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   }
 
   private forecastKey(): string {
-    return `forecast|${this.coordinates}|${FORECAST_DAYS}d`;
+    return `forecast|${this.coordinates}|${FORECAST_PAST_DAYS}p${FORECAST_DAYS}d`;
   }
 
   private recordedKey(startDate: string, endDate: string): string {
@@ -116,43 +123,70 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     return started;
   }
 
+  /**
+   * A cache entry that still parses. An entry that does not (a corrupt row, an answer shape this
+   * version cannot read) counts as a miss: it is fetched again, never a raw error.
+   */
+  private readable(key: string): { fetchedAt: number; table: HourlyTable } | undefined {
+    const entry = this.cache.get(key);
+    if (entry === undefined) {
+      return undefined;
+    }
+    try {
+      return { fetchedAt: entry.fetchedAt, table: parseHourlyTable(entry.body) };
+    } catch (error) {
+      if (error instanceof OpenMeteoFormatError) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   latestForecastFetchedAt(): number | undefined {
-    const entry = this.cache.get(this.forecastKey());
+    const entry = this.readable(this.forecastKey());
     return entry !== undefined && this.now() - entry.fetchedAt < FORECAST_MAX_AGE_MS
       ? entry.fetchedAt
       : undefined;
   }
 
-  async getForecast(request: { fromMs: number; hours: number }): Promise<Forecast> {
-    const { fetchedAt, body } = await this.forecastBody();
-    const firstHour = Math.floor(request.fromMs / HOUR_MS) * HOUR_MS;
-    const hours = forecastHours(parseHourlyTable(body))
+  async getForecast(request: {
+    fromMs: number;
+    hours: number;
+    pastHours?: number;
+  }): Promise<Forecast> {
+    const pastHours = request.pastHours ?? 0;
+    const { fetchedAt, table } = await this.forecastTable();
+    const firstHour = Math.floor(request.fromMs / HOUR_MS) * HOUR_MS - pastHours * HOUR_MS;
+    const hours = forecastHours(table)
       .filter((hour) => hour.startsAt >= firstHour)
-      .slice(0, request.hours);
+      .slice(0, pastHours + request.hours);
     return { fetchedAt, hours };
   }
 
-  /** Cached body younger than 1 h, else a fresh fetch, else the cache if it is under 24 h old. */
-  private async forecastBody(): Promise<{ fetchedAt: number; body: unknown }> {
+  /** Cached table younger than 1 h, else a fresh fetch, else the cache if it is under 24 h old. */
+  private async forecastTable(): Promise<{ fetchedAt: number; table: HourlyTable }> {
     const key = this.forecastKey();
-    const cached = this.cache.get(key);
+    const cached = this.readable(key);
     if (cached !== undefined && this.now() - cached.fetchedAt < FORECAST_TTL_MS) {
-      return { fetchedAt: cached.fetchedAt, body: cached.body };
+      return cached;
     }
     try {
       return await this.shared(key, async () => {
         const body = await this.http.getJson(
-          this.url({ [QUERY.forecastDays]: String(FORECAST_DAYS) }),
+          this.url({
+            [QUERY.forecastDays]: String(FORECAST_DAYS),
+            [QUERY.pastDays]: String(FORECAST_PAST_DAYS),
+          }),
         );
         // Refuse an answer the app cannot read before it replaces a good cache entry.
-        parseHourlyTable(body);
+        const table = parseHourlyTable(body);
         const fetchedAt = this.now();
         this.cache.put(key, fetchedAt, body);
-        return { fetchedAt, body };
+        return { fetchedAt, table };
       });
     } catch (error) {
       if (cached !== undefined && this.now() - cached.fetchedAt < FORECAST_MAX_AGE_MS) {
-        return { fetchedAt: cached.fetchedAt, body: cached.body };
+        return cached;
       }
       throw asUnavailable(error);
     }
@@ -162,22 +196,18 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     const startDate = madridDateOf(request.fromMs);
     const endDate = madridDateOf(Math.max(request.fromMs, request.toMs - 1));
     const key = this.recordedKey(startDate, endDate);
-    const cached = this.cache.get(key);
+    const cached = this.readable(key);
     if (cached !== undefined && this.now() - cached.fetchedAt < RECORDED_TTL_MS) {
-      return this.recordedFrom(cached.fetchedAt, cached.body, request);
+      return this.recordedFrom(cached.fetchedAt, cached.table, request);
     }
     try {
-      const { fetchedAt, body } = await this.shared(key, async () => {
+      const { fetchedAt, body, table } = await this.shared(key, async () => {
         const answer = await this.http.getJson(
-          this.url({
-            [QUERY.startDate]: startDate,
-            [QUERY.endDate]: endDate,
-          }),
+          this.url({ [QUERY.startDate]: startDate, [QUERY.endDate]: endDate }),
         );
-        parseHourlyTable(answer);
-        return { fetchedAt: this.now(), body: answer };
+        return { fetchedAt: this.now(), body: answer, table: parseHourlyTable(answer) };
       });
-      const recorded = this.recordedFrom(fetchedAt, body, request);
+      const recorded = this.recordedFrom(fetchedAt, table, request);
       if (recorded.complete) {
         this.cache.put(key, fetchedAt, body);
       }
@@ -189,12 +219,10 @@ export class OpenMeteoWeatherClient implements WeatherClient {
 
   private recordedFrom(
     fetchedAt: number,
-    body: unknown,
+    table: HourlyTable,
     request: { fromMs: number; toMs: number },
   ): RecordedWeather {
-    const byHour = new Map(
-      recordedHours(parseHourlyTable(body)).map((hour) => [hour.timeMs, hour]),
-    );
+    const byHour = new Map(recordedHours(table).map((hour) => [hour.timeMs, hour]));
     const wanted = windowHourStarts({ startMs: request.fromMs, endMs: request.toMs });
     const hours = wanted.flatMap((start) => byHour.get(start) ?? []);
     const complete =

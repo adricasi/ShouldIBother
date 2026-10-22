@@ -18,6 +18,8 @@ import { OpenMeteoHttp, type CallLogEntry } from "../src/server/weather/http.js"
 import { OpenMeteoWeatherClient } from "../src/server/weather/open-meteo-client.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 import { ALLOWED_HOSTS } from "../src/backtest/open-meteo.js";
+import { safetyAlert } from "../src/domain/rules/index.js";
+import { loadRules } from "../src/server/rules.js";
 
 import { FakeClock } from "./helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
@@ -76,6 +78,7 @@ describe("AC-014.1: the forecast is requested for the configured coordinates, ro
       "hourly",
       "latitude",
       "longitude",
+      "past_days",
       "timeformat",
       "timezone",
     ]);
@@ -117,7 +120,7 @@ describe("AC-014.2: a fetched forecast is cached with its fetch time and reused 
         "SELECT key, fetched_at FROM weather_cache WHERE key LIKE 'forecast|%'",
       )
       .get();
-    expect(row).toEqual({ key: "forecast|41.4|2.16|3d", fetched_at: clock.now() });
+    expect(row).toEqual({ key: "forecast|41.4|2.16|1p3d", fetched_at: clock.now() });
     await client().getForecast({ fromMs: clock.now(), hours: 24 }); // a new client, same database
     expect(server.forecastRequests).toHaveLength(1);
   });
@@ -361,10 +364,115 @@ describe("recorded weather for settlement (ADR-0008, AC-014.5)", () => {
 });
 
 describe("what the client reads out of an answer", () => {
-  it("leaves an hour with a missing value out of the forecast, so a rule sees a hole", async () => {
+  it("keeps an hour with a missing value, with null there, so a rule sees the hole and safety sees the rest", async () => {
     server.nullFromMs = clock.now() + 5 * HOUR;
-    server.profile = FAKE_WEATHER_PROFILES.mild;
     const forecast = await client().getForecast({ fromMs: clock.now(), hours: 48 });
-    expect(forecast.hours).toHaveLength(5);
+    expect(forecast.hours).toHaveLength(48);
+    expect(forecast.hours[4]?.temperatureC).toBe(22);
+    expect(forecast.hours[5]).toMatchObject({ temperatureC: null, gustKmh: null, isDay: null });
+  });
+
+  it("keeps an extreme hour whose sunshine, is_day and probability are null, and the alert follows", async () => {
+    server.profile = FAKE_WEATHER_PROFILES.heatwave;
+    server.nullVariables = ["sunshine_duration", "is_day", "precipitation_probability"];
+    const forecast = await client().getForecast({ fromMs: clock.now(), hours: 12 });
+    expect(forecast.hours.every((hour) => hour.temperatureC === 36 && hour.isDay === null)).toBe(
+      true,
+    );
+    const alert = safetyAlert(forecast.hours, clock.now(), clock.now() + 12 * HOUR, loadRules());
+    expect(alert?.kinds).toEqual(["heat"]);
+  });
+
+  it("asks for yesterday too and returns the earlier hours when asked for them", async () => {
+    const weather = client();
+    const request = server;
+    const withPast = await weather.getForecast({ fromMs: clock.now(), hours: 24, pastHours: 12 });
+    expect(request.requests[0]?.searchParams.get("past_days")).toBe("1");
+    expect(withPast.hours).toHaveLength(36);
+    expect(withPast.hours[0]?.startsAt).toBe(clock.now() - 12 * HOUR);
+    const plain = await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    expect(plain.hours[0]?.startsAt).toBe(clock.now());
+  });
+});
+
+describe("a cache row that no longer parses is a miss, never an error", () => {
+  it("fetches again over a corrupt forecast row", async () => {
+    const weather = client();
+    await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    db.prepare("UPDATE weather_cache SET body = ? WHERE key LIKE 'forecast|%'").run("{not json");
+    expect(weather.latestForecastFetchedAt()).toBeUndefined();
+    await expect(weather.getForecast({ fromMs: clock.now(), hours: 24 })).resolves.toBeDefined();
+    expect(server.forecastRequests).toHaveLength(2);
+  });
+
+  it("fetches again over a row in a shape this version cannot read", async () => {
+    const weather = client();
+    await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    db.prepare("UPDATE weather_cache SET body = ? WHERE key LIKE 'forecast|%'").run(
+      JSON.stringify({ hourly: { time: "soon" } }),
+    );
+    await expect(weather.getForecast({ fromMs: clock.now(), hours: 24 })).resolves.toBeDefined();
+    expect(server.forecastRequests).toHaveLength(2);
+  });
+
+  it("with Open-Meteo down too, answers 'unavailable' (a clean refusal, not a raw error)", async () => {
+    const weather = client();
+    await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    db.prepare("UPDATE weather_cache SET body = ? WHERE key LIKE 'forecast|%'").run("[]");
+    server.mode = "http-500";
+    await expect(weather.getForecast({ fromMs: clock.now(), hours: 24 })).rejects.toBeInstanceOf(
+      WeatherUnavailableError,
+    );
+  });
+
+  it("does the same for a recorded-weather row", async () => {
+    const weather = client();
+    const window = { fromMs: clock.now() - 20 * HOUR, toMs: clock.now() - 2 * HOUR };
+    await weather.getRecorded(window);
+    db.prepare("UPDATE weather_cache SET body = ? WHERE key LIKE 'recorded|%'").run("garbage");
+    expect((await weather.getRecorded(window)).complete).toBe(true);
+    expect(server.recordedRequests).toHaveLength(2);
+  });
+});
+
+describe("Retry-After and the deadline", () => {
+  it("waits as long as a 429 asks when that fits in the deadline", async () => {
+    server.failFirst = 1;
+    server.failStatus = 429;
+    server.retryAfterSeconds = 2;
+    await client().getForecast({ fromMs: clock.now(), hours: 24 });
+    expect(sleeps).toEqual([2000]);
+    expect(server.requests).toHaveLength(2);
+  });
+
+  it("gives up at once when the wait asked for is longer than the deadline", async () => {
+    server.mode = "ok";
+    server.failFirst = 1;
+    server.failStatus = 429;
+    server.retryAfterSeconds = 3600;
+    await expect(client().getForecast({ fromMs: clock.now(), hours: 24 })).rejects.toThrow(
+      /wait 3600 s/,
+    );
+    expect(server.requests).toHaveLength(1);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("never sleeps longer than what is left of the deadline", async () => {
+    server.failFirst = 2;
+    const http = new OpenMeteoHttp({
+      counter: new PersistentCallCounter(db, clock.now),
+      fetch: server.transport,
+      sleep: (ms) => {
+        sleeps.push(ms);
+        return Promise.resolve();
+      },
+      random: () => 1,
+      deadlineMs: 150,
+    });
+    await http.getJson("https://api.open-meteo.com/v1/forecast?latitude=1");
+    expect(sleeps).toHaveLength(2);
+    for (const slept of sleeps) {
+      expect(slept).toBeLessThanOrEqual(150);
+    }
   });
 });

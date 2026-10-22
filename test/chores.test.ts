@@ -108,17 +108,19 @@ describe("rule windows and settle times (design.md, Settle-time bounds)", () => 
       fromMs: sunset,
       toMs: madrid(23, 8),
     });
-    expect(CHORES.laundry_tonight.ruleWindow(madrid(22, 21), sunset).fromMs).toBe(madrid(22, 21));
+    // A fixed window: it starts at sunset even if the card is made later that evening.
+    expect(CHORES.laundry_tonight.ruleWindow(madrid(22, 21), sunset).fromMs).toBe(sunset);
     expect(CHORES.laundry_tonight.settleBounds(now).latestMs).toBe(madrid(23, 10));
   });
 
-  it("AC: the night that ends next at 07:00 (bounds 07:00 to 09:00), from now if it is under way", () => {
+  it("AC: the whole night 22:00 to 07:00 that ends next, also when it is already under way (bounds 07:00 to 09:00)", () => {
     expect(CHORES.ac.ruleWindow(madrid(22, 15))).toEqual({
       fromMs: madrid(22, 22),
       toMs: madrid(23, 7),
     });
+    // At 03:00 the night began yesterday evening: the window is not clipped to now.
     expect(CHORES.ac.ruleWindow(madrid(23, 3))).toEqual({
-      fromMs: madrid(23, 3),
+      fromMs: madrid(22, 22),
       toMs: madrid(23, 7),
     });
     expect(CHORES.ac.settleBounds(madrid(22, 15))).toEqual({
@@ -127,13 +129,35 @@ describe("rule windows and settle times (design.md, Settle-time bounds)", () => 
     });
   });
 
-  it("heater: 08:00 to 22:00 of today, or of tomorrow once 22:00 has passed (bounds 21:00 to 23:00)", () => {
+  it("AC: the night with a clock change starts at 22:00 the evening before, not 9 hours before 07:00", () => {
+    // 24 Oct 2026, 15:00 Madrid: 22:00 CEST (20:00Z) to 07:00 CET on the 25th (06:00Z) is 10 hours.
+    const october = CHORES.ac.ruleWindow(Date.UTC(2026, 9, 24, 13, 0));
+    expect(october).toEqual({
+      fromMs: Date.UTC(2026, 9, 24, 20, 0),
+      toMs: Date.UTC(2026, 9, 25, 6, 0),
+    });
+    expect((october.toMs - october.fromMs) / 3_600_000).toBe(10);
+    expect(madridClock(october.fromMs)).toBe("24/10 22:00");
+    expect(madridClock(october.toMs)).toBe("25/10 07:00");
+    // 28 Mar 2026, 15:00 Madrid: 22:00 CET (21:00Z) to 07:00 CEST on the 29th (05:00Z) is 8 hours.
+    const march = CHORES.ac.ruleWindow(Date.UTC(2026, 2, 28, 14, 0));
+    expect(march).toEqual({
+      fromMs: Date.UTC(2026, 2, 28, 21, 0),
+      toMs: Date.UTC(2026, 2, 29, 5, 0),
+    });
+    expect((march.toMs - march.fromMs) / 3_600_000).toBe(8);
+    expect(madridClock(march.fromMs)).toBe("28/3 22:00");
+    expect(madridClock(march.toMs)).toBe("29/3 07:00");
+  });
+
+  it("heater: the whole 08:00 to 22:00 day, today's, or tomorrow's once 22:00 has passed (bounds 21:00 to 23:00)", () => {
     expect(CHORES.heater.ruleWindow(madrid(22, 5))).toEqual({
       fromMs: madrid(22, 8),
       toMs: madrid(22, 22),
     });
+    // At 14:00 the morning is still part of the window.
     expect(CHORES.heater.ruleWindow(madrid(22, 14))).toEqual({
-      fromMs: madrid(22, 14),
+      fromMs: madrid(22, 8),
       toMs: madrid(22, 22),
     });
     expect(CHORES.heater.ruleWindow(madrid(22, 23))).toEqual({
@@ -144,6 +168,16 @@ describe("rule windows and settle times (design.md, Settle-time bounds)", () => 
       earliestMs: madrid(22, 21),
       latestMs: madrid(22, 23),
     });
+  });
+
+  it("only plants and line-dry start now: every other window is the same whenever the card is made", () => {
+    for (const type of ["ac", "heater"] as const) {
+      expect(CHORES[type].ruleWindow(madrid(22, 16))).toEqual(
+        CHORES[type].ruleWindow(madrid(22, 17)),
+      );
+    }
+    expect(CHORES.plants.ruleWindow(madrid(22, 16)).fromMs).toBe(madrid(22, 16));
+    expect(CHORES.laundry_line.ruleWindow(madrid(22, 9)).fromMs).toBe(madrid(22, 9));
   });
 
   it("the rule's settle time is inside the bounds, at any time of day, also across the October change", () => {

@@ -2,7 +2,7 @@ import type { Band } from "../bands.js";
 import type { ForecastHour } from "../weather.js";
 
 import type { RulesConfig } from "./schema.js";
-import { coveredHours, hourDryingIndex, mean, roundTo } from "./window.js";
+import { allValues, coveredHours, dryingIndices, mean, roundTo } from "./window.js";
 
 /** What the line-dry rule saw between now and 18:00. */
 export interface LineDryFacts {
@@ -10,7 +10,6 @@ export interface LineDryFacts {
   /** Mean drying index D over the window's daylight hours; 0 when it has none. */
   readonly meanDryingIndex: number;
   readonly daylightHours: number;
-  readonly maxTempC: number;
 }
 
 export function lineDryFacts(
@@ -23,15 +22,16 @@ export function lineDryFacts(
   if (hours === null) {
     return null;
   }
-  const daylight = hours.filter((hour) => hour.isDay);
+  const indices = dryingIndices(hours, config.dryingIndex, config.wetHourMm);
+  const precipitation = allValues(hours, "precipitationMm");
+  if (indices === null || precipitation === null || hours.some((hour) => hour.isDay === null)) {
+    return null; // a missing value: the window cannot be priced
+  }
+  const daylight = indices.filter((_index, position) => hours[position]?.isDay === true);
   return {
-    wetHours: hours.filter((hour) => hour.precipitationMm >= config.wetHourMm).length,
-    meanDryingIndex: roundTo(
-      mean(daylight.map((hour) => hourDryingIndex(hour, config.dryingIndex, config.wetHourMm))),
-      6,
-    ),
+    wetHours: precipitation.filter((mm) => mm >= config.wetHourMm).length,
+    meanDryingIndex: roundTo(mean(daylight), 6),
     daylightHours: daylight.length,
-    maxTempC: Math.max(...hours.map((hour) => hour.temperatureC)),
   };
 }
 

@@ -2,7 +2,7 @@ import type { Band } from "../bands.js";
 import type { ForecastHour } from "../weather.js";
 
 import type { RulesConfig } from "./schema.js";
-import { coveredHours, mean, roundTo } from "./window.js";
+import { allValues, coveredHours, mean, roundTo } from "./window.js";
 
 /** What the "skip the AC" rule saw between 22:00 and 07:00. */
 export interface AcFacts {
@@ -19,10 +19,12 @@ export function acFacts(
   if (hours === null) {
     return null;
   }
-  return {
-    nightMinC: Math.min(...hours.map((hour) => hour.temperatureC)),
-    meanWindKmh: roundTo(mean(hours.map((hour) => hour.windKmh)), 4),
-  };
+  const temperature = allValues(hours, "temperatureC");
+  const wind = allValues(hours, "windKmh");
+  if (temperature === null || wind === null) {
+    return null;
+  }
+  return { nightMinC: Math.min(...temperature), meanWindKmh: roundTo(mean(wind), 4) };
 }
 
 /** Night minimum rows (upper bounds excluded), then a breeze lifts the band by one, up to the maximum. */

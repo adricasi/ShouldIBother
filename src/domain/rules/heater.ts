@@ -2,7 +2,7 @@ import type { Band } from "../bands.js";
 import type { ForecastHour } from "../weather.js";
 
 import type { RulesConfig } from "./schema.js";
-import { coveredHours, roundTo } from "./window.js";
+import { allValues, coveredHours, roundTo } from "./window.js";
 
 /** What the "skip the heater" rule saw between 08:00 and 22:00. */
 export interface HeaterFacts {
@@ -19,9 +19,14 @@ export function heaterFacts(
   if (hours === null) {
     return null;
   }
+  const temperature = allValues(hours, "temperatureC");
+  const sunshine = allValues(hours, "sunshineSeconds");
+  if (temperature === null || sunshine === null) {
+    return null;
+  }
   return {
-    dayMaxC: Math.max(...hours.map((hour) => hour.temperatureC)),
-    sunshineHours: roundTo(hours.reduce((sum, hour) => sum + hour.sunshineSeconds, 0) / 3600, 6),
+    dayMaxC: Math.max(...temperature),
+    sunshineHours: roundTo(sunshine.reduce((sum, seconds) => sum + seconds, 0) / 3600, 6),
   };
 }
 

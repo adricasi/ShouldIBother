@@ -1,5 +1,7 @@
 import { hoursInWindow, type ForecastHour } from "../weather.js";
 
+import { presentValues } from "./window.js";
+
 import type { RulesConfig } from "./schema.js";
 
 export type SafetyKind = "heat" | "frost" | "storm";
@@ -27,17 +29,22 @@ export function safetyAlert(
   config: RulesConfig,
 ): SafetyAlert | null {
   const hours = hoursInWindow(forecast, fromMs, toMs);
-  if (hours.length === 0) {
-    return null;
-  }
   const limits = config.safetyBackstop;
-  const maxTempC = Math.max(...hours.map((hour) => hour.temperatureC));
-  const minTempC = Math.min(...hours.map((hour) => hour.temperatureC));
-  const maxGustKmh = Math.max(...hours.map((hour) => hour.gustKmh));
-  const stormCode = hours.find((hour) => limits.stormWmoCodes.includes(hour.weatherCode));
+  // Each limit looks at the values that are there: an hour with a missing humidity or sunshine
+  // still counts for its temperature, gust and weather code, and a missing one never hides another.
+  const temperatures = presentValues(hours, "temperatureC");
+  const gusts = presentValues(hours, "gustKmh");
+  const codes = presentValues(hours, "weatherCode");
+  const maxTempC = temperatures.length === 0 ? undefined : Math.max(...temperatures);
+  const minTempC = temperatures.length === 0 ? undefined : Math.min(...temperatures);
+  const maxGustKmh = gusts.length === 0 ? undefined : Math.max(...gusts);
+  const stormCode = codes.find((code) => limits.stormWmoCodes.includes(code));
 
   const reasons = new Map<SafetyKind, string>();
-  if (maxGustKmh >= limits.stormGustKmhAtLeast || stormCode !== undefined) {
+  if (
+    (maxGustKmh !== undefined && maxGustKmh >= limits.stormGustKmhAtLeast) ||
+    stormCode !== undefined
+  ) {
     reasons.set(
       "storm",
       stormCode !== undefined
@@ -45,10 +52,10 @@ export function safetyAlert(
         : `Storm: gusts up to ${maxGustKmh} km/h are forecast.`,
     );
   }
-  if (maxTempC >= limits.heatMaxCAtLeast) {
+  if (maxTempC !== undefined && maxTempC >= limits.heatMaxCAtLeast) {
     reasons.set("heat", `Heat: up to ${maxTempC} °C is forecast.`);
   }
-  if (minTempC <= limits.frostMinCAtMost) {
+  if (minTempC !== undefined && minTempC <= limits.frostMinCAtMost) {
     reasons.set("frost", `Frost: down to ${minTempC} °C is forecast.`);
   }
   const kinds = KIND_ORDER.filter((kind) => reasons.has(kind));

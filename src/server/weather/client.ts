@@ -21,8 +21,15 @@ export interface RecordedWeather {
 
 /** Where weather comes from. The Open-Meteo client serves the live app; tests and CI use the fake. */
 export interface WeatherClient {
-  /** Hourly forecast from the hour containing `fromMs`, `hours` hours long. */
-  getForecast(request: { readonly fromMs: number; readonly hours: number }): Promise<Forecast>;
+  /**
+   * Hourly forecast from the hour containing `fromMs`, `hours` hours long, preceded by `pastHours`
+   * earlier hours when asked (rules whose window began before now, such as the AC's night).
+   */
+  getForecast(request: {
+    readonly fromMs: number;
+    readonly hours: number;
+    readonly pastHours?: number;
+  }): Promise<Forecast>;
   /** Recorded hours of `[fromMs, toMs)` for settlement. Throws when the service cannot be reached. */
   getRecorded(request: {
     readonly fromMs: number;

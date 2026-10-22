@@ -42,7 +42,10 @@ export interface ChoreSpec {
   readonly tapAnswers: readonly TapAnswer[];
   /**
    * The window the rule baseline and the safety backstop look at, for a card created at `nowMs`
-   * (design.md, Rule baseline). Laundry tonight starts at sunset, which only the forecast knows.
+   * (design.md, Rule baseline). Only plants and line-dry start "now"; the AC's night, the
+   * heater's day and laundry tonight are whole fixed windows, so the live band equals the band
+   * the backtest and the fine-tune labels use. Laundry tonight starts at sunset, which only the
+   * forecast knows.
    */
   readonly ruleWindow: (nowMs: number, sunsetMs?: number) => InstantWindow;
   /** The settle time of the rule quote: the end of the rule window, inside the chore's bounds. */
@@ -50,6 +53,8 @@ export interface ChoreSpec {
   readonly settleBounds: (nowMs: number) => SettleBounds;
   /** Time-of-day gate of the offer; absent when the chore can be offered at any time. */
   readonly offer?: (nowMs: number) => Offer;
+  /** The hours the offer is open, for the card text when it is closed (AC-016.4). */
+  readonly offerWindow?: { readonly fromHour: number; readonly toHour: number };
 }
 
 /** Line-dry today is offered 07:00 to 15:00 Madrid time, lower bound included (AC-016.4). */
@@ -63,19 +68,23 @@ function lineDryOffer(nowMs: number): Offer {
   return { offered: false, nextAtMs: nextMadridWallTime(nowMs, LINE_DRY_OFFER.fromHour) };
 }
 
-/** The 22:00 to 07:00 night the AC rule looks at: the one that ends next, from now if under way. */
+/**
+ * The whole 22:00 to 07:00 night the AC rule looks at: the one that ends next. It starts at 22:00
+ * the evening before that morning, found by the Madrid calendar so a night with a clock change
+ * (9 or 11 hours long) is right.
+ */
 function acWindow(nowMs: number): InstantWindow {
   const toMs = nextMadridWallTime(nowMs, 7);
-  return { fromMs: Math.max(nowMs, toMs - 9 * 3_600_000), toMs };
+  return { fromMs: madridWallTime(toMs, -1, 22), toMs };
 }
 
-/** The 08:00 to 22:00 day the heater rule looks at: today's, or tomorrow's once 22:00 has passed. */
+/** The whole 08:00 to 22:00 day the heater rule looks at: today's, or tomorrow's once 22:00 has passed. */
 function heaterDay(nowMs: number): { dayOffset: number; window: InstantWindow } {
   const dayOffset = madridWallTime(nowMs, 0, 22) > nowMs ? 0 : 1;
   return {
     dayOffset,
     window: {
-      fromMs: Math.max(nowMs, madridWallTime(nowMs, dayOffset, 8)),
+      fromMs: madridWallTime(nowMs, dayOffset, 8),
       toMs: madridWallTime(nowMs, dayOffset, 22),
     },
   };
@@ -114,6 +123,7 @@ export const CHORES: Readonly<Record<ChoreType, ChoreSpec>> = {
       latestMs: madridWallTime(nowMs, 0, 21),
     }),
     offer: lineDryOffer,
+    offerWindow: LINE_DRY_OFFER,
   },
   laundry_tonight: {
     title: "Leave it out tonight",
@@ -124,7 +134,7 @@ export const CHORES: Readonly<Record<ChoreType, ChoreSpec>> = {
       { id: "tonight_wet", label: "Wet from rain" },
     ],
     ruleWindow: (nowMs, sunsetMs) => ({
-      fromMs: Math.max(nowMs, sunsetMs ?? nowMs),
+      fromMs: sunsetMs ?? nowMs,
       toMs: madridWallTime(nowMs, 1, 8),
     }),
     ruleSettleAt: (nowMs) => madridWallTime(nowMs, 1, 8),
@@ -190,10 +200,13 @@ export function describeNextOffer(nowMs: number, nextAtMs: number): string {
   return `${sameDay ? "today" : "tomorrow"} at ${time}`;
 }
 
-/** The card text for a chore that cannot be offered now (AC-016.4). */
+/** The card text for a chore that cannot be offered now (AC-016.4), from the chore's own offer hours. */
 export function offerNotice(choreType: ChoreType, nowMs: number, nextAtMs: number): string {
-  const { title } = CHORES[choreType];
-  const from = String(LINE_DRY_OFFER.fromHour).padStart(2, "0");
-  const to = String(LINE_DRY_OFFER.toHour).padStart(2, "0");
-  return `${title} is offered from ${from}:00 to ${to}:00. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
+  const { title, offerWindow } = CHORES[choreType];
+  const hours = (hour: number): string => `${String(hour).padStart(2, "0")}:00`;
+  const open =
+    offerWindow === undefined
+      ? ""
+      : ` is offered from ${hours(offerWindow.fromHour)} to ${hours(offerWindow.toHour)}`;
+  return `${title}${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
 }
