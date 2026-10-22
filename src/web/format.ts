@@ -113,3 +113,15 @@ const hourOnly = new Intl.DateTimeFormat("en-GB", {
 export function formatClock(iso: string): string {
   return hourOnly.format(new Date(iso));
 }
+
+const madridDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** True when the instant `iso` falls on the same Madrid calendar day as `nowMs`. */
+export function isMadridToday(iso: string, nowMs: number): boolean {
+  return madridDay.format(new Date(iso)) === madridDay.format(new Date(nowMs));
+}
