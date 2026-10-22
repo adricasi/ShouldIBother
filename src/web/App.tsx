@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  ApiError,
   createQuickCard,
   fetchSlips,
   fetchToday,
@@ -13,24 +12,16 @@ import {
   type Slips,
   type Today,
 } from "./api.js";
-import type { Route } from "./Nav.js";
+import type { Notice } from "./notice.js";
+import { describeError } from "./notice.js";
+import { createRefresher } from "./refresher.js";
+import { announceRoute, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
 import { SlipsScreen } from "./SlipsScreen.js";
-import { TodayScreen, type Notice } from "./TodayScreen.js";
+import { TodayScreen } from "./TodayScreen.js";
 
 /** Countdowns are re-rendered this often between the 30 s polls. */
 const CLOCK_TICK_MS = 15_000;
-
-function describe(error: unknown): Notice {
-  return {
-    kind: "error",
-    text: error instanceof ApiError ? error.message : "Something went wrong. Try again.",
-  };
-}
-
-function routeOf(hash: string): Route {
-  return hash === "#/slips" ? "slips" : "today";
-}
 
 function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => routeOf(window.location.hash));
@@ -43,6 +34,14 @@ function useRoute(): Route {
       window.removeEventListener("hashchange", onChange);
     };
   }, []);
+  // After a screen change, announce it: the title and focus move to the new heading.
+  const shown = useRef(route);
+  useEffect(() => {
+    if (shown.current !== route) {
+      shown.current = route;
+      announceRoute(route, document);
+    }
+  }, [route]);
   return route;
 }
 
@@ -74,19 +73,19 @@ export function App() {
   const todayNow = useServerNow(today?.now);
   const slipsNow = useServerNow(slips?.now);
 
-  /** Reloads Today and Slips. A poll that succeeds clears an old error; an action's reload keeps its notice. */
-  const refresh = useCallback(async (isPoll: boolean) => {
-    try {
-      const [nextToday, nextSlips] = await Promise.all([fetchToday(), fetchSlips()]);
-      setToday(nextToday);
-      setSlips(nextSlips);
-      if (isPoll) {
-        setNotice((current) => (current?.kind === "error" ? undefined : current));
-      }
-    } catch (error) {
-      setNotice(describe(error));
-    }
-  }, []);
+  /** Reloads Today and Slips; only the latest call's answer is shown (see `createRefresher`). */
+  const refresh = useMemo(
+    () =>
+      createRefresher({
+        load: () => Promise.all([fetchToday(), fetchSlips()]),
+        apply: ([nextToday, nextSlips]) => {
+          setToday(nextToday);
+          setSlips(nextSlips);
+        },
+        setNotice,
+      }),
+    [],
+  );
 
   // Both screens refresh every 30 s while the page is visible, and at once when it comes back.
   useEffect(
@@ -102,9 +101,10 @@ export function App() {
     async (action: () => Promise<Notice | undefined>) => {
       setBusy(true);
       try {
-        setNotice(await action());
+        const result = await action();
+        setNotice(result === undefined ? undefined : { ...result, origin: "action" });
       } catch (error) {
-        setNotice(describe(error));
+        setNotice(describeError(error, "action"));
       } finally {
         setBusy(false);
         await refresh(false);

@@ -107,7 +107,7 @@ describe("migration 0003: locked bet columns and the state machine", () => {
       const filled = value();
       expect(filled).not.toBeNull();
       // value → other value, value → same value and value → NULL are all refused.
-      for (const next of [second!, first!, "NULL"]) {
+      for (const next of [second, first, "NULL"]) {
         expect(() => db.exec(`UPDATE bets SET ${column} = ${next} WHERE id = 1`)).toThrow(
           /locked columns/,
         );

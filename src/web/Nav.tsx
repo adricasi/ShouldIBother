@@ -1,6 +1,6 @@
 import { FLAGGED_ENTRIES, visibleEntries, type FlaggedEntry, type Flags } from "./features.js";
 
-export type Route = "today" | "slips";
+import type { Route } from "./route.js";
 
 export interface NavProps {
   /** The flags from `/api/today`; before the first answer none is on. */

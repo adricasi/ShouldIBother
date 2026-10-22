@@ -1,7 +1,7 @@
 import type { Slips } from "./api.js";
 import { DueSlip, SettledLine, WaitingLine } from "./BetParts.js";
 import { Nav } from "./Nav.js";
-import type { Notice } from "./TodayScreen.js";
+import type { Notice } from "./notice.js";
 
 export interface SlipsScreenProps {
   readonly slips: Slips | undefined;
@@ -30,7 +30,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
         <header className="header">
           <div>
             <p className="eyebrow">Your bets</p>
-            <h1>Slips</h1>
+            <h1 tabIndex={-1}>Slips</h1>
           </div>
         </header>
 

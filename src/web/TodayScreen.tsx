@@ -2,6 +2,7 @@ import type { Card, Settled, Today } from "./api.js";
 import { DueSlip, VERDICT_TITLES, WaitingLine } from "./BetParts.js";
 import { formatLongDate, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
+import type { Notice } from "./notice.js";
 
 export interface QuickChip {
   readonly choreType: string;
@@ -10,11 +11,6 @@ export interface QuickChip {
 
 /** The chips of this build; the listener and more chores arrive with T-005 and T-006. */
 export const QUICK_CHIPS: readonly QuickChip[] = [{ choreType: "plants", label: "Water plants" }];
-
-export interface Notice {
-  readonly kind: "error" | "info";
-  readonly text: string;
-}
 
 export interface TodayScreenProps {
   readonly today: Today | undefined;
@@ -126,7 +122,7 @@ export function TodayScreen(props: TodayScreenProps) {
         <header className="header">
           <div>
             <p className="eyebrow">{today === undefined ? "Today" : formatLongDate(today.now)}</p>
-            <h1>The Lazy Bookie</h1>
+            <h1 tabIndex={-1}>The Lazy Bookie</h1>
           </div>
           {today === undefined ? null : (
             <p className="points" aria-label={`${today.points.total} points`}>
