@@ -347,3 +347,103 @@ describe("T-018 fix round: states, privacy line and icons", () => {
     expect(html).toMatch(/<dd>Modelled recent weather[^<]*<ul class="chips-static"/);
   });
 });
+
+describe("NFR-009: the laundry planner card (flag laundryPlanner on) has no axe violations", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const days = [
+    { date: "2026-10-22", weekday: "Thursday", band: 1, band_name: "unlikely", odds: 35 },
+    { date: "2026-10-23", weekday: "Friday", band: 3, band_name: "likely", odds: 70 },
+  ];
+  const basePlan: NonNullable<Card["laundry_plan"]> = {
+    stage: "wash_today",
+    headline: "Wash today",
+    reason: "Breezy and dry today, then showers.",
+    question: null,
+    note: null,
+    can_retry: false,
+    can_follow: true,
+    followed: false,
+    advice_points: null,
+    advice_reason: null,
+    stale: false,
+    best_day: { date: "2026-10-23", weekday: "Friday" },
+    days,
+  };
+  const planCard = (plan: Partial<typeof basePlan>): Card => ({
+    ...noBetCard,
+    id: 9,
+    chore_type: "laundry_plan",
+    title: "Laundry planner",
+    laundry_plan: { ...basePlan, ...plan },
+  });
+  const planner = (cards: Card[]): string =>
+    today(
+      { ...emptyToday, flags: { laundryPlanner: true }, cards },
+      { onPlanNeed: () => undefined, onPlanFollow: () => undefined },
+    );
+
+  async function violationsOf(html: string): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES.today;
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  it("shows the Plan the wash chip with an icon", () => {
+    expect(planner([])).toContain("Plan the wash");
+  });
+
+  it("wash_today", async () => {
+    const html = planner([planCard({})]);
+    expect(html).toContain("Wash today");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("ask_need and its stale state", async () => {
+    const asking = planCard({
+      stage: "ask_need",
+      headline: "Skip today",
+      question: "Need anything washed before Friday?",
+    });
+    expect(await violationsOf(planner([asking]))).toEqual([]);
+    const stale = planCard({
+      stage: "ask_need",
+      headline: "Skip today",
+      question: "Need anything washed before Friday?",
+      stale: true,
+    });
+    const html = planner([stale]);
+    expect(html).toContain("out of date");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("thinking, question, offline, followed and no good day", async () => {
+    const cards = [
+      planCard({ stage: "thinking", headline: null, note: null }),
+      planCard({ stage: "question", headline: null, question: "Is it a big load?" }),
+      planCard({ stage: "offline", headline: null, note: "Gemma is offline.", can_retry: true }),
+      planCard({ followed: true, advice_points: 5 }),
+      planCard({ stage: "no_good_day", headline: "No good day", best_day: null }),
+    ];
+    expect(await violationsOf(planner(cards))).toEqual([]);
+  });
+
+  it("a Skip today bet slip with its four days", async () => {
+    const slip: Card = {
+      ...card,
+      id: 10,
+      title: "Laundry planner",
+      chore_type: "laundry_plan",
+      laundry_plan: { ...basePlan, stage: "skip_today", headline: "Skip today" },
+      photo: null,
+      gemma: null,
+    };
+    expect(await violationsOf(planner([slip]))).toEqual([]);
+  });
+});

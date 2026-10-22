@@ -21,6 +21,9 @@ export const DO_IT_POINTS: Readonly<Record<DoItVerdict, number>> = {
   weather_would_have: -10,
 };
 
+/** Advice followed: washing today on the planner's best drying day (AC-021.3, fixed values). */
+export const ADVICE_FOLLOWED_POINTS = 5;
+
 /** Rounds to the nearest integer, halves up (7.5 -> 8, 2.5 -> 3). */
 export function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);

@@ -257,3 +257,35 @@ export function laundryTonightNotice(nowMs: number, nextAtMs: number | undefined
     ? `${title} ${open}. Next chance: tomorrow evening.`
     : `${title} ${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
 }
+
+/**
+ * The laundry planner's `chore_type` (the listener's value, REQ-021). It is not in `CHORE_TYPES`:
+ * it has no rule window of its own, no offer window and no Gemma settle time (a Skip today bet
+ * settles at 18:00 on the chosen day), and quick chips and the backtest never see it.
+ */
+export const LAUNDRY_PLAN = "laundry_plan";
+
+/** What the settle screen, the judge and the receipt need to know about a chore. */
+export type BetChoreSpec = Pick<ChoreSpec, "title" | "judgeName" | "tapAnswers">;
+
+/**
+ * A Skip today bet: the load is washed and hung out on the day the planner chose, and the bet wins
+ * only if it dried outside that day (AC-021.4). Settled with the line-dry outcome label.
+ */
+export const LAUNDRY_PLAN_SPEC: BetChoreSpec = {
+  title: "Skip washing today",
+  judgeName: "skip washing today and line-dry the load outside on the day the planner chose",
+  tapAnswers: [
+    { id: "plan_dry", label: "Dried outside" },
+    { id: "plan_damp", label: "Still damp" },
+    { id: "plan_wet", label: "Rained on it" },
+  ],
+};
+
+/** The settle-screen spec of a bettable chore, including the planner's Skip today (REQ-021). */
+export function betChoreSpec(choreType: string): BetChoreSpec | undefined {
+  if (isChoreType(choreType)) {
+    return CHORES[choreType];
+  }
+  return choreType === LAUNDRY_PLAN ? LAUNDRY_PLAN_SPEC : undefined;
+}

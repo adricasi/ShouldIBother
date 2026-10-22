@@ -59,6 +59,8 @@ export const QUERY = {
 
 /** Days of forecast requested: today and the two after it cover every window and `hours_ahead ≤ 48`. */
 export const FORECAST_DAYS = 3;
+/** The laundry planner scores today and the three days after it (REQ-021), so it asks for four. */
+export const PLANNER_FORECAST_DAYS = 4;
 /**
  * Yesterday as well: a window that began before now (the AC's night from 22:00, the heater's day
  * from 08:00) is priced whole, so the live band equals the band the backtest labels use.

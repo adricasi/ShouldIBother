@@ -1,0 +1,4 @@
+{
+  "description": "Answers with text that is not JSON, twice (first attempt and retry).",
+  "steps": [{ "content": "not json at all" }, { "content": "still {not json" }]
+}

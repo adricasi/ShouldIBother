@@ -63,6 +63,8 @@ export interface OpenMeteoClientOptions {
    * before the feature existed, and a sunset comes from the daylight hours alone.
    */
   readonly requestSunset?: boolean;
+  /** Days of forecast to ask for; the laundry planner needs four (default: `FORECAST_DAYS`). */
+  readonly forecastDays?: number;
 }
 
 /**
@@ -78,6 +80,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   private readonly latitude: number;
   private readonly longitude: number;
   private readonly requestSunset: boolean;
+  private readonly forecastDays: number;
   private readonly http: OpenMeteoHttp;
   private readonly cache: WeatherCache;
   readonly calls: PersistentCallCounter;
@@ -90,6 +93,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     this.latitude = roundCoordinate(options.location.latitude);
     this.longitude = roundCoordinate(options.location.longitude);
     this.requestSunset = options.requestSunset ?? false;
+    this.forecastDays = options.forecastDays ?? FORECAST_DAYS;
     this.cache = new WeatherCache(options.db);
     this.calls = new PersistentCallCounter(options.db, options.now);
     this.http =
@@ -108,7 +112,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   }
 
   private forecastKey(): string {
-    return `forecast|${this.coordinates}|${FORECAST_PAST_DAYS}p${FORECAST_DAYS}d`;
+    return `forecast|${this.coordinates}|${FORECAST_PAST_DAYS}p${this.forecastDays}d`;
   }
 
   private recordedKey(startDate: string, endDate: string): string {
@@ -202,7 +206,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
         const body = await this.http.getJson(
           this.url(
             {
-              [QUERY.forecastDays]: String(FORECAST_DAYS),
+              [QUERY.forecastDays]: String(this.forecastDays),
               [QUERY.pastDays]: String(FORECAST_PAST_DAYS),
             },
             this.requestSunset,

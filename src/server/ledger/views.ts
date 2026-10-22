@@ -1,5 +1,5 @@
 import { nameOfBand, type BandTable } from "../../domain/bands.js";
-import { CHORES, NOTICES, isChoreType } from "../../domain/chores.js";
+import { CHORES, NOTICES, betChoreSpec, isChoreType } from "../../domain/chores.js";
 import { canUndo } from "../../domain/bet-state.js";
 import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 
@@ -171,7 +171,7 @@ export function betView(
   nowMs: number,
   progress?: ProgressRow,
 ) {
-  const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
+  const chore = betChoreSpec(card.chore_type);
   return {
     id: bet.id,
     card_id: bet.card_id,

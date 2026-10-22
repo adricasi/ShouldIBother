@@ -1,0 +1,28 @@
+{
+  "description": "The same two-band disagreement with Gemma's explanation: accepted.",
+  "content": {
+    "status": "ok",
+    "state": "skip_today",
+    "best_day": "day_2",
+    "days": [
+      {
+        "day": "day_0",
+        "score": "unlikely"
+      },
+      {
+        "day": "day_1",
+        "score": "unlikely"
+      },
+      {
+        "day": "day_2",
+        "score": "toss_up"
+      },
+      {
+        "day": "day_3",
+        "score": "unlikely"
+      }
+    ],
+    "reason": "Saturday is the best of four damp-looking days.",
+    "disagreement_reason": "The line is under a roof, so the wind matters less than the rule thinks."
+  }
+}

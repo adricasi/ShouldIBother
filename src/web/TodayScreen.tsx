@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 
-import type { Card, Receipt, Today } from "./api.js";
+import { PLANNER_CHIP, type Card, type Receipt, type Today } from "./api.js";
 import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
 import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
+import { PlanDays, PlannerSlip, type PlannerActions } from "./PlannerParts.js";
 import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
@@ -52,6 +53,10 @@ export interface TodayScreenProps {
   readonly onDeletePhoto?: (photoId: string) => void;
   /** Reload Today after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
+  /** Laundry planner (flag `laundryPlanner`): "Need anything washed before <day>?" (AC-021.2). */
+  readonly onPlanNeed?: (cardId: number, needed: boolean) => void;
+  /** Laundry planner: follow Wash today (AC-021.3). */
+  readonly onPlanFollow?: (cardId: number) => void;
 }
 
 function OddsTile({ odds, bandName }: { odds: number; bandName: string }) {
@@ -195,6 +200,7 @@ function CardSlip({
   onRetry,
   onAnswer,
   photoActions,
+  plannerActions,
 }: {
   card: Card;
   busy: boolean;
@@ -203,8 +209,10 @@ function CardSlip({
   onRetry: (cardId: number) => void;
   onAnswer: (cardId: number, yes: boolean) => void;
   photoActions: PhotoActions | undefined;
+  plannerActions: PlannerActions | undefined;
 }) {
   const { quote } = card;
+  const plan = card.laundry_plan ?? null;
   if (card.kind === "alert") {
     // AC-012.1: a "Do it now" alert has a reason and no bet action.
     return (
@@ -216,6 +224,19 @@ function CardSlip({
         <p role="alert">{card.alert_reason}</p>
         <p className="meta">The weather is too risky to bet on this one.</p>
       </article>
+    );
+  }
+  if (plan !== null && quote === null) {
+    // Laundry planner advice (AC-021.1 to AC-021.3): Wash today, No good day, or a question.
+    return (
+      <PlannerSlip
+        card={card}
+        plan={plan}
+        busy={busy}
+        actions={plannerActions}
+        onRetry={onRetry}
+        onAnswer={onAnswer}
+      />
     );
   }
   if (quote === null) {
@@ -255,8 +276,9 @@ function CardSlip({
       </div>
       <p className="label-tag">{quote.label}</p>
       <p>{quote.reason}</p>
+      {plan === null ? null : <PlanDays plan={plan} />}
       <GemmaBlock card={card} busy={busy} onRetry={onRetry} onAnswer={onAnswer} />
-      <PhotoBlock card={card} busy={busy} actions={photoActions} />
+      {plan === null ? <PhotoBlock card={card} busy={busy} actions={photoActions} /> : null}
       <hr className="rule notched" />
       <p className="payouts">
         <span className="win">Win {formatPoints(quote.payouts.win_with_tap)}</span>
@@ -276,21 +298,29 @@ function CardSlip({
         >
           Bet: do nothing
         </button>
-        <button
-          type="button"
-          className="button secondary"
-          disabled={busy}
-          onClick={() => {
-            onDoIt(card.id, quote.id);
-          }}
-        >
-          I&apos;ll do it
-        </button>
+        {plan === null ? (
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => {
+              onDoIt(card.id, quote.id);
+            }}
+          >
+            I&apos;ll do it
+          </button>
+        ) : null}
       </div>
-      <p className="meta">
-        I&apos;ll do it scores {formatPoints(quote.payouts.do_it_if_not_needed)} if the weather
-        would not have helped, {formatPoints(quote.payouts.do_it_if_needed)} if it would have.
-      </p>
+      {plan === null ? (
+        <p className="meta">
+          I&apos;ll do it scores {formatPoints(quote.payouts.do_it_if_not_needed)} if the weather
+          would not have helped, {formatPoints(quote.payouts.do_it_if_needed)} if it would have.
+        </p>
+      ) : (
+        <p className="meta">
+          Skip today wins if the load dries outside on {plan.best_day?.weekday ?? "that day"}.
+        </p>
+      )}
     </article>
   );
 }
@@ -301,6 +331,10 @@ export function TodayScreen(props: TodayScreenProps) {
     props.onPhoto === undefined || props.onDeletePhoto === undefined
       ? undefined
       : { onPhoto: props.onPhoto, onDeletePhoto: props.onDeletePhoto };
+  const plannerActions: PlannerActions | undefined =
+    props.onPlanNeed === undefined || props.onPlanFollow === undefined
+      ? undefined
+      : { onNeed: props.onPlanNeed, onFollow: props.onPlanFollow };
   const settledResults = Object.values(results);
   const settleActions: SettleActions = {
     onSettle: props.onSettle,
@@ -363,6 +397,19 @@ export function TodayScreen(props: TodayScreenProps) {
                 {chip.label}
               </button>
             ))}
+            {today?.flags["laundryPlanner"] === true ? (
+              <button
+                type="button"
+                className="chip"
+                disabled={busy}
+                onClick={() => {
+                  props.onQuickCard(PLANNER_CHIP);
+                }}
+              >
+                <Icon name="shirt" />
+                Plan the wash
+              </button>
+            ) : null}
           </div>
           <CaptureForm busy={busy} onCapture={props.onCapture} />
         </section>
@@ -390,6 +437,7 @@ export function TodayScreen(props: TodayScreenProps) {
                     onRetry={props.onRetry}
                     onAnswer={props.onAnswer}
                     photoActions={photoActions}
+                    plannerActions={plannerActions}
                   />
                 ))
               )}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ChoreSpec } from "../../domain/chores.js";
+import type { BetChoreSpec } from "../../domain/chores.js";
 import type { Verdict } from "../../domain/points.js";
 import { RECORDED_WEATHER_LABEL, type WeatherDigest } from "../../domain/weather-digest.js";
 
@@ -45,7 +45,7 @@ export interface JudgeFollowup {
 }
 
 export interface JudgeInput {
-  readonly chore: ChoreSpec;
+  readonly chore: BetChoreSpec;
   readonly kind: "do_nothing" | "do_it";
   readonly odds: number;
   readonly evidence: JudgeEvidence;
