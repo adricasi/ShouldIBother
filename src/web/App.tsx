@@ -5,6 +5,7 @@ import {
   captureCards,
   createQuickCard,
   deletePhoto,
+  fetchScore,
   fetchSlips,
   fetchToday,
   placeBet,
@@ -16,6 +17,7 @@ import {
   uploadPhoto,
   type BetKind,
   type Receipt,
+  type Score,
   type SettleResult,
   type Slips,
   type Today,
@@ -23,8 +25,9 @@ import {
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
 import { createRefresher } from "./refresher.js";
-import { announceRoute, routeOf, type Route } from "./route.js";
+import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
+import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
 import { TodayScreen } from "./TodayScreen.js";
 
@@ -77,6 +80,7 @@ export function App() {
   const route = useRoute();
   const [today, setToday] = useState<Today | undefined>(undefined);
   const [slips, setSlips] = useState<Slips | undefined>(undefined);
+  const [score, setScore] = useState<Score | undefined>(undefined);
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const [results, setResults] = useState<Record<number, Receipt>>({});
   const [busy, setBusy] = useState(false);
@@ -105,6 +109,28 @@ export function App() {
       }),
     [refresh],
   );
+
+  // Score is read only while its screen is open, and only while the server has the flag on.
+  const scoreOn = today?.flags["score"] === true;
+  const showScore = route === "score" && (today === undefined || scoreOn);
+  const redirect = redirectFor(route, today?.flags);
+  useEffect(() => {
+    if (redirect !== undefined) {
+      window.location.replace(redirect);
+    }
+  }, [redirect]);
+  const refreshScore = useMemo(
+    () => createRefresher({ load: fetchScore, apply: setScore, setNotice }),
+    [],
+  );
+  useEffect(() => {
+    if (!showScore || !scoreOn) {
+      return undefined;
+    }
+    return startPolling(() => {
+      void refreshScore(true);
+    });
+  }, [showScore, scoreOn, refreshScore]);
 
   // A card Gemma is still working on is polled faster than the 30 s default (design.md, Interfaces).
   const gemmaIsThinking =
@@ -185,6 +211,9 @@ export function App() {
     });
   };
 
+  if (showScore) {
+    return <ScoreScreen score={score} flags={today?.flags ?? {}} notice={notice} />;
+  }
   if (route === "slips") {
     return (
       <SlipsScreen

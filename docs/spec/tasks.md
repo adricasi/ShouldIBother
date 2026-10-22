@@ -181,7 +181,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `sib backtest` over the snapshot: strategies rule, fixed routine, Gemma E2B, E4B base, E4B fine-tuned (via `ModelClient`; T-014 uses it on the hold-out); per-day decisions at each chore's fixed decision time from day-1-lead forecasts only; outcomes from the outcome labels (T-011); fixed routine calibration reported as n/a; headline numbers on Sep–Oct, Apr–Aug labelled in-sample for the fine-tuned model and the rule thresholds; report (skips, chores avoided, time/water/kWh, plant-risk days, calibration with N per band, Brier, tool-call miss rate) as Markdown + JSON; resumable, progress output, `--pause-at 07:00`; prints an estimate (calls × measured latency) per model before starting.
   - Done when: runs end to end on the fake model in CI on a 2-week slice; a lookahead test fails if any decision uses data from a model run that started after the decision time; the in-sample/hold-out split is visible in the report; output format reviewed.
 
-- [ ] T-016: Score screen
+- [x] T-016: Score screen
   - Who / when: Agent W1 · Fri AM (stacked on T-013); merged Fri PM
   - Requirements: REQ-020, REQ-011 (Score tiles); NFR-009
   - Depends on: T-009

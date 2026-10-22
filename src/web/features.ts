@@ -15,7 +15,9 @@ export interface FlaggedEntry {
  * The entry points of features that sit behind a flag. Each flagged task adds its entry here
  * together with its screen; none of the features of the walking skeleton is flagged.
  */
-export const FLAGGED_ENTRIES: readonly FlaggedEntry[] = [];
+export const FLAGGED_ENTRIES: readonly FlaggedEntry[] = [
+  { flag: "score", id: "score", label: "Score" },
+];
 
 /** The flags as `/api/today` reports them: every flag name with its boolean. */
 export const flagsSchema = z.record(z.string(), z.boolean());
