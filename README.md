@@ -47,8 +47,12 @@ portproxy).
 
 ## The walking skeleton (T-004)
 `npm run dev` builds the app screens (`dist/web`) and starts the server, which serves them behind
-the same pairing guard. Until the real Ollama client lands (T-010) the server runs on the fake
-model (`test/fixtures/gemma/`) and says so at start-up; the weather is Open-Meteo, or fake weather
+the same pairing guard. The server uses Gemma through Ollama when `config/models.json` names a
+model (`models.<primary>.tag`) and Ollama answers on 127.0.0.1; otherwise it runs on the fake model
+(`test/fixtures/gemma/`) and says so loudly at start-up and on Today. Typed sentences go through
+the Gemma listener; each weather card shows rule odds at once and Gemma's odds when they arrive
+(or "Gemma offline · rule odds" with Retry after 45 s). The Ollama wire format is unverified
+until T-010 runs it on the laptop (`src/server/model/ollama-wire.ts`). The weather is Open-Meteo, or fake weather
 without a network when you start with `SIB_FAKE_WEATHER=1`. On the
 phone: tap the "Water plants" or "Line-dry today" chip, read the rule odds, tap "Bet: do nothing"; once the settle time
 has passed (the scheduler checks every 60 s) the bet appears under "Settle now" with one-tap
