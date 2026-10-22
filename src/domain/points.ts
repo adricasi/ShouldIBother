@@ -21,6 +21,9 @@ export const DO_IT_POINTS: Readonly<Record<DoItVerdict, number>> = {
   weather_would_have: -10,
 };
 
+/** AC-022.2: cashing out settles the bet at -10 points, whatever the odds, with no savings. */
+export const CASH_OUT_POINTS = -10;
+
 /** Advice followed: washing today on the planner's best drying day (AC-021.3, fixed values). */
 export const ADVICE_FOLLOWED_POINTS = 5;
 

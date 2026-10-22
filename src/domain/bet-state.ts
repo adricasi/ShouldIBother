@@ -1,8 +1,10 @@
 /**
  * The bet state machine (design.md, Data model; REQ-006, REQ-008):
  * `open → due → (awaiting_weather) → (awaiting_gemma) → settled`, `open → undone` (undo window)
- * and `open|due → cashed_out` (reserved for the flagged cash-out, T-023: no route reaches it
- * yet). The same table is enforced in SQLite by migration 0003, and a test keeps the two equal.
+ * and `open|due → cashed_out` (the flagged cash-out, T-023). The same table is enforced in SQLite
+ * by migration 0003, and a test keeps the two equal. The cash-out route only ever moves an `open`
+ * bet whose settle time is ahead; the `due → cashed_out` arrow stays because migration 0003's
+ * trigger, which cannot change after it was applied, allows it, but no route uses it.
  */
 export const BET_STATUSES = [
   "open",

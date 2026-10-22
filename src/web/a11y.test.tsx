@@ -280,6 +280,44 @@ describe("NFR-009: core screens have no axe violations (jsdom)", () => {
     });
     expect(await violationsOf(html, "slips")).toEqual([]);
   });
+
+  it("Slips: a waiting bet with the rescue alert and Cash out (REQ-022)", async () => {
+    const rescue = {
+      can_cash_out: true,
+      cash_out_points: -10,
+      checked_at: "2026-10-22T08:00:00.000Z",
+      alert: {
+        text: "The forecast turned against this bet: unlikely (35%) for the rest of the window, down from likely (70%) when you bet.",
+        rule_band: 1,
+        rule_band_name: "unlikely",
+        rule_odds: 35,
+        checked_at: "2026-10-22T08:00:00.000Z",
+        forecast_at: "2026-10-22T07:50:00.000Z",
+      },
+    };
+    const html = renderToStaticMarkup(
+      <SlipsScreen
+        slips={{
+          ...emptySlips,
+          waiting: [
+            { ...bet, id: 11, rescue, time_left_ms: 79_000_000 },
+            { ...bet, id: 12, rescue: { ...rescue, alert: null }, time_left_ms: 79_000_000 },
+          ],
+        }}
+        flags={{ score: true, rescue: true }}
+        nowMs={NOW}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onUndo={() => undefined}
+        onCashOut={() => undefined}
+        onReload={() => undefined}
+      />,
+    );
+    expect(html).toContain("Rescue alert.");
+    expect(html).toContain("Cash out (−10 points)");
+    expect(await violationsOf(html, "slips")).toEqual([]);
+  });
 });
 
 describe("T-018 fix round: states, privacy line and icons", () => {

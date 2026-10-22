@@ -9,6 +9,7 @@ import { cardPhotos } from "./0006-card-photos.js";
 import { settleProgress } from "./0007-settle-progress.js";
 import { cardSunset } from "./0008-card-sunset.js";
 import { laundryPlan } from "./0010-laundry-plan.js";
+import { rescue } from "./0011-rescue.js";
 import { appeals } from "./0012-appeals.js";
 
 /**
@@ -25,5 +26,6 @@ export const MIGRATIONS: readonly Migration[] = [
   settleProgress,
   cardSunset,
   laundryPlan,
+  rescue,
   appeals,
 ];
