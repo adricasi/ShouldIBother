@@ -17,9 +17,7 @@ export type FeaturePlugins = Readonly<Partial<Record<FlagName, FastifyPluginAsyn
 export interface AuthOptions {
   readonly store: AuthStore;
   readonly allowlist: Allowlist;
-  /** Clock shared with the store; tests pass a fake one. */
-  readonly now?: () => number;
-  /** Console output for pairing lines; defaults to `console.log`. */
+  /** Console output for pairing lines; defaults to stderr, keeping stdout for the JSON logs. */
   readonly print?: (line: string) => void;
 }
 
@@ -84,7 +82,7 @@ export const LOGGER_OPTIONS = {
  * registered first and covers every route, `/healthz` included, except `/pair`.
  */
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
-  const now = options.auth.now ?? Date.now;
+  const now = options.auth.store.now;
   const app = Fastify({
     frameworkErrors: frameworkErrorHandler,
     logger: options.logger
@@ -98,8 +96,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     store: options.auth.store,
     limiter: new FailureLimiter(now),
     allowlist: options.auth.allowlist,
-    now,
-    print: options.auth.print ?? ((line) => console.log(line)),
+    print: options.auth.print ?? ((line) => console.error(line)),
   });
   app.get("/healthz", () => ({ status: "ok" }));
 

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vite build && tsx watch src/cli.ts start",
+    "sib": "tsx src/cli.ts",
     "dev:web": "vite",
     "build:web": "vite build",
     "start": "node dist/cli.js start",

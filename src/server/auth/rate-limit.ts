@@ -37,6 +37,15 @@ export class FailureLimiter {
     return entry !== undefined && entry.blockedUntil > this.now();
   }
 
+  /** Whole seconds until a blocked client may try again (at least 1), or 0 when not blocked. */
+  retryAfterSeconds(client: string): number {
+    const entry = this.entries.get(client);
+    if (entry === undefined || entry.blockedUntil <= this.now()) {
+      return 0;
+    }
+    return Math.max(1, Math.ceil((entry.blockedUntil - this.now()) / 1000));
+  }
+
   recordFailure(client: string): void {
     const now = this.now();
     const entry = this.entries.get(client) ?? { failures: [], blockedUntil: 0 };

@@ -102,8 +102,16 @@ export function cookieHeaderFrom(response: LightMyRequestResponse): string {
   return first.split(";")[0] ?? "";
 }
 
+const created: Harness[] = [];
+
+/** Closes every harness a test created, so a failing assertion cannot leak servers or databases. */
+export async function closeAllHarnesses(): Promise<void> {
+  await Promise.all(created.splice(0).map((harness) => harness.close()));
+}
+
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const harness = new Harness();
+  created.push(harness);
   const logStream = new Writable({
     write(chunk: Buffer, _encoding, done) {
       harness.logLines.push(chunk.toString());
@@ -123,7 +131,6 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
         allowedHosts: options.allowedHosts ?? [],
         publicOrigins: options.publicOrigins ?? [],
       }),
-      now: harness.clock.now,
       print: (line) => harness.printed.push(line),
     },
   });

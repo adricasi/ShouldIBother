@@ -71,7 +71,6 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
         allowedHosts: [],
         publicOrigins: [],
       }),
-      now: clock.now,
       print: () => undefined,
     },
   });

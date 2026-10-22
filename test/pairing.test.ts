@@ -134,6 +134,24 @@ describe("AC-001.2: exchanging the token", () => {
     expect(harness.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 3 });
   });
 
+  it("a HEAD request neither uses a device slot nor sets a cookie", async () => {
+    await setup();
+    const { token } = harness.store.issuePairingToken();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const head = await harness.request({ method: "HEAD", url: `/pair?token=${token}` });
+      expect(head.statusCode).toBe(401);
+      expect(head.headers["set-cookie"]).toBeUndefined();
+    }
+    expect(harness.db.prepare("SELECT sessions_created AS n FROM pairing").get()).toEqual({ n: 0 });
+    const statuses: number[] = [];
+    for (let device = 0; device < 3; device += 1) {
+      statuses.push(
+        (await harness.request({ method: "GET", url: `/pair?token=${token}` })).statusCode,
+      );
+    }
+    expect(statuses).toEqual([303, 303, 303]);
+  });
+
   it.each([
     ["no token", "/pair"],
     ["an empty token", "/pair?token="],
@@ -259,7 +277,7 @@ describe("AC-001.3: no session, no app data", () => {
     expect(responses.map((response) => response.statusCode)).toEqual([200, 401, 404, 421]);
     for (const response of responses) {
       expect(response.headers["content-security-policy"]).toBe(
-        "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'",
+        "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
       );
       expect(response.headers["x-content-type-options"]).toBe("nosniff");
       expect(response.headers["referrer-policy"]).toBe("no-referrer");
@@ -307,6 +325,34 @@ describe("AC-001.4: Origin check on POST, PUT and DELETE", () => {
       const response = await harness.request({ method, url, headers: { cookie, origin } });
       expect(response.statusCode).toBe(200);
     }
+  });
+
+  it("PATCH is checked like the other state-changing methods", async () => {
+    await setup({
+      features: {
+        score: (app) => {
+          app.patch("/api/cards/1", () => ({ secret: SECRET }));
+          return Promise.resolve();
+        },
+      },
+    });
+    const cookie = await harness.pairDevice();
+    const without = await harness.request({
+      method: "PATCH",
+      url: "/api/cards/1",
+      headers: { cookie },
+    });
+    const wrong = await harness.request({
+      method: "PATCH",
+      url: "/api/cards/1",
+      headers: { cookie, origin: "https://evil.example" },
+    });
+    const right = await harness.request({
+      method: "PATCH",
+      url: "/api/cards/1",
+      headers: { cookie, origin: LOCAL_ORIGIN },
+    });
+    expect([without.statusCode, wrong.statusCode, right.statusCode]).toEqual([403, 403, 200]);
   });
 
   it("rejects an https origin that is not in config.publicOrigins", async () => {
@@ -366,6 +412,12 @@ describe("AC-001.5: rate limit on unauthenticated failures", () => {
 
     harness.clock.advance(59_000);
     expect(await fail(1, "192.168.1.50")).toEqual([429]);
+    const nearlyDone = await harness.request({
+      method: "GET",
+      url: "/api/today",
+      remoteAddress: "192.168.1.50",
+    });
+    expect(nearlyDone.headers["retry-after"]).toBe("1");
     harness.clock.advance(1_001);
     expect(await fail(1, "192.168.1.50")).toEqual([401]);
   });
@@ -731,7 +783,10 @@ describe("AC-001.10: Secure cookie over an https public origin", () => {
     });
     expect(response.statusCode).toBe(303);
     const cookie = setCookieOf(response);
+    expect(cookie).toMatch(/^__Host-sib_session=[A-Za-z0-9_-]{43};/);
     expect(cookie).toContain("Secure");
+    expect(cookie).toContain("Path=/");
+    expect(cookie).not.toContain("Domain");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("SameSite=Strict");
   });
@@ -745,6 +800,7 @@ describe("AC-001.10: Secure cookie over an https public origin", () => {
       headers: { host: `${LAN_ADDRESS}:${PORT}` },
     });
     expect(setCookieOf(response)).not.toContain("Secure");
+    expect(setCookieOf(response)).toMatch(/^sib_session=/);
   });
 
   it("does not set Secure for an http public origin", async () => {
@@ -758,6 +814,18 @@ describe("AC-001.10: Secure cookie over an https public origin", () => {
     expect(setCookieOf(response)).not.toContain("Secure");
   });
 
+  it("a __Host- session works for later requests", async () => {
+    await setup({ publicOrigins: [PUBLIC_ORIGIN] });
+    const cookie = await harness.pairDevice({ host: PUBLIC_HOST });
+    expect(cookie).toMatch(/^__Host-sib_session=/);
+    const response = await harness.request({
+      method: "GET",
+      url: "/api/today",
+      headers: { cookie, host: PUBLIC_HOST },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
   it("clears the Secure cookie with a Secure cookie", async () => {
     await setup({ publicOrigins: [PUBLIC_ORIGIN] });
     const cookie = await harness.pairDevice({ host: PUBLIC_HOST });
@@ -767,5 +835,6 @@ describe("AC-001.10: Secure cookie over an https public origin", () => {
       headers: { cookie, host: PUBLIC_HOST, origin: PUBLIC_ORIGIN },
     });
     expect(setCookieOf(response)).toContain("Secure");
+    expect(setCookieOf(response)).toMatch(/^__Host-sib_session=;/);
   });
 });

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { migrate, openDatabase, type Migration } from "../src/server/db.js";
@@ -60,6 +64,51 @@ describe("migration runner", () => {
     expect(() => migrate(db, [createA])).toThrow("does not know");
   });
 
+  it("allows gaps in the numbering", () => {
+    const db = openDatabase(":memory:");
+    const createC: Migration = {
+      id: 5,
+      name: "c",
+      sql: "CREATE TABLE c (id INTEGER PRIMARY KEY);",
+    };
+    expect(migrate(db, [createA, createC])).toEqual([1, 5]);
+  });
+
+  it("two connections to one file apply each migration once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-migrate-"));
+    try {
+      const server = openDatabase(join(dir, "sib.db"));
+      const cli = openDatabase(join(dir, "sib.db"));
+      // `CREATE TABLE a` fails if it runs twice, so the second runner must see the first's work.
+      expect(migrate(server, [createA, createB])).toEqual([1, 2]);
+      expect(migrate(cli, [createA, createB])).toEqual([]);
+      expect(cli.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()).toEqual({ n: 2 });
+      server.close();
+      cli.close();
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("takes the write lock before reading the applied set", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-migrate-"));
+    try {
+      const holder = openDatabase(join(dir, "sib.db"));
+      const waiting = openDatabase(join(dir, "sib.db"));
+      waiting.pragma("busy_timeout = 0");
+      holder.exec("BEGIN IMMEDIATE");
+      // With the lock held elsewhere an IMMEDIATE transaction fails at once instead of reading
+      // a stale applied set and racing to apply the migration.
+      expect(() => migrate(waiting, [createA])).toThrow(/locked|busy/i);
+      holder.exec("ROLLBACK");
+      expect(migrate(waiting, [createA])).toEqual([1]);
+      holder.close();
+      waiting.close();
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
   it.each([
     ["a duplicate id", [createA, createA]],
     ["a descending order", [createB, createA]],
@@ -103,9 +152,10 @@ describe("migration 0001", () => {
     ).toThrow();
   });
 
-  it("numbers the migrations from 1 in order", () => {
-    expect(MIGRATIONS.map((migration) => migration.id)).toEqual(
-      MIGRATIONS.map((_m, index) => index + 1),
-    );
+  it("has unique, strictly increasing ids (gaps are allowed: numbers are assigned per task)", () => {
+    const ids = MIGRATIONS.map((migration) => migration.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(ids[0]).toBe(1);
   });
 });
