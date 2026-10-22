@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: wilting plants, a harmful loss.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "harmful_loss",
+    "reason": "The plants are wilting: skipping the watering hurt them.",
+    "evidence": ["Tapped: wilting or drooping"]
+  }
+}

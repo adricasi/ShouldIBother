@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: the one tap says the plants are fine, so doing nothing won.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "win",
+    "reason": "The soil is still moist, so skipping the watering worked.",
+    "evidence": ["Tapped: still moist"]
+  }
+}

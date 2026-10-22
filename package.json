@@ -8,9 +8,10 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/cli.ts start",
+    "dev": "vite build && tsx watch src/cli.ts start",
     "sib": "tsx src/cli.ts",
     "dev:web": "vite",
+    "build:web": "vite build",
     "start": "node dist/cli.js start",
     "build": "tsc -p tsconfig.build.json && vite build",
     "typecheck": "tsc --noEmit && tsc -p src/web/tsconfig.json",
@@ -37,6 +38,7 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.7",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.7",
     "pino": "^10.4.0",

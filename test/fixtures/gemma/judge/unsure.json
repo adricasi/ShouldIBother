@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: the tap is not enough, so Gemma asks a question.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "unsure",
+    "reason": "I cannot tell from one tap.",
+    "evidence": [],
+    "question": "Did it rain on the balcony overnight?"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: dry soil, the chore still had to be done.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "normal_loss",
+    "reason": "The soil is dry, so the plants needed watering after all.",
+    "evidence": ["Tapped: soil is dry"]
+  }
+}

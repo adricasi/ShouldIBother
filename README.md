@@ -45,6 +45,16 @@ portproxy).
   shares one address, so after 10 failed requests everyone without a session is locked out for a
   minute. Paired devices are never affected. This is accepted for a one-household app.
 
+## The walking skeleton (T-004)
+`npm run dev` builds the app screens (`dist/web`) and starts the server, which serves them behind
+the same pairing guard. Until the real Ollama and Open-Meteo clients land (T-010, T-005) the server
+runs on the fake model (`test/fixtures/gemma/`) and fake weather, and says so at start-up. On the
+phone: tap the "Water plants" chip, read the rule odds, tap "Bet: do nothing"; once the settle time
+has passed (the scheduler checks every 60 s) the bet appears under "Settle now" with one-tap
+answers, and the fake judge's verdict and points are shown. After changing a screen, run
+`npm run build:web` and reload. `npm run dev` builds the app screens once, when it starts: after
+editing a screen, restart it (each restart prints a new pairing link) or run `npm run build:web`.
+
 ## Development workflow (AI-assisted, spec-driven)
 Built with the personal ai-toolkit (`~/ai-toolkit`). In Claude Code:
 1. `/spec` — define or refine the specification in `docs/spec/` (once, then when requirements change).
