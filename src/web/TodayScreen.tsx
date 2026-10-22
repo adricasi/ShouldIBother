@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 
-import type { Card, Settled, Today } from "./api.js";
-import { DueSlip, VERDICT_TITLES, WaitingLine } from "./BetParts.js";
+import type { Card, Receipt, Today } from "./api.js";
+import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
+import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
 import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
@@ -22,8 +23,8 @@ export interface TodayScreenProps {
   readonly today: Today | undefined;
   readonly busy: boolean;
   readonly notice: Notice | undefined;
-  /** Settle results of this session, by bet id; shown where the bet was. */
-  readonly results: Readonly<Record<number, Settled>>;
+  /** Receipts of the bets settled in this session, by bet id; shown where the bet was. */
+  readonly results: Readonly<Record<number, Receipt>>;
   readonly onQuickCard: (choreType: string) => void;
   /** Typed capture; true when the cards were made, so the box can be cleared (AC-002.4). */
   readonly onCapture: (text: string) => Promise<boolean>;
@@ -35,6 +36,10 @@ export interface TodayScreenProps {
   readonly onDoIt: (cardId: number, quoteId: number) => void;
   readonly onUndo: (betId: number) => void;
   readonly onSettle: (betId: number, answerId: string) => void;
+  /** Settle with an after photo, paid in full (AC-008.2). */
+  readonly onSettlePhoto?: (betId: number, file: File) => void;
+  /** Answer the judge's yes/no question (AC-008.5). */
+  readonly onSettleAnswer?: (betId: number, yes: boolean) => void;
   /** Add or replace a card's before photo (REQ-005); absent in screens that cannot upload. */
   readonly onPhoto?: (cardId: number, file: File) => void;
   /** Delete a photo and what was derived from it (AC-015.2). */
@@ -263,23 +268,6 @@ function CardSlip({
   );
 }
 
-function ResultSlip({ result }: { result: Settled }) {
-  return (
-    <div className="result" role="status">
-      <p className="eyebrow">Gemma&apos;s read</p>
-      <p className="result-title">
-        {VERDICT_TITLES[result.verdict] ?? result.verdict} · {formatPoints(result.points)}
-      </p>
-      <p>{result.reason}</p>
-      {result.multiplier < 1 ? (
-        <p className="meta">
-          One tap pays half of a win. Total {formatPoints(result.total_points)}.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export function TodayScreen(props: TodayScreenProps) {
   const { today, busy, notice, results } = props;
   const photoActions: PhotoActions | undefined =
@@ -287,6 +275,11 @@ export function TodayScreen(props: TodayScreenProps) {
       ? undefined
       : { onPhoto: props.onPhoto, onDeletePhoto: props.onDeletePhoto };
   const settledResults = Object.values(results);
+  const settleActions: SettleActions = {
+    onSettle: props.onSettle,
+    ...(props.onSettlePhoto === undefined ? {} : { onPhoto: props.onSettlePhoto }),
+    ...(props.onSettleAnswer === undefined ? {} : { onAnswer: props.onSettleAnswer }),
+  };
   return (
     <>
       <main className="screen">
@@ -303,6 +296,10 @@ export function TodayScreen(props: TodayScreenProps) {
         </header>
 
         {today === undefined ? null : <GemmaStatus gemma={today.gemma} />}
+
+        {today === undefined ? null : (
+          <WeekStrip totals={today.week.totals} from={today.week.from} to={today.week.to} />
+        )}
 
         {today?.forecast == null ? null : (
           <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
@@ -397,10 +394,10 @@ export function TodayScreen(props: TodayScreenProps) {
                 <p className="empty">Bets ready to settle appear here.</p>
               ) : null}
               {today.due_bets.map((bet) => (
-                <DueSlip key={bet.id} bet={bet} busy={busy} onSettle={props.onSettle} />
+                <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
               ))}
-              {settledResults.map((result) => (
-                <ResultSlip key={result.bet_id} result={result} />
+              {settledResults.map((receipt) => (
+                <ReceiptCard key={receipt.bet_id} receipt={receipt} />
               ))}
             </section>
           </>

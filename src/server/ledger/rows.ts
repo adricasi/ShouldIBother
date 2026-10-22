@@ -62,6 +62,8 @@ export interface SettlementRow {
   bet_id: number;
   evidence: "photo" | "tap" | "auto";
   multiplier: number;
+  /** 1 when a settlement 24 h or more after the settle time capped the win at x0.5 (AC-008.8). */
+  multiplier_capped: number;
   verdict: string;
   lucky_win: number | null;
   weather: string | null;
@@ -70,4 +72,23 @@ export interface SettlementRow {
   settled_at: number;
   appeal_of: number | null;
   final: number;
+}
+
+/** What a bet knows while it settles (migration 0007). */
+export interface ProgressRow {
+  bet_id: number;
+  evidence: "tap" | "photo" | null;
+  answer_id: string | null;
+  photo_id: string | null;
+  before_photo_id: string | null;
+  answered_at: number | null;
+  /** The judge's open yes/no question; null when none waits for an answer (AC-008.5). */
+  question: string | null;
+  /** JSON list of `{question, yes}`: what the judge asked and the taps that answered. */
+  followups: string;
+  /** JSON `WeatherSnapshot` the person saw on the settle screen (AC-008.1). */
+  weather: string | null;
+  tried_at: number | null;
+  /** Why the last try did not settle: a judge failure code or `weather`. */
+  failure: string | null;
 }

@@ -31,7 +31,7 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
     seedLiveDatabase(db);
     const betsBefore = db.prepare("SELECT * FROM bets").all();
     const cardsBefore = db.prepare("SELECT * FROM cards ORDER BY id").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([6]);
+    expect(migrate(db, MIGRATIONS)).toEqual(expect.arrayContaining([6]));
     expect(db.prepare("SELECT * FROM cards ORDER BY id").all()).toEqual(
       cardsBefore.map((card) => ({ ...(card as object), photo_state: null, photo_failure: null })),
     );

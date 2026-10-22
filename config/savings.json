@@ -1,0 +1,63 @@
+{
+  "_comment": "Savings of one won bet, per chore (docs/discovery/product-concept.md, Chore catalogue). 'sourced' figures link their source; the rest are labelled 'typical estimate'. Time counts skipped steps only: hanging laundry instead of the dryer is 0 minutes.",
+  "plants": {
+    "time_min": 5,
+    "water_l": 4,
+    "electricity_kwh": 0,
+    "assumption": "5 balcony pots: about 4 L of watering and 5 min skipped",
+    "basis": "typical estimate"
+  },
+  "laundry_line": {
+    "heat-pump": {
+      "time_min": 0,
+      "water_l": 0,
+      "electricity_kwh": 2.2,
+      "assumption": "vs a heat-pump dryer, ~2.2 kWh per load; no minutes saved",
+      "basis": "sourced",
+      "source": "https://www.haier-europe.com/en_GB/blogs/news/how-much-does-a-tumble-dryer-cost-to-run"
+    },
+    "condenser": {
+      "time_min": 0,
+      "water_l": 0,
+      "electricity_kwh": 3.5,
+      "assumption": "vs a condenser dryer, ~3.5 kWh per load; no minutes saved",
+      "basis": "typical estimate"
+    },
+    "vented": {
+      "time_min": 0,
+      "water_l": 0,
+      "electricity_kwh": 5.3,
+      "assumption": "vs a vented dryer, ~5.3 kWh per load; no minutes saved",
+      "basis": "sourced",
+      "source": "https://www.haier-europe.com/en_GB/blogs/news/how-much-does-a-tumble-dryer-cost-to-run"
+    },
+    "none": {
+      "time_min": 0,
+      "water_l": 0,
+      "electricity_kwh": 0,
+      "assumption": "no dryer in your baseline, so no electricity saved and no minutes",
+      "basis": "household baseline"
+    }
+  },
+  "laundry_tonight": {
+    "time_min": 10,
+    "water_l": 0,
+    "electricity_kwh": 1.5,
+    "assumption": "about 10 min of bringing laundry in and ~1.5 kWh of rack or dryer skipped",
+    "basis": "typical estimate"
+  },
+  "ac": {
+    "time_min": 0,
+    "water_l": 0,
+    "electricity_kwh": 2.5,
+    "assumption": "~2.5 kWh of air conditioning per evening skipped, no minutes",
+    "basis": "typical estimate"
+  },
+  "heater": {
+    "time_min": 0,
+    "water_l": 0,
+    "electricity_kwh": 3.5,
+    "assumption": "~3.5 kWh of heating per day skipped, no minutes",
+    "basis": "typical estimate"
+  }
+}

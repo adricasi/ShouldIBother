@@ -11,6 +11,8 @@ export interface SlipsScreenProps {
   readonly busy: boolean;
   readonly notice: Notice | undefined;
   readonly onSettle: (betId: number, answerId: string) => void;
+  readonly onSettlePhoto?: (betId: number, file: File) => void;
+  readonly onSettleAnswer?: (betId: number, yes: boolean) => void;
   readonly onUndo: (betId: number) => void;
 }
 
@@ -55,7 +57,16 @@ export function SlipsScreen(props: SlipsScreenProps) {
                 <p className="empty">{SLIPS_EMPTY_TEXT.settleNow}</p>
               ) : (
                 slips.settle_now.map((bet) => (
-                  <DueSlip key={bet.id} bet={bet} busy={busy} onSettle={props.onSettle} />
+                  <DueSlip
+                    key={bet.id}
+                    bet={bet}
+                    busy={busy}
+                    onSettle={props.onSettle}
+                    {...(props.onSettlePhoto === undefined ? {} : { onPhoto: props.onSettlePhoto })}
+                    {...(props.onSettleAnswer === undefined
+                      ? {}
+                      : { onAnswer: props.onSettleAnswer })}
+                  />
                 ))
               )}
             </section>

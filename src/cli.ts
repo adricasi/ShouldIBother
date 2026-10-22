@@ -1,8 +1,29 @@
 #!/usr/bin/env node
+import { createInterface } from "node:readline/promises";
+
+import { deletePhotosCommand, exportCommand, type Confirm } from "./server/data-commands.js";
 import { forgetDevicesCommand, pairCommand, startServer } from "./server/main.js";
 import { loadRuntime } from "./server/runtime.js";
 
-const USAGE = "Usage: sib start | pair | forget-devices";
+const USAGE =
+  "Usage: sib start | pair | forget-devices | delete-photos [--all-data] | export <dir>";
+
+/** Asks on the console and accepts only the exact word (AC-015.3). */
+const confirm: Confirm = async (question, expected) => {
+  const lines = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return (await lines.question(question)).trim() === expected;
+  } catch {
+    // No answer (stdin closed): cancel.
+    return false;
+  } finally {
+    lines.close();
+  }
+};
+
+const print = (text: string): void => {
+  console.error(text);
+};
 
 async function main(args: readonly string[]): Promise<number> {
   const [command] = args;
@@ -25,6 +46,29 @@ async function main(args: readonly string[]): Promise<number> {
     case "forget-devices":
       forgetDevicesCommand(loadRuntime());
       return 0;
+    case "delete-photos": {
+      const flags = args.slice(1);
+      const unknown = flags.filter((flag) => flag !== "--all-data");
+      if (unknown.length > 0) {
+        console.error(`Unknown option: ${unknown.join(" ")}\n${USAGE}`);
+        return 1;
+      }
+      await deletePhotosCommand(
+        loadRuntime(),
+        { allData: flags.includes("--all-data") },
+        { confirm, print },
+      );
+      return 0;
+    }
+    case "export": {
+      const [directory, ...extra] = args.slice(1);
+      if (directory === undefined || extra.length > 0) {
+        console.error(USAGE);
+        return 1;
+      }
+      exportCommand(loadRuntime(), directory, print);
+      return 0;
+    }
     default:
       console.error(command === undefined ? USAGE : `Unknown command: ${command}\n${USAGE}`);
       return 1;

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CHORES } from "../src/domain/chores.js";
-import { judgeBet } from "../src/server/gemma/judge.js";
+import { judgeBet, type JudgeInput } from "../src/server/gemma/judge.js";
 import { loadPrompt } from "../src/server/gemma/prompts.js";
 import {
   ModelTimeoutError,
@@ -159,7 +159,15 @@ describe("NFR-010: FakeModelClient answers from fixtures keyed by job and scenar
 });
 
 describe("judge job on the committed synthetic fixtures", () => {
-  const input = { chore: CHORES.plants, odds: 70, answerId: "moist" };
+  const input: JudgeInput = {
+    chore: CHORES.plants,
+    kind: "do_nothing",
+    odds: 70,
+    evidence: { kind: "tap", answerId: "moist" },
+    weather: null,
+    followups: [],
+    canAsk: true,
+  };
 
   it("turns each fixture into a verdict or a failure kind, never both", async () => {
     const fake = new FakeModelClient();
@@ -206,7 +214,7 @@ describe("judge job on the committed synthetic fixtures", () => {
   });
 
   it("loads versioned prompt files", () => {
-    expect(loadPrompt("judge", 1).version).toBe("judge.v1");
+    expect(loadPrompt("judge", 2).version).toBe("judge.v2");
     expect(() => loadPrompt("judge", 99)).toThrow();
   });
 });

@@ -437,3 +437,144 @@ label.button.disabled {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* Settlement (T-009): recorded weather, receipt, loss result, week strip. */
+.weather-record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chips-static {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chips-static li {
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  background: var(--color-rain-soft);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+}
+
+.receipt {
+  background: var(--color-card);
+  border: var(--border-hair) dashed var(--color-line);
+  border-radius: 0;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.receipt.paid {
+  border: var(--border-strong) solid var(--color-leaf);
+}
+
+.receipt.plain {
+  border-color: var(--color-ink-3-text);
+}
+
+.receipt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Static in T-009; the landing animation is T-017 (flag stampAnimation). */
+.stamp {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-title);
+  letter-spacing: 0.06em;
+  color: var(--color-coral);
+  border: var(--border-strong) solid var(--color-coral);
+  border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-3);
+  transform: rotate(-8deg);
+}
+
+.receipt-rows,
+.stat-tiles {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.receipt-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: var(--border-hair) dashed var(--color-line);
+  padding-bottom: var(--space-2);
+}
+
+.receipt-rows dt {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.receipt-rows dd {
+  margin: 0;
+  text-align: right;
+}
+
+.gemma-read ul,
+.assumptions {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.loss-copy {
+  background: var(--color-amber-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.week .stat-tiles {
+  flex-direction: row;
+  gap: var(--space-3);
+}
+
+.stat-tiles > div {
+  flex: 1;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.stat-tiles dt {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.stat-tiles dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-title);
+}
+
+.settled-line {
+  align-items: flex-start;
+}
+
+.receipt-details summary {
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}

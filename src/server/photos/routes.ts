@@ -1,5 +1,5 @@
-import multipart from "@fastify/multipart";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyMultipartOptions } from "@fastify/multipart";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { HttpError } from "../problem.js";
@@ -31,6 +31,28 @@ function parseBetId(params: unknown): number {
   return parseParams(betIdParams, params).id;
 }
 
+/**
+ * One file, no stray fields: the limits cut a request off before it is buffered whole. The core
+ * registers the parser once, for the card photo route and the settlement's after photo.
+ */
+export const MULTIPART_OPTIONS: FastifyMultipartOptions = {
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0, parts: 1 },
+  throwFileSizeLimit: true,
+};
+
+/** The bytes of the one uploaded file; upload errors become problems (413, 400). */
+export async function readUploadedPhoto(request: FastifyRequest): Promise<Buffer> {
+  try {
+    const file = await request.file();
+    if (file === undefined) {
+      throw new HttpError(400, "No photo in the request");
+    }
+    return await file.toBuffer();
+  } catch (error) {
+    throw translateUploadError(error);
+  }
+}
+
 export interface PhotoRouteOptions {
   readonly deps: Pick<LedgerDeps, "db" | "now" | "photos">;
   /** Throws 503 when Gemma's queue is full; called before the photo is read or any state changes. */
@@ -42,33 +64,18 @@ export interface PhotoRouteOptions {
 /**
  * Photo routes (design.md, Interfaces): upload, serve, delete a photo, delete a bet's data. The
  * plugin lives inside the core's scope, so the session guard, the problem+json error handler and
- * `no-store` apply; the upload parser (multipart) is registered here and nowhere else.
+ * `no-store` apply; the upload parser (multipart) is registered by the core, once.
  */
 export function photoRoutes(options: PhotoRouteOptions): FastifyPluginAsync {
   const { deps } = options;
-  return async (app) => {
-    await app.register(multipart, {
-      // One file, no stray fields: the limits cut a request off before it is buffered whole.
-      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0, parts: 1 },
-      throwFileSizeLimit: true,
-    });
-
+  return (app) => {
     app.post("/api/cards/:id/photo", async (request, reply) => {
       const id = parseBetId(request.params);
       if (!request.isMultipart()) {
         throw unsupportedPhoto();
       }
       options.checkCapacity();
-      let bytes: Buffer;
-      try {
-        const file = await request.file();
-        if (file === undefined) {
-          throw new HttpError(400, "No photo in the request");
-        }
-        bytes = await file.toBuffer();
-      } catch (error) {
-        throw translateUploadError(error);
-      }
+      const bytes = await readUploadedPhoto(request);
       const { photo } = await addBeforePhoto(deps, id, bytes);
       return reply.code(201).send(options.afterStored({ cardId: id, photo: photoView(photo) }));
     });
@@ -102,6 +109,7 @@ export function photoRoutes(options: PhotoRouteOptions): FastifyPluginAsync {
       deleteBetData(deps, parseBetId(request.params));
       return reply.code(204).send();
     });
+    return Promise.resolve();
   };
 }
 

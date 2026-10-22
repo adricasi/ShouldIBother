@@ -1,9 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import type { Bet, Card, Settled, Today } from "./api.js";
+import type { Bet, Card, Today } from "./api.js";
 import { FLAGGED_ENTRIES, visibleEntries, type FlaggedEntry } from "./features.js";
-import { formatOdds, formatPoints, formatSettleTime } from "./format.js";
+import {
+  formatDuration,
+  formatNetDuration,
+  formatOdds,
+  formatPoints,
+  formatSettleTime,
+} from "./format.js";
+import { answerNeeded, emptyWeek, lossReceipt, winReceipt } from "./test-data.js";
 import { Nav } from "./Nav.js";
 import { TodayScreen, type TodayScreenProps } from "./TodayScreen.js";
 
@@ -60,6 +67,7 @@ const bet: Bet = {
     { id: "moist", label: "Still moist, all fine" },
     { id: "dry", label: "Soil is dry" },
   ],
+  settle: null,
 };
 
 const emptyToday: Today = {
@@ -68,6 +76,7 @@ const emptyToday: Today = {
   points: { total: 0 },
   gemma: { status: "online" as const, detail: null, checked_at: "2026-10-22T08:00:00.000Z" },
   forecast: null,
+  week: emptyWeek,
   attribution: "Weather data by Open-Meteo.com",
   cards: [],
   open_bets: [],
@@ -150,7 +159,7 @@ describe("Today screen", () => {
     const html = screen({
       ...emptyToday,
       open_bets: [bet],
-      due_bets: [{ ...bet, id: 8, status: "due" }],
+      due_bets: [{ ...bet, id: 8, status: "due", settle: answerNeeded }],
     });
     expect(html).toContain("Likely · 70% · settles");
     expect(html).toContain("Undo (4 min left)");
@@ -158,24 +167,52 @@ describe("Today screen", () => {
     expect(html).toContain("Soil is dry");
   });
 
-  it("shows the verdict, reason and points after settling, and error notices as alerts", () => {
-    const result: Settled = {
-      bet_id: 8,
-      verdict: "win",
-      reason: "Still moist.",
-      evidence: [],
-      multiplier: 0.5,
-      points: 15,
-      total_points: 15,
-    };
+  it("AC-010.1: shows the PAID OUT receipt after a win and error notices as alerts", () => {
     const html = screen(emptyToday, {
-      results: { 8: result },
+      results: { 8: winReceipt },
       notice: { kind: "error", text: "Gemma could not judge this bet yet" },
     });
+    expect(html).toContain("PAID OUT");
     expect(html).toContain("You win · +15");
+    expect(html).toContain("Likely · 70%");
+    expect(html).toContain("One tap, paid at half");
+    expect(html).toContain("Modelled recent weather (Open-Meteo)");
+    expect(html).toContain("Rain 3 mm");
+    expect(html).toContain("Time saved");
+    expect(html).toContain("5 min");
+    expect(html).toContain("Water saved");
+    expect(html).toContain("4 L");
+    expect(html).toContain("balcony pots");
+    expect(html).toContain("Gemma&#x27;s read");
     expect(html).toContain("Still moist.");
     expect(html).toContain('role="alert"');
     expect(html).toContain("Gemma could not judge this bet yet");
+  });
+
+  it("AC-008.8: a win capped at half because Gemma judged it 24 h late is explained, not blamed on a tap", () => {
+    const html = screen(emptyToday, {
+      results: {
+        8: {
+          ...winReceipt,
+          evidence: {
+            kind: "photo",
+            text: "After photo, paid at half: settled 24 hours or more after the settle time",
+          },
+          multiplier_capped: true,
+        },
+      },
+    });
+    expect(html).toContain("settled 24 hours or more after the settle time");
+    expect(html).not.toContain("A photo would have paid in full");
+  });
+
+  it("AC-010.2: a loss shows the points, the reason and the fixed copy, without the stamp", () => {
+    const html = screen(emptyToday, { results: { 9: lossReceipt } });
+    expect(html).toContain("Loss · −50");
+    expect(html).toContain("The soil is dry.");
+    expect(html).toContain("The weather did not cover this one");
+    expect(html).not.toContain("PAID OUT");
+    expect(html).not.toContain("Water saved");
   });
 
   it("renders without data while loading", () => {
@@ -366,5 +403,51 @@ describe("T-006: Gemma on Today (REQ-002, REQ-003, REQ-013)", () => {
       expect(html).toContain("pay the bill");
       expect(html).not.toContain("Bet: do nothing");
     }
+  });
+});
+
+describe("This week's savings on Today (AC-011.3, AC-011.5, AC-011.6)", () => {
+  it("shows net time back with both parts, water and electricity, each with its assumption", () => {
+    const html = screen({
+      ...emptyToday,
+      week: {
+        from: "2026-10-19",
+        to: "2026-10-25",
+        totals: {
+          bets: 12,
+          wins: 2,
+          time_saved_s: 7800,
+          app_time_s: 360,
+          net_time_s: 7440,
+          water_l: 38,
+          electricity_kwh: 6.5,
+          assumptions: [
+            {
+              chore_type: "laundry_line",
+              assumption: "vs a heat-pump dryer, ~2.2 kWh per load; no minutes saved",
+              basis: "sourced",
+              wins: 2,
+            },
+          ],
+        },
+      },
+    });
+    expect(html).toContain("This week the sky did");
+    expect(html).toContain("+2 h 4 min");
+    expect(html).toContain("2 h 10 min saved, minus 6 min spent on 12 bets.");
+    expect(html).toContain("38 L");
+    expect(html).toContain("6.5 kWh");
+    expect(html).toContain("vs a heat-pump dryer");
+    expect(html).toContain("(sourced)");
+  });
+
+  it("formats durations and a negative net time with a real minus sign", () => {
+    expect(formatDuration(30)).toBe("30 s");
+    expect(formatDuration(90)).toBe("1 min 30 s");
+    expect(formatDuration(3600 * 2 + 600)).toBe("2 h 10 min");
+    expect(formatDuration(0)).toBe("0 min");
+    expect(formatNetDuration(-120)).toBe("−2 min");
+    expect(formatNetDuration(300)).toBe("+5 min");
+    expect(formatNetDuration(0)).toBe("0 min");
   });
 });

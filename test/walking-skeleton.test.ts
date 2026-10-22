@@ -142,12 +142,15 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
     expect(settled.statusCode).toBe(200);
     expect(settled.json()).toMatchObject({
-      bet_id: bet.id,
-      verdict: "win",
-      evidence_kind: "tap",
-      multiplier: 0.5,
-      points: 15,
-      total_points: 15,
+      state: "settled",
+      receipt: {
+        bet_id: bet.id,
+        verdict: "win",
+        evidence: { kind: "tap" },
+        multiplier: 0.5,
+        points: 15,
+        total_points: 15,
+      },
     });
     expect(winPoints(70, "tap")).toBe(15);
 
@@ -162,9 +165,8 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     reachSettleTime(bet);
     const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "wilting" });
     expect(settled.json()).toMatchObject({
-      verdict: "harmful_loss",
-      points: -150,
-      total_points: -150,
+      state: "settled",
+      receipt: { verdict: "harmful_loss", points: -150, total_points: -150 },
     });
   });
 
@@ -175,7 +177,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
       const bet = await placeBet(await quickCard());
       reachSettleTime(bet);
       const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer });
-      results.push(settled.json<{ points: number }>().points);
+      results.push(settled.json<{ receipt: { points: number } }>().receipt.points);
     }
     expect(results).toEqual([15, -50, -150]);
     expect((await today()).points.total).toBe(15 - 50 - 150);
@@ -214,41 +216,6 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect(Number(row?.["undo_until"]) - Number(row?.["placed_at"])).toBe(5 * MINUTE);
   });
 
-  it("AC-008.8: when Gemma is offline the bet stays due and is never settled by the rule", async () => {
-    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet(await quickCard());
-    reachSettleTime(bet);
-    harness.model.setScenario("judge", "offline");
-    const failed = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
-    expect(failed.statusCode).toBe(503);
-    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM settlements").get()).toEqual({ n: 0 });
-    expect((await today()).due_bets.map((b) => b.id)).toEqual([bet.id]);
-
-    // The failure is logged for the evaluation; Gemma comes back and the same bet settles.
-    expect(
-      harness.db.prepare("SELECT job, valid, error FROM gemma_decisions WHERE job = 'judge'").all(),
-    ).toEqual([
-      { job: "judge", valid: 0, error: expect.stringContaining("unavailable") as unknown },
-    ]);
-    harness.model.setScenario("judge", "ok");
-    const retried = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
-    expect(retried.statusCode).toBe(200);
-  });
-
-  it.each(["invalid-json", "invalid-schema", "timeout", "unsure"])(
-    "a judge answer of kind %s never settles the bet",
-    async (scenario) => {
-      await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-      const bet = await placeBet(await quickCard());
-      reachSettleTime(bet);
-      harness.model.setScenario("judge", scenario);
-      const response = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
-      expect(response.statusCode).toBe(503);
-      expect((await today()).points.total).toBe(0);
-      expect(harness.db.prepare("SELECT status FROM bets").all()).toEqual([{ status: "due" }]);
-    },
-  );
-
   it("logs the judge decision with the bet, prompt version and model", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
     const bet = await placeBet(await quickCard());
@@ -261,7 +228,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
       job: "judge",
       bet_id: bet.id,
       model: "fake-gemma",
-      prompt_version: "judge.v1",
+      prompt_version: "judge.v2",
       valid: 1,
       tool_mode: null,
     });

@@ -7,6 +7,8 @@ import { HttpError } from "../problem.js";
 import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
 import { currentPhoto, withoutPhotoQuote } from "./photo-view.js";
+import { savingsSnapshotText } from "./savings.js";
+import { getProgress } from "./settle-progress.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
 
@@ -100,9 +102,9 @@ export function placeBet(
       deps.db
         .prepare(
           `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, gemma_band, rule_band,
-             band_without_photo, model_version, prompt_version, placed_at, undo_until, settle_at,
-             status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             band_without_photo, model_version, prompt_version, savings_snapshot, placed_at,
+             undo_until, settle_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
         )
         .run(
           cardId,
@@ -116,6 +118,7 @@ export function placeBet(
           bandWithoutPhoto,
           modelVersion,
           decision?.prompt_version ?? null,
+          savingsSnapshotText(deps, card.chore_type),
           now,
           now + UNDO_WINDOW_MS,
           quote.settle_at,
@@ -175,6 +178,19 @@ export function markDueBets(db: Db, nowMs: number): number {
     .run(nowMs).changes;
 }
 
+/** Bets whose settle time has come and that are not settled yet, in any step of the machine. */
+export function listDueBets(deps: LedgerDeps): BetView[] {
+  return viewsOf(
+    deps,
+    deps.db
+      .prepare<[number], BetRow>(
+        `SELECT * FROM bets WHERE status IN ('due', 'awaiting_weather', 'awaiting_gemma')
+         AND settle_at <= ? ORDER BY settle_at, id`,
+      )
+      .all(deps.now()),
+  );
+}
+
 export function listBetsWithStatus(deps: LedgerDeps, status: "open" | "due"): BetView[] {
   return viewsOf(
     deps,
@@ -198,5 +214,7 @@ export function viewsOf(deps: LedgerDeps, rows: readonly BetRow[]): BetView[] {
   const table = bandTable(deps.rules);
   const now = deps.now();
   const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
-  return rows.map((row) => betView(row, cardOf.get(row.card_id)!, table, now));
+  return rows.map((row) =>
+    betView(row, cardOf.get(row.card_id)!, table, now, getProgress(deps.db, row.id)),
+  );
 }

@@ -10,6 +10,11 @@ export interface Scheduler {
   tick(): number;
   /** The weather step: bets waiting for recorded weather ask again every 30 min (AC-014.5). */
   tickWeather(): Promise<number>;
+  /**
+   * The settlement step: stores the recorded weather of due bets, judges do-it decisions, answered
+   * bets that wait for Gemma and unanswered bets 24 h after their settle time (AC-008.7–AC-008.9).
+   */
+  tickSettlement(): Promise<number>;
   start(): void;
   stop(): void;
 }
@@ -22,9 +27,11 @@ export interface Scheduler {
 export function createScheduler(
   deps: Pick<LedgerDeps, "db" | "now"> & Partial<Pick<LedgerDeps, "weather">>,
   onError: (error: unknown) => void,
+  steps: { readonly settle?: () => Promise<number> } = {},
 ): Scheduler {
   let timer: NodeJS.Timeout | undefined;
   let weatherStep: Promise<number> | undefined;
+  let settleStep: Promise<number> | undefined;
   const tick = (): number => markDueBets(deps.db, deps.now());
   const tickWeather = (): Promise<number> => {
     const { weather } = deps;
@@ -37,9 +44,21 @@ export function createScheduler(
     });
     return weatherStep;
   };
+  const tickSettlement = (): Promise<number> => {
+    const { settle } = steps;
+    if (settle === undefined) {
+      return Promise.resolve(0);
+    }
+    // One pass at a time: a slow Gemma must not stack up passes.
+    settleStep ??= settle().finally(() => {
+      settleStep = undefined;
+    });
+    return settleStep;
+  };
   return {
     tick,
     tickWeather,
+    tickSettlement,
     start() {
       if (timer !== undefined) {
         return;
@@ -51,6 +70,7 @@ export function createScheduler(
           onError(error);
         }
         tickWeather().catch(onError);
+        tickSettlement().catch(onError);
       };
       safeTick();
       timer = setInterval(safeTick, SCHEDULER_INTERVAL_MS);

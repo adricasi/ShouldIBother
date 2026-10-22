@@ -63,6 +63,29 @@ answers, and the fake judge's verdict and points are shown. After changing a scr
 `npm run build:web` and reload. `npm run dev` builds the app screens once, when it starts: after
 editing a screen, restart it (each restart prints a new pairing link) or run `npm run build:web`.
 
+## Settling, savings and your data (T-009)
+At the settle time the app fetches the recorded weather of the bet's window (labelled "modelled
+recent weather", from Open-Meteo's past hours) and asks for the outcome: one tap, or an after
+photo (full points). Your answer is stored first; then the Gemma judge gives the verdict. If Gemma
+is offline the bet waits as "Settle when Gemma is back" with your answer kept, and the scheduler
+tries again every few minutes: the rule never settles a bet. With no answer 24 hours after the
+settle time the judge settles from the weather record at half points. Wins print a PAID OUT
+receipt; losses show the points, Gemma's reason and fixed, non-shaming words.
+
+Savings per won bet come from `config/savings.json` (figures with their assumption and either a
+source or "typical estimate") and your dryer in `config/household.json`; the figure is written on
+the bet when it is placed. Today shows the week's net time back (time saved minus 30 s per bet),
+water and electricity, Monday to Sunday in Madrid time, each with its assumption.
+
+Your data (these commands refuse to run while the app is running, so stop it first; they touch only
+the files the app owns in the data folder, and `config/household.json` is never touched):
+```bash
+npm run sib -- export ~/sib-export         # export.json (bets, decisions, verdicts, totals) + photos/
+npm run sib -- delete-photos               # asks first; removes every photo and what Gemma read from it
+npm run sib -- delete-photos --all-data    # asks first; also removes the database and its WAL files
+```
+The export folder holds household data: keep it out of the repository.
+
 ## Weather and attribution
 Odds come from the Open-Meteo forecast for the neighbourhood coordinates in `config/household.json`
 (`location`, rounded to 2 decimals before every request). The weather client calls only the four

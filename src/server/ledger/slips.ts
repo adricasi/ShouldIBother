@@ -1,6 +1,8 @@
+import { getProgress } from "./settle-progress.js";
+import { receiptOf } from "./receipt.js";
 import { listSettlingBets, markDueBets, viewsOf } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
-import type { BetRow, SettlementRow } from "./rows.js";
+import type { BetRow, CardRow, SettlementRow } from "./rows.js";
 
 /** The most recent settled bets Slips lists; older ones stay in the database for Score. */
 const MAX_SETTLED = 100;
@@ -35,7 +37,8 @@ export function getSlips(deps: LedgerDeps) {
   const settlementOf = deps.db.prepare<[number], SettlementRow>(
     "SELECT * FROM settlements WHERE bet_id = ? AND final = 1 ORDER BY id DESC LIMIT 1",
   );
-  const settled = viewsOf(deps, settledRows).map((bet) => {
+  const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
+  const settled = viewsOf(deps, settledRows).map((bet, index) => {
     const settlement = settlementOf.get(bet.id)!;
     return {
       ...bet,
@@ -45,6 +48,14 @@ export function getSlips(deps: LedgerDeps) {
         evidence: settlement.evidence,
         settled_at: new Date(settlement.settled_at).toISOString(),
       },
+      /** The PAID OUT receipt or the loss screen of this bet (AC-010.1, AC-010.2). */
+      receipt: receiptOf(
+        deps,
+        settledRows[index]!,
+        cardOf.get(bet.card_id)!,
+        settlement,
+        getProgress(deps.db, bet.id),
+      ),
     };
   });
 

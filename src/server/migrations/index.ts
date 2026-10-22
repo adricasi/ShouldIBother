@@ -6,6 +6,7 @@ import { betLocks } from "./0003-bet-locks.js";
 import { cardNotices } from "./0004-card-notices.js";
 import { gemmaCards } from "./0005-gemma-cards.js";
 import { cardPhotos } from "./0006-card-photos.js";
+import { settleProgress } from "./0007-settle-progress.js";
 
 /**
  * Every migration in order. A new migration is one file plus one line here; numbers are
@@ -18,4 +19,5 @@ export const MIGRATIONS: readonly Migration[] = [
   cardNotices,
   gemmaCards,
   cardPhotos,
+  settleProgress,
 ];

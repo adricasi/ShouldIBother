@@ -3,8 +3,11 @@ import { CHORES, NOTICES, isChoreType } from "../../domain/chores.js";
 import { canUndo } from "../../domain/bet-state.js";
 import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 
+import { ANSWER_WINDOW_MS } from "../../domain/settlement.js";
+import { parseWeatherSnapshot, RECORDED_WEATHER_LABEL } from "../../domain/weather-digest.js";
+
 import type { CardPhotoView } from "./photo-view.js";
-import type { BetRow, CardRow, QuoteRow } from "./rows.js";
+import type { BetRow, CardRow, ProgressRow, QuoteRow } from "./rows.js";
 
 /** What the person can win or lose at these odds, computed by code (AC-003.2). */
 export interface Payouts {
@@ -93,11 +96,81 @@ export function quoteView(quote: QuoteRow, table: BandTable, state: GemmaState) 
 
 export type QuoteView = ReturnType<typeof quoteView>;
 
+/** Where a bet whose settle time has come stands, for the settle screen (REQ-008). */
+export type SettleState = "answer_needed" | "question" | "waiting_weather" | "waiting_gemma";
+
+const READY_STATUSES: readonly string[] = ["open", "due", "awaiting_weather", "awaiting_gemma"];
+
+/**
+ * The settle screen's data for a bet: null before the settle time, else what the person can do
+ * (answer with a tap or a photo, answer the judge's question) or what the bet waits for, with the
+ * recorded weather once it is in (AC-008.1) and the words for the wait (AC-008.8).
+ */
+export function settleView(bet: BetRow, progress: ProgressRow | undefined, nowMs: number) {
+  if (bet.settle_at > nowMs || !READY_STATUSES.includes(bet.status)) {
+    return null;
+  }
+  const answered = progress?.evidence ?? null;
+  const deadline = bet.settle_at + ANSWER_WINDOW_MS;
+  const snapshot = parseWeatherSnapshot(progress?.weather ?? null);
+  // After 24 h the judge decides without asking, so an old question is no longer shown.
+  const pendingQuestion = nowMs < deadline ? (progress?.question ?? null) : null;
+  const waiting = bet.status === "awaiting_weather" ? "waiting_weather" : "waiting_gemma";
+  let state: SettleState;
+  let note: string | null;
+  if (pendingQuestion !== null) {
+    state = "question";
+    note = null;
+  } else if (bet.kind === "do_it" || answered !== null || nowMs >= deadline) {
+    state = waiting;
+    if (state === "waiting_weather") {
+      note = "Waiting for the recorded weather.";
+    } else if (progress?.failure != null) {
+      note = "Settle when Gemma is back. Your answer is saved.";
+    } else if (bet.kind === "do_it") {
+      note = "Gemma checks the recorded weather to score it.";
+    } else if (answered !== null) {
+      note = "Your answer is saved. Gemma is settling it.";
+    } else {
+      note = "No answer in 24 hours: Gemma settles it from the weather record, at half points.";
+    }
+  } else {
+    state = "answer_needed";
+    note =
+      snapshot === null
+        ? "The recorded weather is not in yet. You can answer now; it settles when it is."
+        : null;
+  }
+  return {
+    state,
+    note,
+    question: pendingQuestion,
+    answered_with: answered,
+    /** After this the judge settles it from the weather record alone (AC-008.7). */
+    answer_until: new Date(deadline).toISOString(),
+    weather:
+      snapshot === null
+        ? null
+        : {
+            label: RECORDED_WEATHER_LABEL,
+            digest: snapshot.digest,
+            from: new Date(snapshot.from_ms).toISOString(),
+            to: new Date(snapshot.to_ms).toISOString(),
+          },
+  };
+}
+
 /**
  * A bet as the client sees it. `undoable` is computed at read time from the clock (AC-006.4,
  * AC-006.5): the client never decides alone whether Undo is offered.
  */
-export function betView(bet: BetRow, card: CardRow, table: BandTable, nowMs: number) {
+export function betView(
+  bet: BetRow,
+  card: CardRow,
+  table: BandTable,
+  nowMs: number,
+  progress?: ProgressRow,
+) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
   return {
     id: bet.id,
@@ -117,6 +190,7 @@ export function betView(bet: BetRow, card: CardRow, table: BandTable, nowMs: num
     payouts: payoutsAt(bet.odds),
     // A do-it decision has no question: the judge decides from the recorded weather (AC-008.9).
     tap_answers: bet.kind === "do_nothing" ? (chore?.tapAnswers ?? []) : [],
+    settle: settleView(bet, progress, nowMs),
   };
 }
 

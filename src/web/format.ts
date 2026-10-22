@@ -62,3 +62,54 @@ export function formatTimeLeft(milliseconds: number): string {
   }
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
+
+/** "2 h 10 min", "6 min", "1 min 30 s", "30 s": a length of time for the savings lines (AC-011.3). */
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Math.round(Math.abs(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours} h`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes} min`);
+  }
+  // Seconds only matter while the whole is under 10 minutes.
+  if (rest > 0 && seconds < 600) {
+    parts.push(`${rest} s`);
+  }
+  return parts.length === 0 ? "0 min" : parts.join(" ");
+}
+
+/** Net time back keeps its sign: "+2 h 10 min", "−1 min" (a real minus sign). */
+export function formatNetDuration(totalSeconds: number): string {
+  const text = formatDuration(totalSeconds);
+  if (totalSeconds < 0) {
+    return `−${text}`;
+  }
+  return totalSeconds > 0 ? `+${text}` : text;
+}
+
+/** "4 L", "0.5 L": litres of water with at most one decimal. */
+export function formatLitres(litres: number): string {
+  return `${Number(litres.toFixed(1))} L`;
+}
+
+/** "2.2 kWh": electricity with at most two decimals. */
+export function formatKwh(kwh: number): string {
+  return `${Number(kwh.toFixed(2))} kWh`;
+}
+
+const hourOnly = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** "08:00": a clock time in Madrid time. */
+export function formatClock(iso: string): string {
+  return hourOnly.format(new Date(iso));
+}

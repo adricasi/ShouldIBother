@@ -156,6 +156,67 @@ export async function addBeforePhoto(
   }
 }
 
+/**
+ * Stores the after photo of a bet (AC-008.2): metadata stripped and shrunk first (AC-005.1), then
+ * the row. An undecodable file is refused with 415 and nothing is written (AC-005.6). Like the
+ * before photo it is staged under a temporary name and renamed after the commit; `record` runs
+ * in the same transaction as the row, so the person's answer and its photo are stored together
+ * or not at all.
+ */
+export async function addAfterPhoto(
+  deps: Pick<LedgerDeps, "db" | "now" | "photos">,
+  betId: number,
+  bytes: Buffer,
+  record: (photo: PhotoRow) => void,
+): Promise<PhotoRow> {
+  if (!deps.photos.beginUpload()) {
+    throw new HttpError(
+      409,
+      "Another photo is being processed",
+      "Wait a moment, then send the photo again.",
+    );
+  }
+  try {
+    let staged;
+    try {
+      staged = await deps.photos.stage(bytes);
+    } catch (error) {
+      throw error instanceof UnsupportedPhotoError ? unsupportedPhoto() : error;
+    }
+    let photo: PhotoRow;
+    try {
+      photo = deps.db
+        .transaction((): PhotoRow => {
+          deps.db
+            .prepare(
+              `INSERT INTO photos (id, card_id, bet_id, role, file, received_at, width, height)
+               VALUES (?, NULL, ?, 'after', ?, ?, ?, ?)`,
+            )
+            .run(staged.id, betId, staged.file, deps.now(), staged.width, staged.height);
+          const row = deps.db
+            .prepare<[string], PhotoRow>("SELECT * FROM photos WHERE id = ?")
+            .get(staged.id)!;
+          record(row);
+          return row;
+        })
+        .immediate();
+    } catch (error) {
+      deps.photos.discard(staged);
+      throw error;
+    }
+    try {
+      deps.photos.publish(staged);
+    } catch (error) {
+      deps.db.prepare("DELETE FROM photos WHERE id = ?").run(staged.id);
+      deps.photos.discard(staged);
+      throw error;
+    }
+    return photo;
+  } finally {
+    deps.photos.endUpload();
+  }
+}
+
 /** The photo's row for serving; 404 for an unknown id or one that is not a UUID. */
 export function getPhotoRow(db: Db, id: string): PhotoRow {
   const photo = PHOTO_ID.test(id)
@@ -217,6 +278,29 @@ export function deletePhoto(deps: Pick<LedgerDeps, "db" | "photos">, id: string)
   checkpointAfterDelete(deps);
 }
 
+/**
+ * Deletes every photo, with what was derived from them (AC-015.3): the rows, their quotes and the
+ * decisions that used them, then the files, and any photo file no row names. Returns how many
+ * photo rows went.
+ */
+export function deleteAllPhotos(deps: Pick<LedgerDeps, "db" | "photos">): number {
+  const photos = deps.db
+    .transaction((): PhotoRow[] => {
+      const all = deps.db.prepare<[], PhotoRow>("SELECT * FROM photos").all();
+      removePhotoRows(
+        deps.db,
+        all.map((photo) => photo.id),
+      );
+      return all;
+    })
+    .immediate();
+  deps.photos.removeAfterCommit(photos.map((photo) => photo.file));
+  // What no row named (a crash left it) goes too.
+  deps.photos.sweep(new Set());
+  checkpointAfterDelete(deps);
+  return photos.length;
+}
+
 /** Rows of photos, their quotes and their decisions; the card forgets its photo state. */
 function removePhotoRows(db: Db, photoIds: readonly string[]): void {
   if (photoIds.length === 0) {
@@ -243,6 +327,13 @@ function deleteDerivedOfPhotos(db: Db, photoIds: readonly string[]): void {
   db.prepare(`DELETE FROM gemma_decisions WHERE photo_id IN (${markFor(photoIds)})`).run(
     ...photoIds,
   );
+  // The judge read the bet's before and after photo together: if either goes, every judge
+  // decision on that bet goes with it (AC-015.2). The link is the settle progress row.
+  db.prepare(
+    `DELETE FROM gemma_decisions WHERE job = 'judge' AND bet_id IN (
+       SELECT bet_id FROM settle_progress
+       WHERE photo_id IN (${markFor(photoIds)}) OR before_photo_id IN (${markFor(photoIds)}))`,
+  ).run(...photoIds, ...photoIds);
   for (const decisionId of quoteDecisions) {
     db.prepare("DELETE FROM gemma_decisions WHERE id = ?").run(decisionId);
   }
@@ -298,6 +389,23 @@ export function deleteBetData(deps: Pick<LedgerDeps, "db" | "photos">, betId: nu
  * and photo files no `photos` row names (AC-015.2: nothing of a deleted photo stays on disk).
  */
 export function sweepOrphanPhotos(deps: Pick<LedgerDeps, "db" | "photos">): number {
+  // An after photo whose file is gone can never be judged: drop its row (and with it the saved
+  // answer, migration 0007), so the bet asks again or settles from the weather record.
+  const lost = deps.db
+    .prepare<[], PhotoRow>("SELECT * FROM photos WHERE role = 'after'")
+    .all()
+    .filter((photo) => !deps.photos.exists(photo.file));
+  if (lost.length > 0) {
+    deps.db
+      .transaction(() => {
+        removePhotoRows(
+          deps.db,
+          lost.map((photo) => photo.id),
+        );
+      })
+      .immediate();
+    checkpointAfterDelete(deps);
+  }
   const known = new Set(
     deps.db
       .prepare<[], { file: string }>("SELECT file FROM photos")

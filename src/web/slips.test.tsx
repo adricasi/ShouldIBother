@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bet, Slips } from "./api.js";
 import { undoMinutesLeft } from "./BetParts.js";
 import { formatTimeLeft } from "./format.js";
+import { answerNeeded, emptyWeek, lossReceipt, winReceipt } from "./test-data.js";
 import { Nav } from "./Nav.js";
 import {
   POLL_INTERVAL_MS,
@@ -46,6 +47,7 @@ const bet: Bet = {
     { id: "moist", label: "Still moist, all fine" },
     { id: "dry", label: "Soil is dry" },
   ],
+  settle: null,
 };
 
 const emptySlips: Slips = {
@@ -83,7 +85,7 @@ describe("Slips screen (REQ-007)", () => {
   it("AC-007.1: shows the countdown in Waiting, a tap per answer in Settle now, result and points in Settled", () => {
     const html = slipsHtml({
       ...emptySlips,
-      settle_now: [{ ...bet, id: 1, status: "due" }],
+      settle_now: [{ ...bet, id: 1, status: "due", settle: answerNeeded }],
       waiting: [{ ...bet, id: 2, time_left_ms: 22 * 3_600_000 }],
       settled: [
         {
@@ -96,6 +98,7 @@ describe("Slips screen (REQ-007)", () => {
             evidence: "tap",
             settled_at: "2026-10-22T09:00:00.000Z",
           },
+          receipt: winReceipt,
         },
       ],
     });
@@ -112,13 +115,33 @@ describe("Slips screen (REQ-007)", () => {
     const html = slipsHtml({
       ...emptySlips,
       settle_now: [
-        { ...bet, id: 4, kind: "do_it", status: "due" },
-        { ...bet, id: 5, status: "awaiting_gemma" },
+        {
+          ...bet,
+          id: 4,
+          kind: "do_it",
+          status: "due",
+          settle: {
+            ...answerNeeded,
+            state: "waiting_gemma",
+            note: "Gemma checks the recorded weather to score it.",
+          },
+        },
+        {
+          ...bet,
+          id: 5,
+          status: "awaiting_gemma",
+          settle: {
+            ...answerNeeded,
+            state: "waiting_gemma",
+            answered_with: "tap",
+            note: "Settle when Gemma is back. Your answer is saved.",
+          },
+        },
       ],
     });
     expect(html).not.toContain("How did it turn out?");
-    expect(html).toContain("You said you would do it");
-    expect(html).toContain("Settle when Gemma is back");
+    expect(html).toContain("Gemma checks the recorded weather to score it.");
+    expect(html).toContain("Settle when Gemma is back. Your answer is saved.");
   });
 
   it("renders without data while loading", () => {
@@ -139,6 +162,7 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
     points: { total: 0 },
     gemma: { status: "online" as const, detail: null, checked_at: "2026-10-22T08:00:00.000Z" },
     forecast: null,
+    week: emptyWeek,
     attribution: "Weather data by Open-Meteo.com",
     cards: [],
     open_bets: [bet],
@@ -306,5 +330,101 @@ describe("AC-007.2 and design: polling every 30 s while visible", () => {
     const base = { serverMs: 1_000_000, localMs: 50 };
     expect(estimateServerNow(base, 50)).toBe(1_000_000);
     expect(estimateServerNow(base, 30_050)).toBe(1_030_000);
+  });
+});
+
+describe("Settle screen (REQ-008)", () => {
+  const dueBet = { ...bet, status: "due", undoable: false };
+
+  function due(settle: Bet["settle"], extra: Partial<Bet> = {}): string {
+    return slipsHtml({ ...emptySlips, settle_now: [{ ...dueBet, ...extra, settle }] });
+  }
+
+  it("AC-008.1, AC-008.3: shows the recorded weather, a tap per answer and the photo option", () => {
+    const html = renderToStaticMarkup(
+      <SlipsScreen
+        slips={{ ...emptySlips, settle_now: [{ ...dueBet, settle: answerNeeded }] }}
+        flags={{}}
+        nowMs={NOW}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onSettlePhoto={() => undefined}
+        onSettleAnswer={() => undefined}
+        onUndo={() => undefined}
+      />,
+    );
+    expect(html).toContain("Modelled recent weather (Open-Meteo)");
+    expect(html).toContain("Rain 3 mm, 6 wet h");
+    expect(html).toContain("17 to 19 °C");
+    expect(html).toContain("Still moist, all fine");
+    expect(html).toContain("Add an after photo for full points");
+    expect(html).toContain("half points");
+  });
+
+  it("AC-008.5: shows the judge's question as Yes and No", () => {
+    const html = due({
+      ...answerNeeded,
+      state: "question",
+      question: "Did it rain on the balcony overnight?",
+      answered_with: "tap",
+    });
+    expect(html).toContain("Did it rain on the balcony overnight?");
+    expect(html).toContain(">Yes<");
+    expect(html).toContain(">No<");
+    expect(html).not.toContain("How did it turn out?");
+  });
+
+  it("AC-008.1: says when the recorded weather is not in yet", () => {
+    const html = due({ ...answerNeeded, weather: null });
+    expect(html).toContain("The recorded weather is not in yet.");
+  });
+
+  it("AC-008.8: a bet that waits for Gemma says so in words, without answer buttons", () => {
+    const html = due({
+      ...answerNeeded,
+      state: "waiting_gemma",
+      answered_with: "tap",
+      note: "Settle when Gemma is back. Your answer is saved.",
+    });
+    expect(html).toContain("Settle when Gemma is back");
+    expect(html).not.toContain("How did it turn out?");
+  });
+
+  it("AC-010.1, AC-010.2: a settled bet opens its receipt or its loss result on Slips", () => {
+    const html = slipsHtml({
+      ...emptySlips,
+      settled: [
+        {
+          ...bet,
+          id: 3,
+          status: "settled",
+          result: {
+            verdict: "win",
+            points: 15,
+            evidence: "tap",
+            settled_at: winReceipt.settled_at,
+          },
+          receipt: winReceipt,
+        },
+        {
+          ...bet,
+          id: 9,
+          status: "settled",
+          result: {
+            verdict: "normal_loss",
+            points: -50,
+            evidence: "tap",
+            settled_at: winReceipt.settled_at,
+          },
+          receipt: lossReceipt,
+        },
+      ],
+    });
+    expect(html).toContain("PAID OUT");
+    expect(html).toContain("Receipt");
+    expect(html).toContain("−50");
+    expect(html).toContain("The weather did not cover this one");
+    expect(html.match(/PAID OUT/g)).toHaveLength(1);
   });
 });

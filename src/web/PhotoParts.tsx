@@ -8,7 +8,7 @@ export interface PhotoActions {
 }
 
 /** Picks a photo with the phone's camera or gallery; the file is sent as soon as it is chosen. */
-function PhotoPicker({
+export function PhotoPicker({
   label,
   busy,
   onPick,
