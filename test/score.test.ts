@@ -183,7 +183,10 @@ describe("REQ-020: Score screen data", () => {
     const appealed = seedSettled({ band: 1, verdict: "normal_loss", points: -50 });
     // The appeal replaces the first verdict: the first row stops being final.
     harness.db.prepare("UPDATE settlements SET final = 0 WHERE bet_id = ?").run(appealed);
-    insertSettlement(appealed, "win", 32, { appealOf: 1 });
+    const first = harness.db
+      .prepare<[number], { id: number }>("SELECT id FROM settlements WHERE bet_id = ?")
+      .get(appealed)!.id;
+    insertSettlement(appealed, "win", 32, { appealOf: first });
     // A bet that is not settled has no points.
     seedSettled({ band: 3, status: "due", verdict: null });
     expect((await score()).points.total).toBe(15 - 50 + 5 + 32);

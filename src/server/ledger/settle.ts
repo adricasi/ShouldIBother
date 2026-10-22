@@ -1,17 +1,9 @@
 import {
-  LAUNDRY_PLAN,
   betChoreSpec,
   isChoreType,
   type BetChoreSpec,
   type ChoreType,
 } from "../../domain/chores.js";
-import { planBetWindow } from "../../domain/laundry-plan.js";
-import {
-  MissingSunsetError,
-  cutWindowOf,
-  labelWindowOf,
-  luckyWinOf,
-} from "../../domain/lucky-win.js";
 import { ANSWER_WINDOW_MS, GEMMA_RETRY_MS, MAX_QUESTIONS } from "../../domain/settlement.js";
 import { MULTIPLIER, pointsFor, type Evidence } from "../../domain/points.js";
 import {
@@ -27,10 +19,10 @@ import {
 } from "../gemma/judge.js";
 import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
-import { WeatherUnavailableError } from "../weather/client.js";
 
 import { markDueBets } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
+import { luckyFlagFor } from "./lucky-flag.js";
 import { addAfterPhoto, type PhotoRow } from "./photos.js";
 import { receiptOf, type Receipt } from "./receipt.js";
 import { betJudgedWindow, collectRecordedWeather } from "./recorded-weather.js";
@@ -457,58 +449,6 @@ export class Settler {
     }
   }
 
-  /**
-   * The lucky flag of a won bet (AC-008.6): the chore's outcome label on its full fixed window,
-   * with the hours before the bet was placed read from the recorded weather too. Where those
-   * cannot be fetched, the label is applied to the window the settle snapshot covers. Laundry
-   * tonight's window starts at the sunset stored on its card; without one the flag is unknown.
-   */
-  private async luckyFor(
-    choreType: ChoreType,
-    bet: BetRow,
-    card: CardRow,
-    snapshot: WeatherSnapshot,
-  ): Promise<boolean | null> {
-    if (card.chore_type === LAUNDRY_PLAN) {
-      // The snapshot is the recorded drying hours of the chosen day: exactly the label's window.
-      const { fromMs, toMs } = planBetWindow(bet.settle_at);
-      return luckyWinOf(choreType, { startMs: fromMs, endMs: toMs }, snapshot.hours);
-    }
-    const times = {
-      placedAt: bet.placed_at,
-      settleAt: bet.settle_at,
-      sunsetAt: card.sunset_at,
-    };
-    let window;
-    try {
-      window = labelWindowOf(choreType, times, this.deps.now());
-    } catch (error) {
-      if (error instanceof MissingSunsetError) {
-        return null;
-      }
-      throw error;
-    }
-    if (window.endMs > window.startMs) {
-      try {
-        const recorded = await this.deps.weather.getRecorded({
-          fromMs: window.startMs,
-          toMs: window.endMs,
-        });
-        if (recorded.complete) {
-          return luckyWinOf(choreType, window, recorded.hours);
-        }
-      } catch (error) {
-        if (!(error instanceof WeatherUnavailableError)) {
-          throw error;
-        }
-      }
-    }
-    // The hours before the bet was placed could not be fetched: the label uses the hours the bet
-    // was open, which can differ from the full window. Logged with the bet id only.
-    this.deps.log({ event: "lucky_win_cut_window", bet_id: bet.id });
-    return luckyWinOf(choreType, cutWindowOf(choreType, times), snapshot.hours);
-  }
-
   private async judgeLocked(betId: number): Promise<SettleOutcome> {
     const { db } = this.deps;
     const { bet, card, choreType, chore } = this.load(betId);
@@ -594,7 +534,7 @@ export class Settler {
     const multiplier = bet.kind === "do_it" ? 1 : MULTIPLIER[capped ? "auto" : settleEvidence];
     const lucky =
       bet.kind === "do_nothing" && result.verdict === "win"
-        ? await this.luckyFor(choreType, bet, card, snapshot)
+        ? await luckyFlagFor(this.deps, choreType, bet, card, snapshot)
         : null;
     const commit = db.transaction((): SettlementRow => {
       // The status guard makes a second settlement of the same bet fail instead of paying twice.

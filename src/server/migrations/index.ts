@@ -9,6 +9,7 @@ import { cardPhotos } from "./0006-card-photos.js";
 import { settleProgress } from "./0007-settle-progress.js";
 import { cardSunset } from "./0008-card-sunset.js";
 import { laundryPlan } from "./0010-laundry-plan.js";
+import { appeals } from "./0012-appeals.js";
 
 /**
  * Every migration in order. A new migration is one file plus one line here; numbers are
@@ -24,4 +25,5 @@ export const MIGRATIONS: readonly Migration[] = [
   settleProgress,
   cardSunset,
   laundryPlan,
+  appeals,
 ];
