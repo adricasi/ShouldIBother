@@ -67,6 +67,7 @@ export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   tool_error: "The forecast was not available to Gemma.",
   weather: "The forecast was not available.",
   restart: "The app restarted while Gemma was thinking.",
+  internal: "Something went wrong on the laptop while Gemma was working.",
 };
 
 export function quoteView(quote: QuoteRow, table: BandTable, state: GemmaState) {

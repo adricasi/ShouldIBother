@@ -1,14 +1,13 @@
 import { oddsOfBand } from "../../domain/bands.js";
 import { isChoreType, type ChoreType } from "../../domain/chores.js";
 import { bandTable } from "../../domain/rules/index.js";
-import { HOUR_MS, type ForecastHour } from "../../domain/weather.js";
+import { type ForecastHour } from "../../domain/weather.js";
 import {
   bandOfName,
   distanceFromRule,
   runBookmaker,
   settleAtOf,
   type BookmakerInput,
-  type QuestionAnswer,
 } from "../gemma/bookmaker.js";
 import type { JobFailure } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
@@ -16,53 +15,20 @@ import { WeatherUnavailableError } from "../weather/client.js";
 
 import { ruleBandOrFallback, ruleQuoteAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
+import {
+  FORECAST_HOURS,
+  FORECAST_PAST_HOURS,
+  forecastFrom,
+  hasActiveBet,
+  parseAnswers,
+} from "./forecast.js";
 import { cardPhotoView, currentObservations } from "./photo-view.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
 
-export const FORECAST_HOURS = 48;
-/** The same look-back the card creation uses, so the rule windows are covered (T-005). */
-export const FORECAST_PAST_HOURS = 24;
-
 /** Stored on the card when the failure is not one of the runner's. */
 type CardFailure = JobFailure | "weather";
-
-/** The forecast hours from the current hour on, at most `hoursAhead` (what `get_forecast` serves). */
-export function forecastFrom(
-  hours: readonly ForecastHour[],
-  nowMs: number,
-  hoursAhead: number,
-): ForecastHour[] {
-  return hours.filter((hour) => hour.startsAt + HOUR_MS > nowMs).slice(0, hoursAhead);
-}
-
-export function parseAnswers(text: string): QuestionAnswer[] {
-  try {
-    const value: unknown = JSON.parse(text);
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value.flatMap((entry: unknown) => {
-      const item = entry as { question?: unknown; yes?: unknown } | null;
-      return typeof item?.question === "string" && typeof item.yes === "boolean"
-        ? [{ question: item.question, yes: item.yes }]
-        : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-export function hasActiveBet(deps: LedgerDeps, cardId: number): boolean {
-  return (
-    deps.db
-      .prepare<[number], { n: number }>(
-        "SELECT COUNT(*) AS n FROM bets WHERE card_id = ? AND status != 'undone'",
-      )
-      .get(cardId)!.n > 0
-  );
-}
 
 /** Marks a card whose job finished without an answer: rule odds stay, Retry is offered. */
 function markOffline(deps: LedgerDeps, cardId: number, failure: CardFailure): void {
@@ -251,6 +217,10 @@ function requireCard(deps: LedgerDeps, cardId: number): CardRow {
   }
   if (hasActiveBet(deps, cardId)) {
     throw new HttpError(409, "A bet is already placed on this card");
+  }
+  if (card.photo_state === "inspecting") {
+    // The photo's inspector and bookmaker are running; a second run would race them.
+    throw new HttpError(409, "Gemma is looking at the photo", "Wait a moment, then try again.");
   }
   return card;
 }

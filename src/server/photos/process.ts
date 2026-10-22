@@ -1,5 +1,18 @@
 import sharp from "sharp";
 
+// Only the decoders photos need are left on (JPEG, PNG, WebP, AVIF/HEIF from a buffer): SVG, GIF,
+// TIFF, JPEG 2000, PDF and the rest are blocked in libvips, whatever a file claims to be. This is
+// process-wide, which is what the app wants: every image it ever decodes is a household photo.
+sharp.block({ operation: ["VipsForeignLoad"] });
+sharp.unblock({
+  operation: [
+    "VipsForeignLoadJpegBuffer",
+    "VipsForeignLoadPngBuffer",
+    "VipsForeignLoadWebpBuffer",
+    "VipsForeignLoadHeifBuffer",
+  ],
+});
+
 /** The longest side a stored photo may have (AC-005.1). */
 export const MAX_PHOTO_SIDE = 1024;
 /** Upload limit (REQ-005, design.md "Photo store"). */
@@ -22,6 +35,42 @@ export class UnsupportedPhotoError extends Error {
   }
 }
 
+const HEIF_BRANDS = [
+  "heic",
+  "heix",
+  "heim",
+  "heis",
+  "hevc",
+  "hevx",
+  "mif1",
+  "msf1",
+  "avif",
+  "avis",
+];
+
+/**
+ * True when the first bytes are those of a JPEG, PNG, WebP or HEIF/AVIF file. Checked before
+ * sharp sees the bytes, so nothing else (an SVG, a PDF, a script) reaches a decoder.
+ */
+export function hasAcceptedMagicBytes(bytes: Buffer): boolean {
+  if (bytes.length < 12) {
+    return false;
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return true;
+  }
+  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return true;
+  }
+  if (bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") {
+    return true;
+  }
+  return (
+    bytes.toString("latin1", 4, 8) === "ftyp" &&
+    HEIF_BRANDS.includes(bytes.toString("latin1", 8, 12))
+  );
+}
+
 export interface ProcessedPhoto {
   readonly data: Buffer;
   readonly width: number;
@@ -38,10 +87,18 @@ export interface ProcessedPhoto {
  * (a HEIC the installed libheif cannot decode ends up here too), never a raw decoder error.
  */
 export async function processPhoto(input: Buffer): Promise<ProcessedPhoto> {
+  if (!hasAcceptedMagicBytes(input)) {
+    throw new UnsupportedPhotoError();
+  }
   try {
     const source = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" });
+    // Reads the header only. A picture that claims more pixels than the limit is refused here,
+    // before any pixel is decoded (a small file can claim a huge picture).
     const metadata = await source.metadata();
     if (metadata.format === undefined || !ACCEPTED_FORMATS.has(metadata.format)) {
+      throw new UnsupportedPhotoError();
+    }
+    if ((metadata.width ?? 0) * (metadata.height ?? 0) > MAX_INPUT_PIXELS) {
       throw new UnsupportedPhotoError();
     }
     const { data, info } = await source

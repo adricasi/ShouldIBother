@@ -1,4 +1,3 @@
-import type { Band } from "../../domain/bands.js";
 import { canUndo, SETTLING_STATUSES, type BetStatus } from "../../domain/bet-state.js";
 import { UNDO_WINDOW_MS } from "../../domain/chores.js";
 import { bandTable } from "../../domain/rules/index.js";
@@ -7,7 +6,7 @@ import { HttpError } from "../problem.js";
 
 import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
-import { currentPhoto } from "./photo-view.js";
+import { currentPhoto, withoutPhotoQuote } from "./photo-view.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
 
@@ -85,11 +84,8 @@ export function placeBet(
   const bandWithoutPhoto =
     currentPhoto(deps.db, cardId) === undefined
       ? null
-      : (deps.db
-          .prepare<[number], { band: Band }>(
-            "SELECT band FROM quotes WHERE card_id = ? AND with_photo = 0 ORDER BY id DESC LIMIT 1",
-          )
-          .get(cardId)?.band ?? null);
+      : (withoutPhotoQuote(deps.db, cardId, quote.with_photo === 1 ? quote.id : null)?.band ??
+        null);
 
   const place = deps.db.transaction((): BetRow => {
     const existing = deps.db

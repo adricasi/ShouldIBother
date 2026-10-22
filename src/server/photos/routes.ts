@@ -17,12 +17,18 @@ import { MAX_UPLOAD_BYTES } from "./process.js";
 
 const betIdParams = z.object({ id: z.coerce.number().int().positive() });
 
-function parseBetId(params: unknown): number {
-  const result = betIdParams.safeParse(params);
+const photoIdParams = z.object({ id: z.string().min(1).max(64) });
+
+function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {
+  const result = schema.safeParse(params);
   if (!result.success) {
     throw new HttpError(400, "Invalid request", "Bad id");
   }
-  return result.data.id;
+  return result.data;
+}
+
+function parseBetId(params: unknown): number {
+  return parseParams(betIdParams, params).id;
 }
 
 export interface PhotoRouteOptions {
@@ -65,7 +71,7 @@ export function photoRoutes(options: PhotoRouteOptions): FastifyPluginAsync {
     });
 
     app.get("/photos/:id", (request, reply) => {
-      const { id } = request.params as { id: string };
+      const { id } = parseParams(photoIdParams, request.params);
       const photo = getPhotoRow(deps.db, id);
       let bytes: Buffer;
       try {
@@ -84,7 +90,7 @@ export function photoRoutes(options: PhotoRouteOptions): FastifyPluginAsync {
     });
 
     app.delete("/api/photos/:id", (request, reply) => {
-      const { id } = request.params as { id: string };
+      const { id } = parseParams(photoIdParams, request.params);
       deletePhoto(deps, id);
       return reply.code(204).send();
     });

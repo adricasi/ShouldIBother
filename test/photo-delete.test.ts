@@ -235,7 +235,8 @@ describe("delete a bet's data (AC-015.2)", () => {
 
   async function uploadAfterPhoto(betId: number): Promise<string> {
     // Stored through the store, filed against the bet, like the settle photo of a later task.
-    const stored = await harness.photos.save(await syntheticPhoto());
+    const stored = await harness.photos.stage(await syntheticPhoto());
+    harness.photos.publish(stored);
     harness.db
       .prepare(
         `INSERT INTO photos (id, bet_id, role, file, received_at, width, height)

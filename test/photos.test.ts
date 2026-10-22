@@ -95,9 +95,9 @@ describe("photo store", () => {
     expect(png.statusCode).toBe(201);
     expect(png.json<Uploaded>().photo).toMatchObject({ width: 300, height: 200 });
     await harness.idle();
-    expect((await sharp(join(harness.photos.dir, photoFiles()[0]!)).metadata()).format).toBe(
-      "jpeg",
-    );
+    expect(
+      (await sharp(readFileSync(join(harness.photos.dir, photoFiles()[0]!))).metadata()).format,
+    ).toBe("jpeg");
     const webp = await uploadPhoto(
       harness,
       cardId,
@@ -107,7 +107,9 @@ describe("photo store", () => {
     expect(webp.statusCode).toBe(201);
     expect(webp.json<Uploaded>().photo).toMatchObject({ width: 1024, height: 614 });
     for (const file of photoFiles()) {
-      expect((await sharp(join(harness.photos.dir, file)).metadata()).format).toBe("jpeg");
+      expect((await sharp(readFileSync(join(harness.photos.dir, file))).metadata()).format).toBe(
+        "jpeg",
+      );
     }
   });
 

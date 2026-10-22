@@ -16,6 +16,7 @@ import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
 import { answerCard, recoverThinkingCards, retryCard } from "./ledger/gemma-cards.js";
+import { sweepOrphanPhotos } from "./ledger/photos.js";
 import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
@@ -129,6 +130,7 @@ export function createCore(deps: CoreDeps): Core {
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
   recoverInspections(ledger);
+  sweepOrphanPhotos(ledger);
 
   const plugin: FastifyPluginAsync = async (app) => {
     // Household data: never cached by the browser or a proxy (a route may set a stricter value).
