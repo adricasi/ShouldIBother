@@ -264,7 +264,7 @@ describe("AC-014.7: only the Open-Meteo hosts of the allowlist are called", () =
     "http://api.open-meteo.com/v1/forecast",
     "https://api.open-meteo.com.evil.example/v1/forecast",
     "https://api.open-meteo.com@evil.example/v1/forecast",
-    "https://user:secret@api.open-meteo.com/v1/forecast",
+    "https://u:p@api.open-meteo.com/v1/forecast",
     "https://api.open-meteo.com:8443/v1/forecast",
     "https://open-meteo.com/",
     "https://geocoding-api.open-meteo.com/v1/search",
