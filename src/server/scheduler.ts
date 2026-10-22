@@ -15,6 +15,8 @@ export interface Scheduler {
    * bets that wait for Gemma and unanswered bets 24 h after their settle time (AC-008.7–AC-008.9).
    */
   tickSettlement(): Promise<number>;
+  /** The rescue step (flagged, REQ-022): re-checks the forecast of open bets; 0 with the flag off. */
+  tickRescue(): Promise<number>;
   start(): void;
   stop(): void;
 }
@@ -22,16 +24,21 @@ export interface Scheduler {
 /**
  * The 60 s loop. All state is in SQLite, so after a restart the first tick picks up every open
  * bet whose settle time passed while the server was down (NFR-003). Later tasks add weather
- * retries, auto-settle and rescue checks here.
+ * retries and auto-settle here, and the rescue checks while that flag is on.
  */
 export function createScheduler(
   deps: Pick<LedgerDeps, "db" | "now"> & Partial<Pick<LedgerDeps, "weather">>,
   onError: (error: unknown) => void,
-  steps: { readonly settle?: () => Promise<number> } = {},
+  steps: {
+    readonly settle?: () => Promise<number>;
+    /** Present only while the `rescue` flag is on. */
+    readonly rescue?: () => Promise<number>;
+  } = {},
 ): Scheduler {
   let timer: NodeJS.Timeout | undefined;
   let weatherStep: Promise<number> | undefined;
   let settleStep: Promise<number> | undefined;
+  let rescueStep: Promise<number> | undefined;
   const tick = (): number => markDueBets(deps.db, deps.now());
   const tickWeather = (): Promise<number> => {
     const { weather } = deps;
@@ -55,10 +62,22 @@ export function createScheduler(
     });
     return settleStep;
   };
+  const tickRescue = (): Promise<number> => {
+    const { rescue } = steps;
+    if (rescue === undefined) {
+      return Promise.resolve(0);
+    }
+    // One pass at a time: a slow forecast fetch must not stack up passes.
+    rescueStep ??= rescue().finally(() => {
+      rescueStep = undefined;
+    });
+    return rescueStep;
+  };
   return {
     tick,
     tickWeather,
     tickSettlement,
+    tickRescue,
     start() {
       if (timer !== undefined) {
         return;
@@ -71,6 +90,7 @@ export function createScheduler(
         }
         tickWeather().catch(onError);
         tickSettlement().catch(onError);
+        tickRescue().catch(onError);
       };
       safeTick();
       timer = setInterval(safeTick, SCHEDULER_INTERVAL_MS);

@@ -1,5 +1,6 @@
 import type { Bet, Receipt } from "./api.js";
 import { PhotoPicker } from "./PhotoParts.js";
+import { RescuePanel } from "./RescueParts.js";
 import { ReceiptCard, WeatherLine } from "./SettleParts.js";
 import { formatOdds, formatPoints, formatSettleTime, formatTimeLeft } from "./format.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
@@ -64,11 +65,14 @@ export function WaitingLine({
   nowMs,
   busy,
   onUndo,
+  onCashOut,
 }: {
   bet: Bet;
   nowMs: number;
   busy: boolean;
   onUndo: (betId: number) => void;
+  /** Where the rescue alert and Cash out are offered (REQ-022); absent: neither is shown. */
+  onCashOut?: (betId: number) => void;
 }) {
   const settleAtMs = Date.parse(bet.settle_at);
   return (
@@ -86,6 +90,7 @@ export function WaitingLine({
         <span className="meta countdown">{formatTimeLeft(settleAtMs - nowMs)} left</span>
       </div>
       <UndoButton bet={bet} nowMs={nowMs} busy={busy} onUndo={onUndo} />
+      {onCashOut === undefined ? null : <RescuePanel bet={bet} busy={busy} onCashOut={onCashOut} />}
     </li>
   );
 }
