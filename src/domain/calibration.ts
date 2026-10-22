@@ -25,6 +25,14 @@ export interface CalibrationBand {
 }
 
 /**
+ * A share in whole percent, halves up like every other figure (requirements.md, Fixed values).
+ * Computed from the counts: `(23 / 40) * 100` is 57.4999... in floating point, 23 * 100 / 40 is 57.5.
+ */
+export function percentOf(part: number, whole: number): number {
+  return Math.round((part * 100) / whole);
+}
+
+/**
  * Band calibration (AC-020.2, AC-020.3): all five bands, in order, each with its N. Every win
  * counts as a success, lucky wins included (AC-008.6); the caller decides which bets are counted.
  */
@@ -42,7 +50,7 @@ export function calibrationBands(
       predicted_pct: oddsOfBand(table, band),
       n,
       wins,
-      actual_pct: n === 0 ? null : Math.round((wins / n) * 100),
+      actual_pct: n === 0 ? null : percentOf(wins, n),
       too_few: n < MIN_BETS_PER_BAND,
     };
   });

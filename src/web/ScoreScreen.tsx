@@ -65,7 +65,7 @@ export function CalibrationChart({
               </th>
               <td>
                 {band.too_few ? (
-                  <span className="meta">{band.n === 0 ? "no bets" : TOO_FEW_TEXT}</span>
+                  <span className="meta">{TOO_FEW_TEXT}</span>
                 ) : (
                   <>
                     <span className="bar-track" aria-hidden="true">
@@ -76,12 +76,7 @@ export function CalibrationChart({
                   </>
                 )}
               </td>
-              <td>
-                {band.n}
-                {band.too_few && band.n > 0 ? (
-                  <span className="meta"> · {TOO_FEW_TEXT}</span>
-                ) : null}
-              </td>
+              <td>{band.n}</td>
             </tr>
           ))}
         </tbody>
@@ -182,6 +177,12 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             caption="Bets Gemma priced, under the band Gemma gave"
             bands={calibration.gemma}
           />
+          {calibration.fake_model_bets > 0 && calibration.gemma.every((band) => band.n === 0) ? (
+            <p className="meta">
+              Gemma's chart is empty because every bet Gemma priced came from the fake model (test
+              fixtures), which is not counted as Gemma.
+            </p>
+          ) : null}
           <CalibrationChart
             id="rule"
             title="The rule's odds"
@@ -189,9 +190,9 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             bands={calibration.rule}
           />
           <p className="meta">
-            {lucky.share === null
+            {lucky.share_pct === null
               ? "Lucky wins: no win has been labelled yet."
-              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${Math.round(lucky.share * 100)}%) came when the weather did not match the chore's outcome. They still count as wins above.`}
+              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above.`}
           </p>
         </>
       )}
@@ -224,7 +225,10 @@ export function ScoreScreen({ score, flags, notice }: ScoreScreenProps) {
         )}
 
         {score === undefined ? (
-          <p className="meta">Loading…</p>
+          // After a failed first load the alert above is the whole message.
+          notice === undefined ? (
+            <p className="meta">Loading…</p>
+          ) : null
         ) : (
           <>
             <SavingsTiles savings={score.savings} />

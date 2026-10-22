@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { scoreSchema, type CalibrationBand, type Score } from "./api.js";
 import { visibleEntries, FLAGGED_ENTRIES } from "./features.js";
 import { Nav } from "./Nav.js";
-import { ROUTE_TITLES, routeOf } from "./route.js";
+import { ROUTE_TITLES, redirectFor, routeOf } from "./route.js";
 import { SCORE_EMPTY_TEXT, ScoreScreen, TOO_FEW_TEXT } from "./ScoreScreen.js";
 import { emptyTotals } from "./test-data.js";
 
@@ -42,7 +42,8 @@ const empty: Score = {
     settled: 0,
     gemma: bands(noBets),
     rule: bands(noBets),
-    lucky_wins: { wins_labelled: 0, lucky_wins: 0, share: null },
+    lucky_wins: { wins_labelled: 0, lucky_wins: 0, share: null, share_pct: null },
+    fake_model_bets: 0,
   },
 };
 
@@ -83,7 +84,8 @@ const populated: Score = {
       [9, 7],
       [10, 9],
     ]),
-    lucky_wins: { wins_labelled: 8, lucky_wins: 2, share: 0.25 },
+    lucky_wins: { wins_labelled: 8, lucky_wins: 2, share: 0.25, share_pct: 25 },
+    fake_model_bets: 0,
   },
 };
 
@@ -177,8 +179,61 @@ describe("Score screen (REQ-020)", () => {
     expect(html).not.toContain("calibration");
   });
 
+  it("AC-020.3: a band with no bets shows N = 0 and 'too few to judge'", () => {
+    const document_ = new DOMParser().parseFromString(screen(populated), "text/html");
+    const first = document_.querySelectorAll(".calibration")[0]!.querySelector("tbody tr")!;
+    expect(first.querySelector("td:last-child")?.textContent).toBe("0");
+    expect(first.textContent).toContain(TOO_FEW_TEXT);
+    expect(first.querySelector(".bar-track")).toBeNull();
+  });
+
+  it("AC-020.2: the lucky share is the server's whole percent, not recomputed from a float", () => {
+    const html = screen({
+      ...populated,
+      calibration: {
+        ...populated.calibration,
+        lucky_wins: { wins_labelled: 40, lucky_wins: 23, share: 0.575, share_pct: 58 },
+      },
+    });
+    expect(html).toContain("Lucky wins: 23 of 40 labelled wins (58%)");
+  });
+
+  it("AC-020.2: says why Gemma's chart is empty when every Gemma-priced bet came from the fake model", () => {
+    const emptyGemma = bands(noBets);
+    const fake = {
+      ...populated,
+      calibration: { ...populated.calibration, gemma: emptyGemma, fake_model_bets: 3 },
+    };
+    expect(screen(fake)).toContain("every bet Gemma priced came from the fake model");
+    expect(screen(populated)).not.toContain("fake model");
+    const noneFake = { ...fake, calibration: { ...fake.calibration, fake_model_bets: 0 } };
+    expect(screen(noneFake)).not.toContain("fake model");
+  });
+
   it("shows a loading line before the first answer", () => {
     expect(screen(undefined)).toContain("Loading…");
+  });
+
+  it("after a failed load shows only the alert, not 'Loading…'", () => {
+    const html = renderToStaticMarkup(
+      <ScoreScreen
+        score={undefined}
+        flags={{ score: true }}
+        notice={{ kind: "error", text: "Can't reach the laptop.", origin: "poll" }}
+      />,
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Can&#x27;t reach the laptop.");
+    expect(html).not.toContain("Loading…");
+  });
+
+  it("redirects #/score to Today once the server says the score flag is off", () => {
+    expect(redirectFor("score", { score: false })).toBe("#/today");
+    expect(redirectFor("score", {})).toBe("#/today");
+    expect(redirectFor("score", { score: true })).toBeUndefined();
+    // Flags not loaded yet: wait, do not redirect.
+    expect(redirectFor("score", undefined)).toBeUndefined();
+    expect(redirectFor("slips", { score: false })).toBeUndefined();
   });
 
   it("AC-029.2: the Score tab is rendered only while the score flag is on", () => {

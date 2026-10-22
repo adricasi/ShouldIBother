@@ -1,5 +1,6 @@
 import {
   calibrationBands,
+  percentOf,
   type BandCount,
   type CalibrationBand,
 } from "../../domain/calibration.js";
@@ -39,7 +40,13 @@ export interface Score {
     readonly gemma: readonly CalibrationBand[];
     /** The same for the rule's band, over every settled do-nothing bet. */
     readonly rule: readonly CalibrationBand[];
-    readonly lucky_wins: LuckyShare;
+    /** Wins whose lucky flag is known; `share_pct` is whole percent, halves up. */
+    readonly lucky_wins: LuckyShare & { readonly share_pct: number | null };
+    /**
+     * Settled do-nothing bets Gemma priced through the fake model. They are fixtures, not Gemma,
+     * so they are not in Gemma's chart; the screen says so when that is why the chart is empty.
+     */
+    readonly fake_model_bets: number;
   };
 }
 
@@ -73,31 +80,50 @@ function countsBy(deps: Pick<LedgerDeps, "db">, bandColumn: string, extra: strin
     .all();
 }
 
+/**
+ * The first verdict of a bet is one the judge (Gemma) gave: its `decision_id` points at the logged
+ * decision. A settlement without one has no Gemma verdict to agree or disagree with, and a verdict
+ * of the fake model is a fixture, so neither is in the judge's N.
+ */
+const GEMMA_VERDICT = `o.appeal_of IS NULL AND o.decision_id IS NOT NULL AND EXISTS (
+  SELECT 1 FROM gemma_decisions d WHERE d.id = o.decision_id AND d.model NOT LIKE 'fake%'
+)`;
+
 function overruleOf(deps: ScoreDeps): JudgeOverrule {
   if (!deps.flags.appeals) {
     return { appeals: "off" };
   }
   const n = deps.db
     .prepare<[], { n: number }>(
-      `SELECT COUNT(*) AS n FROM bets b
-       WHERE ${SETTLED_DO_NOTHING}
-         AND EXISTS (SELECT 1 FROM settlements o WHERE o.bet_id = b.id AND o.appeal_of IS NULL)`,
+      `SELECT COUNT(*) AS n FROM bets b JOIN settlements o ON o.bet_id = b.id
+       WHERE ${SETTLED_DO_NOTHING} AND ${GEMMA_VERDICT}`,
     )
     .get()!.n;
+  // Any change of verdict is an overrule, as AC-023.3 reads: small loss to harmful loss included.
   const overruled = deps.db
     .prepare<[], { n: number }>(
       `SELECT COUNT(*) AS n FROM settlements a
        JOIN settlements o ON o.id = a.appeal_of
        JOIN bets b ON b.id = a.bet_id
-       WHERE a.final = 1 AND ${SETTLED_DO_NOTHING} AND a.verdict != o.verdict`,
+       WHERE a.final = 1 AND ${SETTLED_DO_NOTHING} AND ${GEMMA_VERDICT} AND a.verdict != o.verdict`,
     )
     .get()!.n;
   return {
     appeals: "on",
     n,
     overruled,
-    rate_pct: n === 0 ? null : Math.round((overruled / n) * 100),
+    rate_pct: n === 0 ? null : percentOf(overruled, n),
   };
+}
+
+function fakeModelBets(deps: Pick<LedgerDeps, "db">): number {
+  return deps.db
+    .prepare<[], { n: number }>(
+      `SELECT COUNT(*) AS n FROM bets b
+       WHERE ${SETTLED_DO_NOTHING} AND b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
+         AND b.model_version LIKE 'fake%'`,
+    )
+    .get()!.n;
 }
 
 /** The Score screen's numbers (REQ-020), read from the stored rows only. */
@@ -106,6 +132,7 @@ export function getScore(deps: ScoreDeps): Score {
   const gemma = countsBy(deps, "gemma_band", `AND ${GEMMA_PRICED}`);
   // The rule is scored on every settled do-nothing bet, whoever priced it (AC-020.2).
   const rule = countsBy(deps, "rule_band", "");
+  const lucky = luckyWinShare(deps.db);
   return {
     now: new Date(deps.now()).toISOString(),
     points: { total: pointsTotal(deps) },
@@ -115,7 +142,12 @@ export function getScore(deps: ScoreDeps): Score {
       settled: rule.reduce((sum, entry) => sum + entry.n, 0),
       gemma: calibrationBands(table, gemma),
       rule: calibrationBands(table, rule),
-      lucky_wins: luckyWinShare(deps.db),
+      lucky_wins: {
+        ...lucky,
+        share_pct:
+          lucky.wins_labelled === 0 ? null : percentOf(lucky.lucky_wins, lucky.wins_labelled),
+      },
+      fake_model_bets: fakeModelBets(deps),
     },
   };
 }

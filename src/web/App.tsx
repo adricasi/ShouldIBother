@@ -25,7 +25,7 @@ import {
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
 import { createRefresher } from "./refresher.js";
-import { announceRoute, routeOf, type Route } from "./route.js";
+import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
@@ -113,6 +113,12 @@ export function App() {
   // Score is read only while its screen is open, and only while the server has the flag on.
   const scoreOn = today?.flags["score"] === true;
   const showScore = route === "score" && (today === undefined || scoreOn);
+  const redirect = redirectFor(route, today?.flags);
+  useEffect(() => {
+    if (redirect !== undefined) {
+      window.location.replace(redirect);
+    }
+  }, [redirect]);
   const refreshScore = useMemo(
     () => createRefresher({ load: fetchScore, apply: setScore, setNotice }),
     [],

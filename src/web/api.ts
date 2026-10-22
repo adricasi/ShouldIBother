@@ -252,7 +252,11 @@ export const scoreSchema = z.object({
       wins_labelled: z.number(),
       lucky_wins: z.number(),
       share: z.number().nullable(),
+      /** Whole percent, halves up, computed from the counts. */
+      share_pct: z.number().nullable(),
     }),
+    /** Fixture bets of the fake model, left out of Gemma's chart. */
+    fake_model_bets: z.number(),
   }),
 });
 

@@ -42,6 +42,24 @@ interface SeedSettled {
   readonly points?: number;
   readonly luckyWin?: 0 | 1 | null;
   readonly chore?: string;
+  /** `gemma_band` on a bet that was not priced by Gemma (a leftover must not count as Gemma's). */
+  readonly gemmaBand?: Band;
+  /** Model of the judge decision behind the verdict; null: the settlement has no decision. */
+  readonly judgeModel?: string | null;
+  /** The win was committed 24 h or more late and capped at x0.5 (AC-008.8). */
+  readonly capped?: boolean;
+}
+
+/** A logged judge decision, as the settlement of a Gemma verdict points at it. */
+function seedDecision(model: string): number {
+  return Number(
+    harness.db
+      .prepare(
+        `INSERT INTO gemma_decisions (job, model, prompt_version, valid, retries, latency_ms, created_at)
+         VALUES ('judge', ?, 'judge.v1', 1, 0, 100, ?)`,
+      )
+      .run(model, harness.clock.current).lastInsertRowid,
+  );
 }
 
 /** A settled bet straight in the database: the Score reads rows, not how they came about. */
@@ -70,7 +88,7 @@ function seedSettled(options: SeedSettled): number {
         options.band,
         ODDS[options.band],
         source,
-        source === "gemma" ? options.band : null,
+        source === "gemma" ? options.band : (options.gemmaBand ?? null),
         options.ruleBand ?? options.band,
         options.modelVersion === undefined
           ? source === "gemma"
@@ -89,8 +107,13 @@ function seedSettled(options: SeedSettled): number {
   );
   if (options.verdict !== null) {
     const verdict = options.verdict ?? (kind === "do_it" ? "weather_would_not" : "win");
+    const judgeModel = options.judgeModel === undefined ? "gemma4:e4b" : options.judgeModel;
     insertSettlement(bet, verdict, options.points ?? (verdict === "win" ? 15 : -25), {
       luckyWin: options.luckyWin ?? null,
+      // A do-it decision is stored as evidence `auto` at x1, a capped win as `tap` at x0.5.
+      ...(kind === "do_it" ? { evidence: "auto", multiplier: 1 } : {}),
+      ...(options.capped === true ? { capped: true } : {}),
+      decisionId: judgeModel === null ? null : seedDecision(judgeModel),
     });
   }
   return bet;
@@ -100,19 +123,31 @@ function insertSettlement(
   betId: number,
   verdict: string,
   points: number,
-  extra: { luckyWin?: 0 | 1 | null; final?: 0 | 1; appealOf?: number } = {},
+  extra: {
+    luckyWin?: 0 | 1 | null;
+    final?: 0 | 1;
+    appealOf?: number;
+    evidence?: "photo" | "tap" | "auto";
+    multiplier?: number;
+    capped?: boolean;
+    decisionId?: number | null;
+  } = {},
 ): number {
   return Number(
     harness.db
       .prepare(
-        `INSERT INTO settlements (bet_id, evidence, multiplier, verdict, lucky_win, points,
-           settled_at, appeal_of, final)
-         VALUES (?, 'tap', 0.5, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO settlements (bet_id, evidence, multiplier, multiplier_capped, verdict,
+           lucky_win, decision_id, points, settled_at, appeal_of, final)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         betId,
+        extra.evidence ?? "tap",
+        extra.multiplier ?? 0.5,
+        extra.capped === true ? 1 : 0,
         verdict,
         extra.luckyWin ?? null,
+        extra.decisionId ?? null,
         points,
         harness.clock.current - HOUR,
         extra.appealOf ?? null,
@@ -202,13 +237,33 @@ describe("REQ-020: Score screen data", () => {
     expect((await score()).judge).toEqual({ appeals: "on", n: 4, overruled: 1, rate_pct: 25 });
   });
 
+  it("AC-020.1: the overrule N leaves out verdicts without a Gemma decision (24 h auto-settles) and fake-model verdicts", async () => {
+    await setup({ flags: { score: true, appeals: true } });
+    seedSettled({ band: 3, verdict: "win" });
+    seedSettled({ band: 3, verdict: "win", judgeModel: null });
+    seedSettled({ band: 3, verdict: "win", judgeModel: "fake-gemma" });
+    expect((await score()).judge).toEqual({ appeals: "on", n: 1, overruled: 0, rate_pct: 0 });
+  });
+
+  it("AC-020.1: a small loss turned into a harmful loss on appeal counts as an overrule (AC-023.3 reads 'changes the verdict')", async () => {
+    await setup({ flags: { score: true, appeals: true } });
+    const bet = seedSettled({ band: 3, verdict: "small_loss", points: -25 });
+    const first = harness.db
+      .prepare<[number], { id: number }>("SELECT id FROM settlements WHERE bet_id = ?")
+      .get(bet)!.id;
+    harness.db.prepare("UPDATE settlements SET final = 0 WHERE id = ?").run(first);
+    insertSettlement(bet, "harmful_loss", -150, { appealOf: first });
+    expect((await score()).judge).toEqual({ appeals: "on", n: 1, overruled: 1, rate_pct: 100 });
+  });
+
   it("AC-020.2: Gemma's chart counts settled do-nothing bets priced by Gemma under Gemma's band; the rule's counts every one under its own band", async () => {
     await setup();
     // Gemma priced band 4 and the rule said band 2; the win counts in both charts, once each.
     seedSettled({ band: 4, ruleBand: 2, verdict: "win" });
     seedSettled({ band: 4, ruleBand: 2, verdict: "small_loss" });
     // Rule-priced bet (Gemma offline): rule chart only.
-    seedSettled({ band: 2, source: "rule", verdict: "win" });
+    // Even with a leftover gemma_band it was not priced by Gemma.
+    seedSettled({ band: 2, source: "rule", gemmaBand: 4, verdict: "win" });
     // Fixtures of the fake model are not Gemma: rule chart only.
     seedSettled({ band: 4, ruleBand: 3, modelVersion: "fake-gemma", verdict: "win" });
     const { calibration } = await score();
@@ -220,6 +275,46 @@ describe("REQ-020: Score screen data", () => {
     expect(rule[2]).toMatchObject({ band: 2, predicted_pct: 50, wins: 2, actual_pct: 67 });
     expect(rule[3]).toMatchObject({ wins: 1, actual_pct: 100 });
     expect(calibration.settled).toBe(4);
+  });
+
+  it("AC-020.2: a win capped at half points (settled 24 h late) is still a win and a success", async () => {
+    await setup();
+    seedSettled({ band: 3, verdict: "win", capped: true, points: 15 });
+    const { calibration, savings } = await score();
+    expect(calibration.gemma[3]).toMatchObject({ n: 1, wins: 1, actual_pct: 100 });
+    expect(calibration.rule[3]).toMatchObject({ n: 1, wins: 1 });
+    expect(savings.wins).toBe(1);
+  });
+
+  it("AC-020.2: a band's share is whole percent with halves up, from the counts (23 of 40 is 58)", async () => {
+    await setup();
+    for (let i = 0; i < 40; i += 1) {
+      seedSettled({ band: 3, verdict: i < 23 ? "win" : "small_loss" });
+    }
+    const { calibration } = await score();
+    expect(calibration.gemma[3]).toMatchObject({ n: 40, wins: 23, actual_pct: 58 });
+    expect(calibration.rule[3]).toMatchObject({ actual_pct: 58 });
+  });
+
+  it("AC-020.2: the lucky-win share is whole percent with halves up (23 of 40 labelled wins is 58)", async () => {
+    await setup();
+    for (let i = 0; i < 40; i += 1) {
+      seedSettled({ band: 3, verdict: "win", luckyWin: i < 23 ? 1 : 0 });
+    }
+    expect((await score()).calibration.lucky_wins).toMatchObject({
+      wins_labelled: 40,
+      lucky_wins: 23,
+      share_pct: 58,
+    });
+  });
+
+  it("AC-020.2: bets priced through the fake model are counted apart so the screen can say why Gemma's chart is empty", async () => {
+    await setup();
+    seedSettled({ band: 3, modelVersion: "fake-gemma", verdict: "win" });
+    seedSettled({ band: 3, source: "rule", verdict: "win" });
+    const { calibration } = await score();
+    expect(calibration.fake_model_bets).toBe(1);
+    expect(calibration.gemma.every((entry) => entry.n === 0)).toBe(true);
   });
 
   it("AC-020.2: do-it decisions, cash-outs, undone and unsettled bets are in neither chart", async () => {
@@ -246,7 +341,12 @@ describe("REQ-020: Score screen data", () => {
     expect(calibration.gemma[0]).toMatchObject({ n: 4, wins: 3, actual_pct: 75 });
     expect(calibration.rule[0]).toMatchObject({ n: 4, wins: 3 });
     // The unlabelled win is left out of the share, not counted as lucky or as not lucky.
-    expect(calibration.lucky_wins).toEqual({ wins_labelled: 2, lucky_wins: 1, share: 0.5 });
+    expect(calibration.lucky_wins).toEqual({
+      wins_labelled: 2,
+      lucky_wins: 1,
+      share: 0.5,
+      share_pct: 50,
+    });
   });
 
   it("AC-020.2: the final verdict of an appealed bet is the one counted", async () => {
