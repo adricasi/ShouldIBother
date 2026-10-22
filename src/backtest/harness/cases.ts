@@ -17,6 +17,7 @@ import {
   type TimeWindow,
 } from "../../domain/outcomes.js";
 import { madridParts } from "../../domain/time.js";
+import { ruleWindowAt } from "../../server/ledger/chore-rules.js";
 import { ruleQuote, safetyAlert, type RulesConfig } from "../../domain/rules/index.js";
 import type { ForecastHour } from "../../domain/weather.js";
 import { splitOf } from "../dataset.js";
@@ -136,11 +137,14 @@ export function ruleWindowOf(
   sunsetMs: number | null,
   settleAtMs?: number,
 ): TimeWindow {
-  const window = CHORES[chore].ruleWindow(decisionAtMs, sunsetMs ?? undefined);
-  return {
-    startMs: window.fromMs,
-    endMs: chore === "plants" && settleAtMs !== undefined ? settleAtMs : window.toMs,
-  };
+  // The live app's own window (T-013 gave it the card's sunset for laundry tonight).
+  const window = ruleWindowAt(
+    chore,
+    decisionAtMs,
+    settleAtMs ?? CHORES[chore].ruleSettleAt(decisionAtMs),
+    sunsetMs ?? undefined,
+  );
+  return { startMs: window.fromMs, endMs: window.toMs };
 }
 
 /** The rule band over a window; undefined when the forecast does not cover it. */

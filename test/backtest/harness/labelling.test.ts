@@ -333,7 +333,9 @@ describe("nits", () => {
 
   it("reports a day without a sunset as no_sunset for the chores that need it", async () => {
     const snapshot = await sliceSnapshot();
-    const { "2026-09-02": _removed, ...sunsets } = snapshot.sunsetMsByDate;
+    const sunsets = Object.fromEntries(
+      Object.entries(snapshot.sunsetMsByDate).filter(([date]) => date !== "2026-09-02"),
+    );
     const { skipped } = buildCases({ ...snapshot, sunsetMsByDate: sunsets }, RULES);
     expect(
       skipped

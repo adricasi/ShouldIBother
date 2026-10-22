@@ -16,6 +16,7 @@ import {
   RunDirectoryError,
   acquireLock,
   backtestCommand,
+  type BacktestReport,
   parseDecisionFile,
   readRunFile,
 } from "../../../src/backtest/harness/index.js";
@@ -208,7 +209,8 @@ describe("reports are named after their strategies and splits", () => {
     expect(readFileSync(reportFile(out, "json"), "utf8")).toBe(full);
     expect(existsSync(reportFile(out, "json", ["rule"]))).toBe(true);
     expect(
-      JSON.parse(readFileSync(reportFile(out, "json", ["rule"]), "utf8")).results,
+      (JSON.parse(readFileSync(reportFile(out, "json", ["rule"]), "utf8")) as BacktestReport)
+        .results,
     ).toHaveLength(1);
     // Another split set gets its own file too.
     await backtestCommand(
