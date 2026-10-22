@@ -14,6 +14,7 @@ import {
   settleBet,
   settleBetWithPhoto,
   undoBet,
+  cashOutBet,
   uploadPhoto,
   type BetKind,
   type Receipt,
@@ -211,6 +212,13 @@ export function App() {
     });
   };
 
+  const onCashOut = (betId: number): void => {
+    void act(async () => {
+      await cashOutBet(betId);
+      return { kind: "info", text: "Cashed out: minus 10 points, no savings. The slip is closed." };
+    });
+  };
+
   if (showScore) {
     return <ScoreScreen score={score} flags={today?.flags ?? {}} notice={notice} />;
   }
@@ -226,6 +234,7 @@ export function App() {
         onSettlePhoto={onSettlePhoto}
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
+        {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
       />
     );
   }

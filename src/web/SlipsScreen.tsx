@@ -16,6 +16,8 @@ export interface SlipsScreenProps {
   readonly onSettlePhoto?: (betId: number, file: File) => void;
   readonly onSettleAnswer?: (betId: number, yes: boolean) => void;
   readonly onUndo: (betId: number) => void;
+  /** Cash out a waiting bet at -10 points; given only where the `rescue` flag is on (REQ-022). */
+  readonly onCashOut?: (betId: number) => void;
 }
 
 /** Empty states say what will appear in the group (AC-007.3). */
@@ -88,6 +90,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
                       nowMs={nowMs}
                       busy={busy}
                       onUndo={props.onUndo}
+                      {...(props.onCashOut === undefined ? {} : { onCashOut: props.onCashOut })}
                     />
                   ))}
                 </ul>

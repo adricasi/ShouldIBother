@@ -7,6 +7,7 @@ import { HttpError } from "../problem.js";
 import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
 import { currentPhoto, withoutPhotoQuote } from "./photo-view.js";
+import { rescueView } from "./rescue.js";
 import { savingsSnapshotText } from "./savings.js";
 import { getProgress } from "./settle-progress.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
@@ -215,6 +216,13 @@ export function viewsOf(deps: LedgerDeps, rows: readonly BetRow[]): BetView[] {
   const now = deps.now();
   const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
   return rows.map((row) =>
-    betView(row, cardOf.get(row.card_id)!, table, now, getProgress(deps.db, row.id)),
+    betView(
+      row,
+      cardOf.get(row.card_id)!,
+      table,
+      now,
+      getProgress(deps.db, row.id),
+      rescueView(deps, row),
+    ),
   );
 }

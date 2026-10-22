@@ -27,3 +27,9 @@ export const LOSS_COPY: Readonly<Record<Exclude<Verdict, "win">, string>> = {
 
 /** The stamp printed on the receipt of a won bet (AC-010.1). */
 export const PAID_OUT_STAMP = "PAID OUT";
+
+/** Cash-out (REQ-022): the bet is folded before its settle time, so no verdict and no evidence. */
+export const CASH_OUT_TITLE = "Cashed out";
+export const CASH_OUT_EVIDENCE_TEXT = "Cashed out before the settle time: no evidence needed";
+export const CASH_OUT_COPY =
+  "You folded early. Minus 10 points, no savings counted, and the slip is closed.";

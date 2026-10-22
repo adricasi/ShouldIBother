@@ -7,6 +7,7 @@ import { ANSWER_WINDOW_MS } from "../../domain/settlement.js";
 import { parseWeatherSnapshot, RECORDED_WEATHER_LABEL } from "../../domain/weather-digest.js";
 
 import type { CardPhotoView } from "./photo-view.js";
+import type { RescueView } from "./rescue.js";
 import type { BetRow, CardRow, ProgressRow, QuoteRow } from "./rows.js";
 
 /** What the person can win or lose at these odds, computed by code (AC-003.2). */
@@ -170,6 +171,7 @@ export function betView(
   table: BandTable,
   nowMs: number,
   progress?: ProgressRow,
+  rescue?: RescueView,
 ) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
   return {
@@ -191,6 +193,8 @@ export function betView(
     // A do-it decision has no question: the judge decides from the recorded weather (AC-008.9).
     tap_answers: bet.kind === "do_nothing" ? (chore?.tapAnswers ?? []) : [],
     settle: settleView(bet, progress, nowMs),
+    // Only with the `rescue` flag on, and only for a bet that can still be folded (REQ-022).
+    ...(rescue === undefined ? {} : { rescue }),
   };
 }
 

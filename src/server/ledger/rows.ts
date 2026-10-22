@@ -96,3 +96,23 @@ export interface ProgressRow {
   /** Why the last try did not settle: a judge failure code or `weather`. */
   failure: string | null;
 }
+
+/** A bet cashed out (migration 0011, REQ-022). */
+export interface CashOutRow {
+  bet_id: number;
+  points: number;
+  cashed_out_at: number;
+  /** 1 when the rescue alert was showing on the slip at that moment. */
+  alert_showing: number;
+}
+
+/** The latest rescue re-check of an open bet (migration 0011, AC-022.1). */
+export interface RescueCheckRow {
+  bet_id: number;
+  checked_at: number;
+  forecast_at: number;
+  rule_band: Band;
+  alert: number;
+  /** The sentence on the slip when the alert is up; null otherwise. */
+  reason: string | null;
+}

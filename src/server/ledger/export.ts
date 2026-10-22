@@ -49,6 +49,8 @@ export function buildExport(db: Db, nowMs: number) {
       ...settlement,
       weather: parseWeatherSnapshot(settlement.weather),
     })),
+    // Bets cashed out at -10 points (REQ-022): a closed bet with no verdict, so a table of its own.
+    cash_outs: all<Record<string, unknown>>("SELECT * FROM cash_outs ORDER BY bet_id"),
     answers: all<ProgressRow>("SELECT * FROM settle_progress ORDER BY bet_id").map((progress) => ({
       bet_id: progress.bet_id,
       evidence: progress.evidence,

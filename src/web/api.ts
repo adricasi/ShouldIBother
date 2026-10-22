@@ -128,7 +128,7 @@ export const receiptSchema = z.object({
   bet_id: z.number(),
   title: z.string(),
   kind: z.enum(["do_nothing", "do_it"]),
-  outcome: z.enum(["paid_out", "loss", "do_it"]),
+  outcome: z.enum(["paid_out", "loss", "do_it", "cash_out"]),
   verdict: z.string(),
   verdict_title: z.string(),
   stamp: z.string().nullable(),
@@ -138,7 +138,7 @@ export const receiptSchema = z.object({
   total_points: z.number(),
   multiplier: z.number(),
   multiplier_capped: z.boolean(),
-  evidence: z.object({ kind: z.enum(["photo", "tap", "auto"]), text: z.string() }),
+  evidence: z.object({ kind: z.enum(["photo", "tap", "auto", "none"]), text: z.string() }),
   answer: z.string().nullable(),
   weather: weatherSchema.omit({ from: true, to: true }).nullable(),
   /** "Gemma's read" (AC-028.1). */
@@ -155,6 +155,23 @@ export const receiptSchema = z.object({
     })
     .nullable(),
   settled_at: z.string(),
+});
+
+/** The rescue alert and cash-out offer of a waiting bet; present only while `rescue` is on (REQ-022). */
+export const rescueSchema = z.object({
+  can_cash_out: z.boolean(),
+  cash_out_points: z.number(),
+  alert: z
+    .object({
+      text: z.string(),
+      rule_band: z.number(),
+      rule_band_name: z.string(),
+      rule_odds: z.number(),
+      checked_at: z.string(),
+      forecast_at: z.string(),
+    })
+    .nullable(),
+  checked_at: z.string().nullable(),
 });
 
 export const betSchema = z.object({
@@ -175,6 +192,7 @@ export const betSchema = z.object({
   payouts: payoutsSchema,
   tap_answers: z.array(z.object({ id: z.string(), label: z.string() })),
   settle: settleSchema.nullable(),
+  rescue: rescueSchema.optional(),
 });
 
 export const todaySchema = z.object({
@@ -395,6 +413,14 @@ export const placeBet = (
 
 export const undoBet = (betId: number): Promise<Bet> =>
   request(`/api/bets/${betId}`, betSchema, { method: "DELETE" });
+
+/** Folds an open bet at -10 points, no savings (AC-022.2); only exists while `rescue` is on. */
+export const cashOutBet = (betId: number): Promise<{ receipt: Receipt }> =>
+  request(
+    `/api/bets/${betId}/cashout`,
+    z.object({ state: z.literal("cashed_out"), receipt: receiptSchema }),
+    { method: "POST", body: {} },
+  );
 
 /** One tap (AC-008.3). */
 export const settleBet = (betId: number, answer: string): Promise<SettleResult> =>

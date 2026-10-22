@@ -28,6 +28,7 @@ import { sweepOrphanPhotos } from "./ledger/photos.js";
 import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal } from "./ledger/points.js";
 import { getReceipt } from "./ledger/receipt.js";
+import { cashOutBet, runRescueChecks } from "./ledger/rescue.js";
 import { backfillSavingsSnapshots, weekSavings } from "./ledger/savings.js";
 import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
@@ -147,6 +148,8 @@ export function createCore(deps: CoreDeps): Core {
   const settler = new Settler(ledger);
   const scheduler = createScheduler(deps, deps.onSchedulerError ?? (() => undefined), {
     settle: () => settler.runPass(),
+    // Rescue alerts re-check the forecast of open bets; off by default (REQ-022, REQ-029).
+    ...(deps.flags.rescue ? { rescue: () => runRescueChecks(ledger) } : {}),
   });
   // Bets placed before savings existed (the first real bets) get their snapshot once (REQ-011).
   backfillSavingsSnapshots(ledger);
@@ -306,6 +309,13 @@ export function createCore(deps: CoreDeps): Core {
         },
       }),
     );
+
+    // Flagged: with `rescue` off the route does not exist and a request gets a plain 404 (AC-029.2).
+    if (deps.flags.rescue) {
+      app.post("/api/bets/:id/cashout", (request) =>
+        cashOutBet(ledger, parse(idParams, request.params).id),
+      );
+    }
 
     // Flagged: with `score` off the route does not exist and a request gets a plain 404.
     if (deps.flags.score) {

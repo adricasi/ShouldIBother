@@ -1,8 +1,8 @@
 import { getProgress } from "./settle-progress.js";
-import { receiptOf } from "./receipt.js";
+import { cashOutReceiptOf, receiptOf } from "./receipt.js";
 import { listSettlingBets, markDueBets, viewsOf } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
-import type { BetRow, CardRow, SettlementRow } from "./rows.js";
+import type { BetRow, CardRow, CashOutRow, SettlementRow } from "./rows.js";
 
 /** The most recent settled bets Slips lists; older ones stay in the database for Score. */
 const MAX_SETTLED = 100;
@@ -17,7 +17,6 @@ export function getSlips(deps: LedgerDeps) {
   const now = deps.now();
   // Due is decided at read time, like on Today, so the group below never lags the scheduler.
   // This read therefore writes, by design: `markDueBets` is idempotent and only moves open → due.
-  // TODO(T-023): list `cashed_out` bets here (as settled, -10) when the flagged cash-out lands.
   markDueBets(deps.db, now);
   const settling = listSettlingBets(deps);
   const isReady = (bet: BetRow): boolean => bet.settle_at <= now;
@@ -38,26 +37,60 @@ export function getSlips(deps: LedgerDeps) {
     "SELECT * FROM settlements WHERE bet_id = ? AND final = 1 ORDER BY id DESC LIMIT 1",
   );
   const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
-  const settled = viewsOf(deps, settledRows).map((bet, index) => {
+  const settledWins = viewsOf(deps, settledRows).map((bet, index) => {
     const settlement = settlementOf.get(bet.id)!;
     return {
-      ...bet,
-      result: {
-        verdict: settlement.verdict,
-        points: settlement.points,
-        evidence: settlement.evidence,
-        settled_at: new Date(settlement.settled_at).toISOString(),
+      at: settlement.settled_at,
+      bet: {
+        ...bet,
+        result: {
+          verdict: settlement.verdict,
+          points: settlement.points,
+          evidence: settlement.evidence,
+          settled_at: new Date(settlement.settled_at).toISOString(),
+        },
+        /** The PAID OUT receipt or the loss screen of this bet (AC-010.1, AC-010.2). */
+        receipt: receiptOf(
+          deps,
+          settledRows[index]!,
+          cardOf.get(bet.card_id)!,
+          settlement,
+          getProgress(deps.db, bet.id),
+        ),
       },
-      /** The PAID OUT receipt or the loss screen of this bet (AC-010.1, AC-010.2). */
-      receipt: receiptOf(
-        deps,
-        settledRows[index]!,
-        cardOf.get(bet.card_id)!,
-        settlement,
-        getProgress(deps.db, bet.id),
-      ),
     };
   });
+
+  // Cashed-out bets are closed at -10 (AC-022.2): listed with the settled ones, newest first.
+  const cashedOutRows = deps.db
+    .prepare<[number], BetRow>(
+      `SELECT b.* FROM bets b JOIN cash_outs c ON c.bet_id = b.id
+       WHERE b.status = 'cashed_out' ORDER BY c.cashed_out_at DESC, b.id DESC LIMIT ?`,
+    )
+    .all(MAX_SETTLED);
+  const cashOutOf = deps.db.prepare<[number], CashOutRow>(
+    "SELECT * FROM cash_outs WHERE bet_id = ?",
+  );
+  const cashedOut = viewsOf(deps, cashedOutRows).map((bet, index) => {
+    const cashOut = cashOutOf.get(bet.id)!;
+    return {
+      at: cashOut.cashed_out_at,
+      bet: {
+        ...bet,
+        result: {
+          verdict: "cash_out",
+          points: cashOut.points,
+          evidence: "none",
+          settled_at: new Date(cashOut.cashed_out_at).toISOString(),
+        },
+        receipt: cashOutReceiptOf(deps, cashedOutRows[index]!, cardOf.get(bet.card_id)!, cashOut),
+      },
+    };
+  });
+  const settled = [...settledWins, ...cashedOut]
+    .sort((a, b) => b.at - a.at || b.bet.id - a.bet.id)
+    .slice(0, MAX_SETTLED)
+    .map((entry) => entry.bet);
 
   return {
     now: new Date(now).toISOString(),

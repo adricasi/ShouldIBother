@@ -1,7 +1,14 @@
 import { nameOfBand } from "../../domain/bands.js";
 import { CHORES, isChoreType } from "../../domain/chores.js";
 import { parseSnapshot } from "../../domain/savings.js";
-import { LOSS_COPY, PAID_OUT_STAMP, VERDICT_TITLES } from "../../domain/settle-copy.js";
+import {
+  CASH_OUT_COPY,
+  CASH_OUT_EVIDENCE_TEXT,
+  CASH_OUT_TITLE,
+  LOSS_COPY,
+  PAID_OUT_STAMP,
+  VERDICT_TITLES,
+} from "../../domain/settle-copy.js";
 import type { Verdict } from "../../domain/points.js";
 import { bandTable } from "../../domain/rules/index.js";
 import {
@@ -13,7 +20,7 @@ import { HttpError } from "../problem.js";
 
 import type { LedgerDeps } from "./deps.js";
 import { pointsTotal } from "./points.js";
-import type { BetRow, CardRow, ProgressRow, SettlementRow } from "./rows.js";
+import type { BetRow, CardRow, CashOutRow, ProgressRow, SettlementRow } from "./rows.js";
 import { getProgress } from "./settle-progress.js";
 
 /** How the result was proved, in the words of the receipt (AC-010.1). */
@@ -34,9 +41,12 @@ export interface Receipt {
   readonly bet_id: number;
   readonly title: string;
   readonly kind: "do_nothing" | "do_it";
-  /** `paid_out` prints the receipt with the stamp; `loss` and `do_it` print the plain result. */
-  readonly outcome: "paid_out" | "loss" | "do_it";
-  readonly verdict: Verdict;
+  /**
+   * `paid_out` prints the receipt with the stamp; `loss` and `do_it` print the plain result, and so
+   * does `cash_out` (REQ-022), the bet folded before its settle time.
+   */
+  readonly outcome: "paid_out" | "loss" | "do_it" | "cash_out";
+  readonly verdict: Verdict | "cash_out";
   readonly verdict_title: string;
   /** Present on a win only (AC-010.1); never on a loss (AC-010.2). */
   readonly stamp: typeof PAID_OUT_STAMP | null;
@@ -47,7 +57,8 @@ export interface Receipt {
   readonly multiplier: number;
   /** True when the win was capped at half points because it was settled 24 h or more late. */
   readonly multiplier_capped: boolean;
-  readonly evidence: { readonly kind: "photo" | "tap" | "auto"; readonly text: string };
+  /** `none` on a cash-out: no evidence was given or needed. */
+  readonly evidence: { readonly kind: "photo" | "tap" | "auto" | "none"; readonly text: string };
   /** The tap the person gave, in the chore's words. */
   readonly answer: string | null;
   readonly weather: {
@@ -162,11 +173,56 @@ export function receiptOf(
   };
 }
 
-/** The receipt of a settled bet; 404 for an unknown bet, 409 while it is not settled yet. */
+/**
+ * The receipt of a bet cashed out (AC-022.2): -10 points, no savings, no weather and no Gemma
+ * read. No multiplier applies, so it reads 1, like a do-it decision's fixed points.
+ */
+export function cashOutReceiptOf(
+  deps: Pick<LedgerDeps, "db" | "rules">,
+  bet: BetRow,
+  card: CardRow,
+  cashOut: CashOutRow,
+): Receipt {
+  const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
+  return {
+    bet_id: bet.id,
+    title: chore?.title ?? card.chore_type,
+    kind: bet.kind,
+    outcome: "cash_out",
+    verdict: "cash_out",
+    verdict_title: CASH_OUT_TITLE,
+    stamp: null,
+    odds: bet.odds,
+    band_name: nameOfBand(bandTable(deps.rules), bet.band),
+    points: cashOut.points,
+    total_points: pointsTotal(deps),
+    multiplier: 1,
+    multiplier_capped: false,
+    evidence: { kind: "none", text: CASH_OUT_EVIDENCE_TEXT },
+    answer: null,
+    weather: null,
+    gemma_read: null,
+    lucky_win: null,
+    message: CASH_OUT_COPY,
+    saved: null,
+    settled_at: new Date(cashOut.cashed_out_at).toISOString(),
+  };
+}
+
+/** The receipt of a settled or cashed-out bet; 404 for an unknown bet, 409 while it is open. */
 export function getReceipt(deps: Pick<LedgerDeps, "db" | "rules">, betId: number): Receipt {
   const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);
   if (bet === undefined) {
     throw new HttpError(404, "Bet not found");
+  }
+  const card = deps.db
+    .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
+    .get(bet.card_id)!;
+  const cashOut = deps.db
+    .prepare<[number], CashOutRow>("SELECT * FROM cash_outs WHERE bet_id = ?")
+    .get(betId);
+  if (cashOut !== undefined) {
+    return cashOutReceiptOf(deps, bet, card, cashOut);
   }
   const settlement = deps.db
     .prepare<[number], SettlementRow>(
@@ -176,8 +232,5 @@ export function getReceipt(deps: Pick<LedgerDeps, "db" | "rules">, betId: number
   if (settlement === undefined) {
     throw new HttpError(409, "This bet is not settled yet");
   }
-  const card = deps.db
-    .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
-    .get(bet.card_id)!;
   return receiptOf(deps, bet, card, settlement, getProgress(deps.db, bet.id));
 }
