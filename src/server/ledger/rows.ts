@@ -23,6 +23,11 @@ export interface CardRow {
   sunset_at: number | null;
   /** When the safety guard gave a verdict on the card (migration 0008); null if it never did. */
   safety_checked_at: number | null;
+  /** The laundry planner's state as JSON (migration 0010); null on every other card. */
+  plan: string | null;
+  /** When the person followed the planner's advice, and the points it earned (AC-021.3). */
+  advice_followed_at: number | null;
+  advice_points: number | null;
 }
 
 export interface QuoteRow {

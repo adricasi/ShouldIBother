@@ -1,0 +1,57 @@
+{
+  "description": "Puts a percentage in the reason, twice: invalid, the app shows the odds.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          {
+            "day": "day_0",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_1",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_2",
+            "score": "toss_up"
+          },
+          {
+            "day": "day_3",
+            "score": "unlikely"
+          }
+        ],
+        "reason": "Saturday looks 70% likely to dry the load."
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          {
+            "day": "day_0",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_1",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_2",
+            "score": "toss_up"
+          },
+          {
+            "day": "day_3",
+            "score": "unlikely"
+          }
+        ],
+        "reason": "Saturday looks 70% likely to dry the load."
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import { loadSavings } from "./savings.js";
 import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client.js";
+import { PLANNER_FORECAST_DAYS } from "./weather/open-meteo.js";
 
 /**
  * Human-facing console output goes to stderr: stdout carries the JSON logs, so
@@ -81,6 +82,8 @@ export async function startServer(
           location: household.location ?? DEFAULT_LOCATION,
           log: (entry) => appRef?.log.info(entry),
           requestSunset: flags.laundryTonight,
+          // The planner scores four days (REQ-021); with it off the request is what it was.
+          ...(flags.laundryPlanner ? { forecastDays: PLANNER_FORECAST_DAYS } : {}),
         });
     core = createCore({
       db: runtime.db,

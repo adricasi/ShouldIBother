@@ -1,5 +1,5 @@
 import { nameOfBand } from "../../domain/bands.js";
-import { CHORES, isChoreType } from "../../domain/chores.js";
+import { betChoreSpec } from "../../domain/chores.js";
 import { parseSnapshot } from "../../domain/savings.js";
 import {
   CASH_OUT_COPY,
@@ -114,7 +114,7 @@ export function receiptOf(
   settlement: SettlementRow,
   progress: ProgressRow | undefined,
 ): Receipt {
-  const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
+  const chore = betChoreSpec(card.chore_type);
   const verdict = settlement.verdict as Verdict;
   const win = bet.kind === "do_nothing" && verdict === "win";
   const snapshot = parseWeatherSnapshot(settlement.weather);
@@ -183,7 +183,7 @@ export function cashOutReceiptOf(
   card: CardRow,
   cashOut: CashOutRow,
 ): Receipt {
-  const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
+  const chore = betChoreSpec(card.chore_type);
   return {
     bet_id: bet.id,
     title: chore?.title ?? card.chore_type,

@@ -1,15 +1,17 @@
 import type { LedgerDeps } from "./deps.js";
 
 /**
- * The sum of every final settlement's points and every cash-out's points, from the stored rows
- * (AC-009.4, AC-022.2). A cash-out is not a settlement (it has no verdict), so it sits in its own
- * table; with the `rescue` flag never on, that table is empty and the total is the settlements'.
+ * The points total from the stored rows: every final settlement (AC-009.4), plus the points of
+ * advice followed (AC-021.3: Wash today is not a bet, so its +5 is stored on the planner card),
+ * plus every cash-out (AC-022.2: a cash-out has no verdict, so it sits in its own table). With
+ * the `laundryPlanner` and `rescue` flags never on, the last two terms are 0.
  */
 export function pointsTotal(deps: Pick<LedgerDeps, "db">): number {
   return deps.db
     .prepare<[], { total: number }>(
-      `SELECT (SELECT COALESCE(SUM(points), 0) FROM settlements WHERE final = 1)
-            + (SELECT COALESCE(SUM(points), 0) FROM cash_outs) AS total`,
+      `SELECT COALESCE((SELECT SUM(points) FROM settlements WHERE final = 1), 0)
+            + COALESCE((SELECT SUM(points) FROM cash_outs), 0)
+            + COALESCE((SELECT SUM(advice_points) FROM cards), 0) AS total`,
     )
     .get()!.total;
 }

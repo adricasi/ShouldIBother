@@ -1,5 +1,6 @@
 import { nameOfBand, oddsOfBand, type Band, type BandTable } from "../../domain/bands.js";
-import { isChoreType } from "../../domain/chores.js";
+import { LAUNDRY_PLAN, isChoreType, type ChoreType } from "../../domain/chores.js";
+import { PLAN_FORECAST_HOURS, planBetWindow } from "../../domain/laundry-plan.js";
 import { CASH_OUT_POINTS } from "../../domain/points.js";
 import { bandDroppedEnough } from "../../domain/rescue.js";
 import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
@@ -18,29 +19,41 @@ import type { BetRow, CardRow, CashOutRow, RescueCheckRow } from "./rows.js";
  */
 export const RESCUE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-/** How far ahead the forecast is read: the longest bet window is under 48 hours. */
-const FORECAST_HOURS = 48;
+/** How far ahead the forecast is read: the planner's four days, the longest a bet can reach. */
+const FORECAST_HOURS = PLAN_FORECAST_HOURS;
+
+/**
+ * The chore whose rule prices a card's bet: its own, or the line-dry rule for a Skip today bet
+ * (REQ-021), which is judged on the line-dry outcome label.
+ */
+export function rescueRuleChore(choreType: string): ChoreType | undefined {
+  if (isChoreType(choreType)) {
+    return choreType;
+  }
+  return choreType === LAUNDRY_PLAN ? "laundry_line" : undefined;
+}
 
 /**
  * The part of a bet's rule window that is still to come: from now (or the window's start, if it
  * has not begun) to the window's end. Null once the window is over, when there is nothing left to
  * rescue. The window is the one the bet's card was priced on (anchored on the placing time, with
  * the laundry card's stored sunset), so the rule band here means the same as the band on the bet.
+ * A Skip today bet is about the drying hours of the day the planner chose, the window it is
+ * judged on (`planBetWindow`).
  */
 export function remainingWindow(
   bet: BetRow,
   card: Pick<CardRow, "chore_type" | "sunset_at">,
   nowMs: number,
 ): { fromMs: number; toMs: number } | null {
-  if (!isChoreType(card.chore_type)) {
+  const chore = rescueRuleChore(card.chore_type);
+  if (chore === undefined) {
     return null;
   }
-  const window = ruleWindowAt(
-    card.chore_type,
-    bet.placed_at,
-    bet.settle_at,
-    card.sunset_at ?? undefined,
-  );
+  const window =
+    card.chore_type === LAUNDRY_PLAN
+      ? planBetWindow(bet.settle_at)
+      : ruleWindowAt(chore, bet.placed_at, bet.settle_at, card.sunset_at ?? undefined);
   const fromMs = Math.max(window.fromMs, nowMs);
   return fromMs < window.toMs ? { fromMs, toMs: window.toMs } : null;
 }
@@ -107,19 +120,14 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
         { chore_type: bet.chore_type, sunset_at: bet.card_sunset_at },
         checkedAt,
       );
-      if (window === null || !isChoreType(bet.chore_type)) {
+      const chore = rescueRuleChore(bet.chore_type);
+      if (window === null || chore === undefined) {
         continue;
       }
       // The backstop is looked at first and needs no complete window: a missing hour cannot hide
       // a limit that the hours present already cross (safety is never a bet).
       const backstop = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
-      const rule = ruleQuote(
-        bet.chore_type,
-        forecast.hours,
-        window.fromMs,
-        window.toMs,
-        deps.rules,
-      );
+      const rule = ruleQuote(chore, forecast.hours, window.fromMs, window.toMs, deps.rules);
       if (rule === null && backstop === null) {
         // The forecast does not cover the remaining window: no false odds, so no new check.
         continue;

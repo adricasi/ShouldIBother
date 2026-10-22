@@ -1,4 +1,4 @@
-import { isChoreType } from "../../domain/chores.js";
+import { LAUNDRY_PLAN, isChoreType } from "../../domain/chores.js";
 import {
   parseSnapshot,
   snapshotFor,
@@ -17,8 +17,11 @@ type SavingsDeps = Pick<LedgerDeps, "db" | "household" | "savings">;
  * makes the column write-once, so the figure of a bet never moves with the config afterwards.
  */
 export function savingsSnapshotText(deps: SavingsDeps, choreType: string): string | null {
-  return isChoreType(choreType)
-    ? JSON.stringify(snapshotFor(deps.savings, choreType, deps.household))
+  // A won Skip today bet dried the load on the line instead of in the dryer: the line-dry figure
+  // for the household's dryer (REQ-021, REQ-011).
+  const chore = choreType === LAUNDRY_PLAN ? "laundry_line" : choreType;
+  return isChoreType(chore)
+    ? JSON.stringify(snapshotFor(deps.savings, chore, deps.household))
     : null;
 }
 

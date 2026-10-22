@@ -308,8 +308,8 @@ describe("REQ-022: rescue alerts (AC-022.1)", () => {
 
   it("AC-022.1 + safety: the backstop alert is not hidden when the forecast does not cover the window", async () => {
     const h = await setup({ rescue: true }, FAKE_WEATHER_PROFILES.mild);
-    // A plants bet that settles 60 h ahead: the 48 h forecast cannot price its window.
-    const id = seedBet(h, { status: "open", settleOffsetMs: 60 * HOUR, openHours: 61 });
+    // A plants bet that settles 100 h ahead: the 96 h forecast cannot price its window.
+    const id = seedBet(h, { status: "open", settleOffsetMs: 100 * HOUR, openHours: 101 });
     h.weather.setProfile(FAKE_WEATHER_PROFILES.mild);
     expect(await h.core.scheduler.tickRescue()).toBe(0); // no rule band, no limit crossed: nothing to say
     expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 0 });
@@ -398,6 +398,94 @@ describe("REQ-022: rescue alerts (AC-022.1)", () => {
     expect(await h.core.scheduler.tickRescue()).toBe(1);
     const row = h.db.prepare("SELECT rule_band, alert FROM rescue_checks WHERE bet_id = ?").get(id);
     expect(row).toEqual({ rule_band: 0, alert: 1 }); // a wet hour: band 0, four bands below
+  });
+});
+
+describe("REQ-022 and a Skip today bet from the laundry planner (REQ-021)", () => {
+  it("AC-022.1: a Skip today bet is checked over the drying hours of the day it chose, with the line-dry rule", async () => {
+    const h = await setup({ rescue: true }, FAKE_WEATHER_PROFILES.breezy);
+    // Skip today for today: placed now (10:00 Madrid), settles 18:00 Madrid (16:00Z).
+    const id = seedBet(h, {
+      chore: "laundry_plan",
+      band: 4,
+      status: "open",
+      settleOffsetMs: 8 * HOUR,
+      openHours: 8,
+    });
+    expect(await h.core.scheduler.tickRescue()).toBe(1);
+    expect(h.db.prepare("SELECT rule_band, alert FROM rescue_checks").get()).toEqual({
+      rule_band: 4,
+      alert: 0,
+    });
+
+    h.weather.setProfile({
+      ...FAKE_WEATHER_PROFILES.breezy,
+      rain: { startsAfterHours: 1, hours: 2, mmPerHour: 1 },
+    });
+    h.clock.advance(RESCUE_CHECK_INTERVAL_MS);
+    expect(await h.core.scheduler.tickRescue()).toBe(1);
+    expect(h.db.prepare("SELECT rule_band, alert FROM rescue_checks").get()).toEqual({
+      rule_band: 0,
+      alert: 1,
+    });
+    const bet = (await slips()).waiting.find((candidate) => candidate.id === id);
+    expect(bet?.rescue).toMatchObject({ can_cash_out: true, alert: { rule_band: 0 } });
+  });
+
+  it("AC-022.1: a Skip today bet for a later day is checked over that day's window only", async () => {
+    const h = await setup({ rescue: true }, FAKE_WEATHER_PROFILES.breezy);
+    // Two days ahead: 18:00 Madrid on 24 Oct is 16:00Z.
+    const id = seedBet(h, {
+      chore: "laundry_plan",
+      band: 4,
+      status: "open",
+      settleOffsetMs: 56 * HOUR,
+      openHours: 2,
+    });
+    h.weather.setProfile({
+      ...FAKE_WEATHER_PROFILES.breezy,
+      rain: { startsAfterHours: 0, hours: 3, mmPerHour: 1 }, // rain today, before that day's window
+    });
+    expect(await h.core.scheduler.tickRescue()).toBe(1);
+    expect(h.db.prepare("SELECT bet_id, rule_band FROM rescue_checks").get()).toEqual({
+      bet_id: id,
+      rule_band: 4,
+    });
+  });
+
+  it("AC-022.2: cashing out a Skip today bet gives its own title on the receipt", async () => {
+    const h = await setup();
+    const id = seedBet(h, {
+      chore: "laundry_plan",
+      band: 3,
+      status: "open",
+      settleOffsetMs: 8 * HOUR,
+      openHours: 1,
+    });
+    const body = (await h.post(`/api/bets/${id}/cashout`, {})).json<{
+      receipt: { title: string; points: number };
+    }>();
+    expect(body.receipt).toMatchObject({ title: "Skip washing today", points: -10 });
+    const settled = (await slips()).settled.find((bet) => bet.id === id);
+    expect((settled as { title?: string } | undefined)?.title).toBe("Skip washing today");
+  });
+});
+
+describe("REQ-022: the points total", () => {
+  it("AC-022.2: adds final settlements, cash-outs and advice followed", async () => {
+    const h = await setup();
+    const won = seedBet(h, { band: 3, status: "due" });
+    await h.post(`/api/bets/${won}/settle`, { answer: "moist" }); // +15
+    h.db
+      .prepare(
+        "INSERT INTO cards (input_text, chore_type, kind, advice_points, created_at) VALUES ('plan', 'laundry_plan', 'weather', 5, 1)",
+      )
+      .run(); // advice followed: +5
+    const folded = await placeBet();
+    await h.post(`/api/bets/${folded.id}/cashout`, {}); // -10
+    expect(await pointsTotal()).toBe(15 + 5 - 10);
+    const { pointsTotal: ledgerTotal } = await import("../src/server/ledger/points.js");
+    expect(ledgerTotal({ db: h.db })).toBe(10);
   });
 });
 

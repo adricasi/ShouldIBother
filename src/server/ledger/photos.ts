@@ -1,3 +1,4 @@
+import { LAUNDRY_PLAN } from "../../domain/chores.js";
 import type { Db } from "../db.js";
 import { HttpError } from "../problem.js";
 import { UnsupportedPhotoError, UNSUPPORTED_PHOTO_MESSAGE } from "../photos/process.js";
@@ -48,6 +49,9 @@ function assertCardTakesPhoto(db: Db, cardId: number): CardRow {
   }
   if (card.kind !== "weather") {
     throw new HttpError(409, "No photo on this card", "Only a card with odds takes a photo.");
+  }
+  if (card.chore_type === LAUNDRY_PLAN) {
+    throw new HttpError(409, "No photo on this card", "The laundry planner does not take a photo.");
   }
   const bet = db
     .prepare<[number], { id: number }>(

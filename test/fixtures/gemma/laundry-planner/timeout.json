@@ -1,0 +1,4 @@
+{
+  "description": "The model call did not answer within its timeout.",
+  "error": "timeout"
+}

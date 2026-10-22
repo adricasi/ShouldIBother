@@ -1,0 +1,57 @@
+{
+  "description": "Skip today on a day that scores toss-up while the rule says very likely (two bands apart), with no explanation and no question, twice: invalid.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          {
+            "day": "day_0",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_1",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_2",
+            "score": "toss_up"
+          },
+          {
+            "day": "day_3",
+            "score": "unlikely"
+          }
+        ],
+        "reason": "Saturday is the best of four damp-looking days."
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          {
+            "day": "day_0",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_1",
+            "score": "unlikely"
+          },
+          {
+            "day": "day_2",
+            "score": "toss_up"
+          },
+          {
+            "day": "day_3",
+            "score": "unlikely"
+          }
+        ],
+        "reason": "Saturday is the best of four damp-looking days."
+      }
+    }
+  ]
+}

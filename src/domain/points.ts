@@ -24,6 +24,9 @@ export const DO_IT_POINTS: Readonly<Record<DoItVerdict, number>> = {
 /** AC-022.2: cashing out settles the bet at -10 points, whatever the odds, with no savings. */
 export const CASH_OUT_POINTS = -10;
 
+/** Advice followed: washing today on the planner's best drying day (AC-021.3, fixed values). */
+export const ADVICE_FOLLOWED_POINTS = 5;
+
 /** Rounds to the nearest integer, halves up (7.5 -> 8, 2.5 -> 3). */
 export function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);
