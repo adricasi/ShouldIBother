@@ -8,8 +8,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/cli.ts start",
+    "dev": "vite build && tsx watch src/cli.ts start",
     "dev:web": "vite",
+    "build:web": "vite build",
     "start": "node dist/cli.js start",
     "build": "tsc -p tsconfig.build.json && vite build",
     "typecheck": "tsc --noEmit && tsc -p src/web/tsconfig.json",

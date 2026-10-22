@@ -351,6 +351,16 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect(harness.db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 0 });
   });
 
+  it("GET /api/cards/:id returns the card with its latest quote, 404 for an unknown card", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
+    const card = await quickCard();
+    const fetched = await harness.get(`/api/cards/${card.id}`);
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json()).toEqual(card);
+    expect((await harness.get("/api/cards/999")).statusCode).toBe(404);
+    expect((await harness.get("/api/cards/abc")).statusCode).toBe(400);
+  });
+
   it("serves API responses with no-store so household data is not cached", async () => {
     await setup();
     expect((await harness.get("/api/today")).headers["cache-control"]).toBe("no-store");

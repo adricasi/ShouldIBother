@@ -88,7 +88,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: migration 0001; 10-min token generation at start and via `sib pair` + QR/URL print; `/pair` exchange and redirect (≤ 3 devices per token, console line per pairing); 30-day sessions; session guard on all routes except `/pair`; Origin check against the app's own origins incl. `config.publicOrigins`; Host allowlist built at start-up from active interfaces + `config.allowedHosts` + public-origin hosts (421 otherwise); `Secure` cookie when pairing over an https public origin; rate limit on unauthenticated failures only; `sib forget-devices`; security headers incl. CSP `default-src 'self'; img-src 'self' blob: data:`; log redaction; bind to 127.0.0.1 + LAN address only.
   - Done when: integration tests for AC-001.1–AC-001.10 pass (401 without session on page, API and photo routes; 403 on bad/missing Origin and 2xx on a `config.publicOrigins` origin; 421 on a Host not in the allowlist; a 4th device on one token refused; rate limit after more than 10 unauthenticated failures while a valid session keeps working; the `/pair?token=` request log line contains no token); `security-auditor` review has no open Blockers.
 
-- [ ] T-004: Walking skeleton: plants bet end to end on the fake
+- [x] T-004: Walking skeleton: plants bet end to end on the fake
   - Who / when: Agent W1 · Thu AM (stacked on T-003)
   - Requirements: REQ-004 (plants rule only), REQ-006 (AC-006.1 minimal), REQ-008 (tap only), REQ-009, REQ-013 (rule-odds path); NFR-003, NFR-010
   - Depends on: T-003
