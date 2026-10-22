@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { madridWallTimeToEpochMs } from "../../src/domain/time.js";
+import { madridParts, madridWallTimeToEpochMs } from "../../src/domain/time.js";
 import type { ForecastHour } from "../../src/domain/weather.js";
 import {
   buildWeatherBoard,
+  clockLabel,
   conditionWords,
   lazyThreshold,
 } from "../../src/domain/weather-board.js";
@@ -121,8 +122,71 @@ describe("T-027: REQ-026 the weather board figures", () => {
     });
   });
 
-  it("the lazy threshold comes from the rules config, not from the board", () => {
-    expect(lazyThreshold(rules)).toBe(0.15);
+  it("the lazy threshold is the toss-up row of the line-dry rule, read from the config", () => {
+    const tossUp = rules.chores.lineDry.meanDryingIndexRows.filter((row) => row.band === 2);
+    expect(tossUp).toHaveLength(1);
+    expect(lazyThreshold(rules)).toBe(tossUp[0]?.atLeast);
+    // A pinned value too, so a change of the rows is noticed here and decided on purpose.
+    expect(lazyThreshold(rules)).toBe(0.3);
+    const without = {
+      ...rules,
+      chores: {
+        ...rules.chores,
+        lineDry: {
+          ...rules.chores.lineDry,
+          meanDryingIndexRows: rules.chores.lineDry.meanDryingIndexRows.filter(
+            (row) => row.band !== 2,
+          ),
+        },
+      },
+    };
+    expect(() => lazyThreshold(without)).toThrow(/band 2/);
+  });
+
+  it("an hour the rules rate unlikely (index between 0.15 and 0.3) is not lazy", () => {
+    // wind 0, humidity 80, sunshine 1800 s: 0.06 + 0.1 = 0.16.
+    const hours = day().map((entry) =>
+      madridHour(entry) === 12
+        ? { ...entry, windKmh: 0, relativeHumidityPct: 80, sunshineSeconds: 1800 }
+        : entry,
+    );
+    const board = buildWeatherBoard(hours, at("09:41"), rules)!;
+    const twelve = board.hours.find((entry) => entry.hour === 12)!;
+    expect(twelve.level).toBeGreaterThanOrEqual(0.15);
+    expect(twelve.level).toBeLessThan(0.3);
+    expect(twelve.lazy).toBe(false);
+    expect(board.lazyWindow).toEqual({ from: "13:00", to: "18:00" });
+  });
+
+  it("the window ends with the line-dry window (18:00), even when the evening stays dry", () => {
+    const hours = day().map((entry) =>
+      madridHour(entry) === 18 || madridHour(entry) === 19 ? { ...entry, ...DRY } : entry,
+    );
+    const board = buildWeatherBoard(hours, at("09:41"), rules)!;
+    expect(board.hours.find((entry) => entry.hour === 19)).toMatchObject({ lazy: false });
+    expect(board.lazyWindow).toEqual({ from: "10:00", to: "18:00" });
+  });
+
+  it("DST: on 25 Oct 2026, the 25-hour day, bars and window stay on the wall clock", () => {
+    const start = madridWallTimeToEpochMs("2026-10-25", "00:00");
+    const hours = Array.from({ length: 25 }, (_unused, index) => {
+      const startsAt = start + index * 3_600_000;
+      const wall = madridParts(startsAt).hour;
+      return { ...hour(wall, wall >= 10 && wall < 18 ? DRY : DAMP), startsAt };
+    });
+    // 02:00 happens twice and 04:00 is the fifth hour after midnight.
+    expect(hours.filter((entry) => madridParts(entry.startsAt).hour === 2)).toHaveLength(2);
+    const now = madridWallTimeToEpochMs("2026-10-25", "09:41");
+    const board = buildWeatherBoard(hours, now, rules)!;
+    const barHours = board.hours.map((entry) => entry.hour);
+    expect(barHours).toEqual([...new Set(barHours)]);
+    expect(barHours[0]).toBe(7);
+    expect(board.lazyWindow).toEqual({ from: "10:00", to: "18:00" });
+  });
+
+  it("a run reaching the end of the day would read 00:00, never 24:00", () => {
+    // Only reachable if the window ever extended to midnight; the formatter is guarded anyway.
+    expect(clockLabel(24)).toBe("00:00");
   });
 
   it("weather codes read in plain words, with clear nights", () => {

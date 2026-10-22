@@ -1,5 +1,6 @@
 /* Split-flap tiles (REQ-026): a character on a dark tile with a seam through the middle. */
 .flap-text {
+  position: relative;
   display: inline-flex;
   min-width: 0;
   max-width: 100%;

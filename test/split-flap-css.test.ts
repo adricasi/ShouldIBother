@@ -116,3 +116,41 @@ describe("T-027: NFR-009 the board's colour pairs", () => {
     expect(contrast("ink-3", "ink")).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("T-027: fix round 1", () => {
+  it("WCAG 1.4.1: a lazy bar differs from a grey one by more than colour (a cap), and the cap shows", () => {
+    const board = postcss.parse(read("../src/web/board.css"));
+    const [lazy] = rulesFor(board, ".bar.lazy");
+    expect(declarationsOf(lazy as Rule, "border-top")).toEqual([
+      "var(--space-1) solid var(--color-card)",
+    ]);
+    expect(
+      rulesFor(board, ".bar").every((rule) => declarationsOf(rule, "border-top").length === 0),
+    ).toBe(true);
+    // The cap stands out from the grey bar and from the board.
+    expect(contrast("card", "ink-3")).toBeGreaterThanOrEqual(3);
+    expect(contrast("card", "ink")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("the lazy bar's fill stands out from the board by at least 3:1", () => {
+    expect(contrast("sun", "ink")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("AC-026.2: --motion-flap is 0 ms under reduced motion in the tokens", () => {
+    const root = postcss.parse(tokens);
+    const values: string[] = [];
+    root.walkAtRules("media", (atRule) => {
+      if (REDUCED_MOTION.test(atRule.params)) {
+        atRule.walkDecls("--motion-flap", (declaration) => {
+          values.push(declaration.value);
+        });
+      }
+    });
+    expect(values).toEqual(["0ms"]);
+  });
+
+  it("the sr-only label of a tile group is positioned against the group", () => {
+    const [group] = rulesFor(styles, ".flap-text");
+    expect(declarationsOf(group as Rule, "position")).toEqual(["relative"]);
+  });
+});

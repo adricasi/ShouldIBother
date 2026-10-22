@@ -129,12 +129,39 @@ describe("AC-026.1: Today shows the weather board with split-flap tiles and hour
     expect(todayHtml(withBoard({ splitFlap: true }, undefined))).toContain("No forecast yet");
   });
 
-  it("AC-014.6: the Open-Meteo attribution is inside the board as well as at the foot of Today", () => {
-    const html = renderToStaticMarkup(
-      <WeatherBoard board={board} now={today.now} attribution={ATTRIBUTION} />,
-    );
-    expect(html).toContain(`<p class="board-attribution">${ATTRIBUTION}</p>`);
-    expect(todayHtml(withBoard({ splitFlap: true }, board))).toContain("attribution");
+  it("AC-014.6: the board carries no attribution of its own; the foot of Today has the one", () => {
+    const html = todayHtml(withBoard({ splitFlap: true }, board));
+    expect(html.split(ATTRIBUTION)).toHaveLength(2);
+    expect(html).toContain(`<p class="meta attribution">${ATTRIBUTION}</p>`);
+    expect(html.indexOf(ATTRIBUTION)).toBeGreaterThan(html.indexOf("weather-board"));
+    expect(
+      renderToStaticMarkup(<WeatherBoard board={board} now={today.now} forecast={null} />),
+    ).not.toContain("Open-Meteo");
+  });
+
+  it("a fresh forecast reads 'Now'; one older than an hour says how old it is", () => {
+    const fresh = {
+      ...today,
+      flags: { splitFlap: true },
+      weather_board: board,
+      forecast: {
+        fetched_at: "2026-10-22T07:00:00.000Z",
+        age_label: "Forecast from 41 min ago",
+        stale: false,
+      },
+    };
+    expect(todayHtml(fresh)).toContain("Now 09:41");
+    const stale = {
+      ...fresh,
+      forecast: {
+        fetched_at: "2026-10-22T04:00:00.000Z",
+        age_label: "Forecast from 3 h ago",
+        stale: true,
+      },
+    };
+    const html = todayHtml(stale);
+    expect(html).not.toContain("Now 09:41");
+    expect(html).toMatch(/<p class="eyebrow">Forecast from 3 h ago<\/p>/);
   });
 
   it("the board comes right after the forecast age and before the chip list", () => {

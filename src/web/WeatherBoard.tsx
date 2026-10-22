@@ -1,4 +1,4 @@
-import type { WeatherBoard as WeatherBoardData } from "./api.js";
+import type { Today, WeatherBoard as WeatherBoardData } from "./api.js";
 import "./board.css";
 import { formatClock } from "./format.js";
 import { Icon } from "./ui/Icon.js";
@@ -31,16 +31,18 @@ function barsLabel(board: WeatherBoardData): string {
  * The weather board of Today (flag `splitFlap`, REQ-026): the temperature and the condition on
  * split-flap tiles, rain and wind in words, and today's daylight hours as bars with the lazy
  * window marked. `board` is null until a forecast is cached. The Open-Meteo attribution
- * (AC-014.6) is written inside the board, so it is visible wherever the weather is shown.
+ * (AC-014.6) is the one at the foot of Today. A forecast older than an hour says how old it is
+ * instead of "Now", so the board never looks live when it is not.
  */
 export function WeatherBoard({
   board,
   now,
-  attribution,
+  forecast,
 }: {
   readonly board: WeatherBoardData | null;
   readonly now: string;
-  readonly attribution: string;
+  /** The forecast behind the board (its age); null before the first fetch. */
+  readonly forecast: Today["forecast"] | undefined;
 }) {
   if (board === null) {
     return (
@@ -59,7 +61,9 @@ export function WeatherBoard({
         <h2 id="weather-board-title" className="eyebrow">
           Weather board
         </h2>
-        <p className="eyebrow">Now {formatClock(now)}</p>
+        <p className="eyebrow">
+          {forecast?.stale === true ? forecast.age_label : `Now ${formatClock(now)}`}
+        </p>
       </div>
       <div className="board-now">
         <SplitFlapText text={temperature.text} label={temperature.label} />
@@ -105,7 +109,6 @@ export function WeatherBoard({
         )}
         <span className="board-source">Bars: how well the line would dry</span>
       </p>
-      <p className="board-attribution">{attribution}</p>
     </section>
   );
 }

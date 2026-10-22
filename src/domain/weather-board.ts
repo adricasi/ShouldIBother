@@ -1,3 +1,4 @@
+import { CHORES } from "./chores.js";
 import { dryingIndex } from "./outcomes.js";
 import type { RulesConfig } from "./rules/schema.js";
 import { HOUR_MS, madridDateOf, madridParts } from "./time.js";
@@ -15,7 +16,7 @@ export interface BoardHour {
   readonly hour: number;
   /** How well the sky dries the line in this hour, 0 to 1; null when the forecast lacks a value. */
   readonly level: number | null;
-  /** True for an hour in the lazy window: still to come and dry enough that the line dries itself. */
+  /** True for an hour in the lazy window: still to come, before the line-dry window ends, and dry enough that the line dries itself. */
   readonly lazy: boolean;
 }
 
@@ -59,17 +60,28 @@ export function conditionWords(code: number | null, isDay: boolean | null): stri
   return WORDS_BY_CODE.find(([codes]) => codes.includes(code))?.[1] ?? "No condition";
 }
 
-function clock(hour: number): string {
-  return `${String(hour).padStart(2, "0")}:00`;
+export function clockLabel(hour: number): string {
+  // A run reaching the last hour of the day ends at midnight: "00:00", never "24:00".
+  return `${String(hour % 24).padStart(2, "0")}:00`;
 }
 
+/** The toss-up band: the lowest band at which the rules rate drying as better than unlikely. */
+const LAZY_BAND = 2;
+
 /**
- * The lowest drying-index row of the line-dry rule: the first level that lifts the odds off
- * "very unlikely". An hour at or above it is dry enough for the sky to do the chore. Taken from
- * the rules config, so the board adds no threshold of its own.
+ * The drying index an hour needs to count as lazy: the toss-up row of the line-dry rule, so a lazy
+ * bar never means an hour the rules rate "unlikely" or worse. Read from the rules config by band,
+ * so the board adds no threshold of its own and follows the config if its rows move. Using one
+ * hour's index against a threshold written for a window's mean is the board's own definition.
  */
 export function lazyThreshold(config: RulesConfig): number {
-  return Math.min(...config.chores.lineDry.meanDryingIndexRows.map((row) => row.atLeast));
+  const row = config.chores.lineDry.meanDryingIndexRows.find(
+    (candidate) => candidate.band === LAZY_BAND,
+  );
+  if (row === undefined) {
+    throw new Error(`rules.json has no line-dry row for band ${String(LAZY_BAND)}`);
+  }
+  return row.atLeast;
 }
 
 function levelOf(hour: ForecastHour, config: RulesConfig): number | null {
@@ -108,7 +120,7 @@ function longestRun(hours: readonly BoardHour[]): LazyWindow | null {
   }
   return best === undefined
     ? null
-    : { from: clock(best.start), to: clock(best.start + best.length) };
+    : { from: clockLabel(best.start), to: clockLabel(best.start + best.length) };
 }
 
 /**
@@ -127,6 +139,8 @@ export function buildWeatherBoard(
     return null;
   }
   const threshold = lazyThreshold(config);
+  // The lazy window is the line-dry window: hours that start before its end (18:00 Madrid).
+  const windowEndMs = CHORES.laundry_line.ruleWindow(nowMs).toMs;
   const today = madridDateOf(nowMs);
   const hours: BoardHour[] = forecast
     .filter((hour) => hour.isDay === true && madridDateOf(hour.startsAt) === today)
@@ -136,7 +150,11 @@ export function buildWeatherBoard(
       return {
         hour: madridParts(hour.startsAt).hour,
         level,
-        lazy: level !== null && level >= threshold && hour.startsAt + HOUR_MS > nowMs,
+        lazy:
+          level !== null &&
+          level >= threshold &&
+          hour.startsAt + HOUR_MS > nowMs &&
+          hour.startsAt < windowEndMs,
       };
     });
   return {

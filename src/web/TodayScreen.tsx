@@ -375,7 +375,7 @@ export function TodayScreen(props: TodayScreenProps) {
           <WeatherBoard
             board={today.weather_board ?? null}
             now={today.now}
-            attribution={today.attribution}
+            forecast={today.forecast}
           />
         ) : null}
 

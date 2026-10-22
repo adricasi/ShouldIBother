@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { madridWallTimeToEpochMs } from "../src/domain/time.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
+import { FakeClock } from "./helpers.js";
 import flagsSource from "../config/flags.json" with { type: "json" };
 
 let harness: CoreHarness | undefined;
@@ -21,8 +23,12 @@ interface Board {
   lazy_window: { from: string; to: string } | null;
 }
 
-async function setup(flags: { splitFlap?: boolean }): Promise<CoreHarness> {
-  harness = await createCoreHarness({ flags, weatherProfile: FAKE_WEATHER_PROFILES.breezy });
+async function setup(flags: { splitFlap?: boolean }, clock?: FakeClock): Promise<CoreHarness> {
+  harness = await createCoreHarness({
+    flags,
+    weatherProfile: FAKE_WEATHER_PROFILES.breezy,
+    ...(clock === undefined ? {} : { clock }),
+  });
   await pair(harness);
   return harness;
 }
@@ -60,7 +66,19 @@ describe("T-027: REQ-026 the splitFlap flag", () => {
     expect(h.weather.requests).toHaveLength(calls);
     expect(board).toMatchObject({ temperature_c: 22, condition: "Mostly clear", wind_kmh: 30 });
     expect(board?.hours.length).toBeGreaterThan(0);
-    // 10:00 Madrid now; the breezy profile dries the line until the fake sunset at 20:00.
-    expect(board?.lazy_window).toEqual({ from: "10:00", to: "20:00" });
+    // 10:00 Madrid now; the breezy profile dries the line, and the window ends with the line-dry window.
+    expect(board?.lazy_window).toEqual({ from: "10:00", to: "18:00" });
+  });
+
+  it("DST: on 25 Oct 2026, the 25-hour day, the board still reads in Madrid wall-clock hours", async () => {
+    const clock = new FakeClock();
+    clock.current = madridWallTimeToEpochMs("2026-10-25", "10:00");
+    const h = await setup({ splitFlap: true }, clock);
+    expect((await h.post("/api/cards/quick", { chore_type: "laundry_line" })).statusCode).toBe(201);
+    await h.idle();
+    const board = (await today()).weather_board;
+    const hours = board?.hours.map((entry) => entry.hour) ?? [];
+    expect(hours).toEqual([...new Set(hours)]);
+    expect(board?.lazy_window).toEqual({ from: "10:00", to: "18:00" });
   });
 });
