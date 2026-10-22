@@ -24,6 +24,8 @@ import {
   resumeUnguardedCards,
   retryCard,
 } from "./ledger/gemma-cards.js";
+import { answerPlannerQuestion, plannerCardId, retryPlanner } from "./ledger/laundry-plan.js";
+import { laundryPlanRoutes } from "./ledger/laundry-plan-routes.js";
 import { sweepOrphanPhotos } from "./ledger/photos.js";
 import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal } from "./ledger/points.js";
@@ -225,13 +227,20 @@ export function createCore(deps: CoreDeps): Core {
 
     app.get("/api/cards/:id", (request) => getCardView(ledger, parse(idParams, request.params).id));
 
-    app.post("/api/cards/:id/retry", (request) =>
-      retryCard(ledger, parse(idParams, request.params).id),
-    );
+    app.post("/api/cards/:id/retry", (request) => {
+      const { id } = parse(idParams, request.params);
+      // A laundry planner card (flag `laundryPlanner`) is retried by the planner, not the bookmaker.
+      return deps.flags.laundryPlanner && plannerCardId(ledger, id)
+        ? retryPlanner(ledger, id)
+        : retryCard(ledger, id);
+    });
 
     app.post("/api/cards/:id/answer", (request) => {
       const { id } = parse(idParams, request.params);
-      return answerCard(ledger, id, parse(answerBody, request.body).yes);
+      const yes = parse(answerBody, request.body).yes;
+      return deps.flags.laundryPlanner && plannerCardId(ledger, id)
+        ? answerPlannerQuestion(ledger, id, yes)
+        : answerCard(ledger, id, yes);
     });
 
     app.post("/api/bets", (request, reply) => {
@@ -310,6 +319,10 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: with `score` off the route does not exist and a request gets a plain 404.
     if (deps.flags.score) {
       await app.register(scoreRoutes(ledger));
+    }
+    // Flagged: the laundry planner (REQ-021) has no routes while `laundryPlanner` is off.
+    if (deps.flags.laundryPlanner) {
+      await app.register(laundryPlanRoutes(ledger));
     }
   };
 

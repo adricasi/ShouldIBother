@@ -1,0 +1,11 @@
+{
+  "description": "Planning which day to wash a load of laundry.",
+  "content": {
+    "chores": [
+      {
+        "label": "decide when to wash the sheets",
+        "chore_type": "laundry_plan"
+      }
+    ]
+  }
+}

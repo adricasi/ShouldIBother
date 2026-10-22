@@ -700,3 +700,28 @@ label.button.disabled {
   font-family: var(--font-mono);
   font-weight: 600;
 }
+
+/* Laundry planner (flag laundryPlanner): the four scored days of a plan card. */
+.plan-days {
+  list-style: none;
+  margin: var(--space-2, 8px) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1, 4px);
+}
+
+.plan-days li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+}
+
+.plan-days .plan-day {
+  min-width: 6.5rem;
+  font-weight: 600;
+}
+
+.plan-days li.best .plan-day::before {
+  content: "\2713\00a0";
+}

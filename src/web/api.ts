@@ -67,6 +67,44 @@ export const photoSchema = z.object({
     .nullable(),
 });
 
+/** The laundry planner's part of a card (REQ-021); absent on every other card. */
+export const planSchema = z.object({
+  stage: z.enum([
+    "thinking",
+    "question",
+    "offline",
+    "ask_need",
+    "wash_today",
+    "skip_today",
+    "no_good_day",
+  ]),
+  /** Wash today, Skip today or No good day (AC-021.1); null while Gemma has no answer. */
+  headline: z.string().nullable(),
+  reason: z.string().nullable(),
+  /** Gemma's own question, or "Need anything washed before <day>?" (AC-021.2). */
+  question: z.string().nullable(),
+  note: z.string().nullable(),
+  can_retry: z.boolean(),
+  can_follow: z.boolean(),
+  followed: z.boolean(),
+  advice_points: z.number().nullable(),
+  /** Why a followed Wash today earned no points (AC-021.3). */
+  advice_reason: z.enum(["not_best_day", "too_late", "daily_cap"]).nullable(),
+  /** The forecast behind the plan is more than an hour old, or the day has begun: plan again. */
+  stale: z.boolean(),
+  best_day: z.object({ date: z.string(), weekday: z.string() }).nullable(),
+  days: z.array(
+    z.object({
+      date: z.string(),
+      weekday: z.string(),
+      band: z.number(),
+      band_name: z.string(),
+      odds: z.number(),
+    }),
+  ),
+});
+export type Plan = z.infer<typeof planSchema>;
+
 export const cardSchema = z.object({
   id: z.number(),
   chore_type: z.string(),
@@ -91,6 +129,8 @@ export const cardSchema = z.object({
     })
     .nullable(),
   photo: photoSchema.nullish(),
+  /** Set on a laundry planner card (flag `laundryPlanner`). */
+  laundry_plan: planSchema.nullish(),
 });
 
 const nullableNumber = z.number().nullable();
@@ -343,11 +383,24 @@ async function request<T>(
 
 export const fetchToday = (): Promise<Today> => request("/api/today", todaySchema);
 
+/** The chip for the laundry planner (flag `laundryPlanner`); it is not a chore of the quick route. */
+export const PLANNER_CHIP = "laundry_plan";
+
 export const createQuickCard = (choreType: string): Promise<Card> =>
-  request("/api/cards/quick", cardSchema, {
-    method: "POST",
-    body: { chore_type: choreType },
-  });
+  choreType === PLANNER_CHIP
+    ? request("/api/laundry-plan", cardSchema, { method: "POST", body: {} })
+    : request("/api/cards/quick", cardSchema, {
+        method: "POST",
+        body: { chore_type: choreType },
+      });
+
+/** "Need anything washed before <day>?": yes shows Wash today, no opens the Skip today bet (AC-021.2). */
+export const answerPlanNeed = (cardId: number, needed: boolean): Promise<Card> =>
+  request(`/api/laundry-plan/${cardId}/need`, cardSchema, { method: "POST", body: { needed } });
+
+/** The person washes today as advised (AC-021.3). */
+export const followPlanAdvice = (cardId: number): Promise<Card> =>
+  request(`/api/laundry-plan/${cardId}/follow`, cardSchema, { method: "POST", body: {} });
 
 /** Typed capture: the listener turns a sentence into one card per chore (AC-002.1). */
 export const captureCards = (text: string): Promise<Card[]> =>

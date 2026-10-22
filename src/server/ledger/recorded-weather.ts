@@ -1,4 +1,5 @@
-import type { InstantWindow } from "../../domain/chores.js";
+import { LAUNDRY_PLAN, type InstantWindow } from "../../domain/chores.js";
+import { planBetWindow } from "../../domain/laundry-plan.js";
 import { WeatherUnavailableError, type RecordedWeather } from "../weather/client.js";
 
 import type { LedgerDeps } from "./deps.js";
@@ -13,6 +14,17 @@ export const RECORDED_WEATHER_RETRY_MS = 30 * 60 * 1000;
 /** The weather a bet is judged on: from when it was placed to its settle time (AC-008.1). */
 export function betWeatherWindow(bet: Pick<BetRow, "placed_at" | "settle_at">): InstantWindow {
   return { fromMs: bet.placed_at, toMs: bet.settle_at };
+}
+
+/**
+ * The window a bet is judged on. A Skip today bet (REQ-021) is about the day the planner chose,
+ * not the days between placing it and that day: its drying hours, 10:00 to 18:00 (AC-021.4).
+ */
+export function betJudgedWindow(db: WeatherDeps["db"], bet: BetRow): InstantWindow {
+  const card = db
+    .prepare<[number], { chore_type: string }>("SELECT chore_type FROM cards WHERE id = ?")
+    .get(bet.card_id);
+  return card?.chore_type === LAUNDRY_PLAN ? planBetWindow(bet.settle_at) : betWeatherWindow(bet);
 }
 
 /**
@@ -42,7 +54,7 @@ function forgetAttempt(db: WeatherDeps["db"], betId: number): void {
 
 async function recordedFor(deps: WeatherDeps, bet: BetRow): Promise<RecordedWeather | undefined> {
   try {
-    const recorded = await deps.weather.getRecorded(betWeatherWindow(bet));
+    const recorded = await deps.weather.getRecorded(betJudgedWindow(deps.db, bet));
     return recorded.complete ? recorded : undefined;
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {

@@ -1,0 +1,32 @@
+{
+  "description": "First answer scores only three days, the retry is a valid skip today.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          { "day": "day_0", "score": "unlikely" },
+          { "day": "day_1", "score": "toss_up" },
+          { "day": "day_2", "score": "likely" }
+        ],
+        "reason": "Day 3 is the best drying day."
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "state": "skip_today",
+        "best_day": "day_2",
+        "days": [
+          { "day": "day_0", "score": "unlikely" },
+          { "day": "day_1", "score": "toss_up" },
+          { "day": "day_2", "score": "likely" },
+          { "day": "day_3", "score": "toss_up" }
+        ],
+        "reason": "Light wind and sun on day 3, while today stays damp: wait and dry it then."
+      }
+    }
+  ]
+}

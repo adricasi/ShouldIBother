@@ -1,0 +1,33 @@
+{
+  "description": "Says wash today but names day_2 as the best day, twice: the answer contradicts itself and never reaches the card.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "state": "wash_today",
+        "best_day": "day_2",
+        "days": [
+          { "day": "day_0", "score": "toss_up" },
+          { "day": "day_1", "score": "toss_up" },
+          { "day": "day_2", "score": "likely" },
+          { "day": "day_3", "score": "toss_up" }
+        ],
+        "reason": "Wash today."
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "state": "wash_today",
+        "best_day": "day_2",
+        "days": [
+          { "day": "day_0", "score": "toss_up" },
+          { "day": "day_1", "score": "toss_up" },
+          { "day": "day_2", "score": "likely" },
+          { "day": "day_3", "score": "toss_up" }
+        ],
+        "reason": "Wash today."
+      }
+    }
+  ]
+}

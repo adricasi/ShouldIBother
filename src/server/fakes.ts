@@ -1,4 +1,4 @@
-import { CHORES } from "../domain/chores.js";
+import { CHORES, LAUNDRY_PLAN_SPEC } from "../domain/chores.js";
 
 import { FakeModelClient, type ScenarioSelector } from "./model/fake.js";
 import { FakeWeatherClient } from "./weather/fake.js";
@@ -21,6 +21,9 @@ const JUDGE_SCENARIO_BY_ANSWER: Readonly<Record<string, string>> = {
   ac_warm: "small-loss",
   heater_fine: "ok",
   heater_cold: "small-loss",
+  plan_dry: "ok",
+  plan_damp: "small-loss",
+  plan_wet: "normal-loss",
 };
 
 export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
@@ -32,7 +35,7 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
     // A do-it decision is scored on the recorded weather: wet hours mean the weather had it.
     return /"wet_hours":[1-9]/.test(text) ? "do-it-would-have" : "do-it-would-not";
   }
-  for (const chore of Object.values(CHORES)) {
+  for (const chore of [...Object.values(CHORES), LAUNDRY_PLAN_SPEC]) {
     for (const answer of chore.tapAnswers) {
       if (text.includes(answer.label)) {
         return JUDGE_SCENARIO_BY_ANSWER[answer.id] ?? "ok";

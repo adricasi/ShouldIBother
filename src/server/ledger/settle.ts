@@ -1,4 +1,11 @@
-import { CHORES, isChoreType, type ChoreSpec, type ChoreType } from "../../domain/chores.js";
+import {
+  LAUNDRY_PLAN,
+  betChoreSpec,
+  isChoreType,
+  type BetChoreSpec,
+  type ChoreType,
+} from "../../domain/chores.js";
+import { planBetWindow } from "../../domain/laundry-plan.js";
 import {
   MissingSunsetError,
   cutWindowOf,
@@ -26,7 +33,7 @@ import { markDueBets } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
 import { addAfterPhoto, type PhotoRow } from "./photos.js";
 import { receiptOf, type Receipt } from "./receipt.js";
-import { collectRecordedWeather } from "./recorded-weather.js";
+import { betJudgedWindow, collectRecordedWeather } from "./recorded-weather.js";
 import type { BetRow, CardRow, ProgressRow, SettlementRow } from "./rows.js";
 import { ensureProgress, getProgress, parseFollowups } from "./settle-progress.js";
 
@@ -56,8 +63,9 @@ export function gemmaBusy(): HttpError {
 interface Loaded {
   readonly bet: BetRow;
   readonly card: CardRow;
+  /** The chore whose outcome label applies; a Skip today bet is labelled like line-dry. */
   readonly choreType: ChoreType;
-  readonly chore: ChoreSpec;
+  readonly chore: BetChoreSpec;
 }
 
 /**
@@ -255,10 +263,12 @@ export class Settler {
     const card = db
       .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
       .get(bet.card_id)!;
-    if (!isChoreType(card.chore_type)) {
+    const chore = betChoreSpec(card.chore_type);
+    if (chore === undefined) {
       throw new HttpError(409, "This chore cannot be settled yet");
     }
-    return { bet, card, choreType: card.chore_type, chore: CHORES[card.chore_type] };
+    const choreType = isChoreType(card.chore_type) ? card.chore_type : "laundry_line";
+    return { bet, card, choreType, chore };
   }
 
   private assertGemmaFree(): void {
@@ -377,6 +387,7 @@ export class Settler {
       return stored;
     }
     const recorded = await collectRecordedWeather(this.deps, bet);
+    const judged = betJudgedWindow(db, bet);
     ensureProgress(db, bet.id);
     if (recorded === undefined) {
       db.prepare(
@@ -386,8 +397,8 @@ export class Settler {
     }
     const snapshot = snapshotOf({
       fetchedAt: recorded.fetchedAt,
-      fromMs: bet.placed_at,
-      toMs: bet.settle_at,
+      fromMs: judged.fromMs,
+      toMs: judged.toMs,
       hours: recorded.hours,
     });
     db.prepare(
@@ -458,6 +469,11 @@ export class Settler {
     card: CardRow,
     snapshot: WeatherSnapshot,
   ): Promise<boolean | null> {
+    if (card.chore_type === LAUNDRY_PLAN) {
+      // The snapshot is the recorded drying hours of the chosen day: exactly the label's window.
+      const { fromMs, toMs } = planBetWindow(bet.settle_at);
+      return luckyWinOf(choreType, { startMs: fromMs, endMs: toMs }, snapshot.hours);
+    }
     const times = {
       placedAt: bet.placed_at,
       settleAt: bet.settle_at,
