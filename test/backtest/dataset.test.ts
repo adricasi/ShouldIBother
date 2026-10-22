@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   buildDataset,
@@ -38,6 +38,10 @@ beforeAll(async () => {
 function skippedFor(result: Dataset, chore: OutcomeChore, reason: SkippedDay["reason"]): string[] {
   return result.skipped.filter((s) => s.chore === chore && s.reason === reason).map((s) => s.date);
 }
+
+// Several tests build the full Apr-Oct dataset (2-3 s each on an idle machine); under CI and
+// coverage load they exceeded the default 5 s timeout. The assertions are unchanged.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("AC-019.1: train/hold-out split", () => {
   it("trains on 1 Apr-31 Aug and holds out 1 Sep to the archive's last day, with no date in both", () => {
