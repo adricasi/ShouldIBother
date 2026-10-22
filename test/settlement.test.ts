@@ -168,6 +168,7 @@ describe("settle by after photo (AC-008.2)", () => {
     const card = (await harness.post("/api/cards/quick", { chore_type: "plants" })).json<{
       id: number;
     }>();
+    await harness.idle();
     expect((await uploadPhoto(harness, card.id, await syntheticPhoto())).statusCode).toBe(201);
     await harness.idle();
     const quote = (await harness.get(`/api/cards/${card.id}`)).json<{ quote: { id: number } }>();
@@ -699,7 +700,8 @@ describe("receipt and loss screen (REQ-010, AC-028.1)", () => {
     const card = (await harness.post("/api/cards/quick", { chore_type: "plants" })).json<{
       id: number;
     }>();
-    await uploadPhoto(harness, card.id, await syntheticPhoto());
+    await harness.idle();
+    expect((await uploadPhoto(harness, card.id, await syntheticPhoto())).statusCode).toBe(201);
     await harness.idle();
     const quote = (await harness.get(`/api/cards/${card.id}`)).json<{ quote: { id: number } }>();
     const betId = (
