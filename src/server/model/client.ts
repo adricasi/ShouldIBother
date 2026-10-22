@@ -76,4 +76,6 @@ export interface ModelClient {
   chat(request: ChatRequest): Promise<ChatResponse>;
   /** A cheap check that never loads the model or runs a generation; it must not throw. */
   health(): Promise<ModelHealth>;
+  /** Frees the model's memory now (Ollama `keep_alive: 0`); optional, never throws. */
+  unload?(): Promise<void>;
 }

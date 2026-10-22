@@ -428,3 +428,42 @@ describe("Settle screen (REQ-008)", () => {
     expect(html.match(/PAID OUT/g)).toHaveLength(1);
   });
 });
+
+describe("T-017: the stamp animation on the Slips screen", () => {
+  const settledWin = (id: number, settledAt: string): Slips["settled"][number] => ({
+    ...bet,
+    id,
+    status: "settled",
+    result: { verdict: "win", points: 15, evidence: "tap", settled_at: settledAt },
+    receipt: { ...winReceipt, bet_id: id, settled_at: settledAt },
+  });
+  const settledToday = settledWin(3, "2026-10-22T06:05:00.000Z");
+  const settledEarlier = settledWin(4, "2026-10-21T06:05:00.000Z");
+
+  function html(flags: Record<string, boolean>, settled: Slips["settled"]): string {
+    return renderToStaticMarkup(
+      <SlipsScreen
+        slips={{ ...emptySlips, settled }}
+        flags={flags}
+        nowMs={NOW}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onUndo={() => undefined}
+      />,
+    );
+  }
+
+  it("AC-017.1: with the flag on, a win settled today animates and an older receipt stays static", () => {
+    const result = html({ stampAnimation: true }, [settledToday, settledEarlier]);
+    expect(result.match(/stamp stamp-animated/g)).toHaveLength(1);
+    expect(result.match(/<p class="stamp">PAID OUT<\/p>/g)).toHaveLength(1);
+  });
+
+  it("with the flag off, no stamp animates on Slips", () => {
+    const result = html({ stampAnimation: false }, [settledToday, settledEarlier]);
+    expect(result).not.toContain("stamp-animated");
+    expect(html({}, [settledToday])).not.toContain("stamp-animated");
+    expect(result.match(/<p class="stamp">PAID OUT<\/p>/g)).toHaveLength(2);
+  });
+});

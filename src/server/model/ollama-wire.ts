@@ -45,7 +45,7 @@ export interface WireChatRequest {
   format?: unknown;
   stream: false;
   keep_alive: string | number;
-  options: { temperature: number };
+  options: { temperature: number; seed?: number };
 }
 
 function toWireMessage(message: ChatMessage): WireMessage {
@@ -67,6 +67,8 @@ export interface WireSettings {
   readonly model: string;
   readonly keepAlive: string | number;
   readonly temperature: number;
+  /** Fixed sampling seed for reproducible runs (the backtest, NFR-012); the live app sets none. */
+  readonly seed?: number;
 }
 
 /** The request body for one chat call. Images go on the first user message, base64 encoded. */
@@ -96,7 +98,10 @@ export function buildChatBody(request: ChatRequest, settings: WireSettings): Wir
     ...(request.schema === undefined ? {} : { format: request.schema }),
     stream: false,
     keep_alive: settings.keepAlive,
-    options: { temperature: settings.temperature },
+    options: {
+      temperature: settings.temperature,
+      ...(settings.seed === undefined ? {} : { seed: settings.seed }),
+    },
   };
 }
 

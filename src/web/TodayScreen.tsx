@@ -7,6 +7,7 @@ import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
 import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
+import { isStampAnimated } from "./stamp.js";
 
 export interface QuickChip {
   readonly choreType: string;
@@ -397,7 +398,11 @@ export function TodayScreen(props: TodayScreenProps) {
                 <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
               ))}
               {settledResults.map((receipt) => (
-                <ReceiptCard key={receipt.bet_id} receipt={receipt} />
+                <ReceiptCard
+                  key={receipt.bet_id}
+                  receipt={receipt}
+                  animateStamp={isStampAnimated(today.flags)}
+                />
               ))}
             </section>
           </>

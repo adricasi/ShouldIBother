@@ -180,8 +180,10 @@ export function DueSlip({
 
 export function SettledLine({
   bet,
+  animateStamp = false,
 }: {
   bet: Bet & { result: { verdict: string; points: number; evidence: string }; receipt: Receipt };
+  animateStamp?: boolean;
 }) {
   return (
     <li className="settled-line">
@@ -194,7 +196,7 @@ export function SettledLine({
         </span>
         <details className="receipt-details">
           <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
-          <ReceiptCard receipt={bet.receipt} />
+          <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
         </details>
       </div>
       <span className="line-points">{formatPoints(bet.result.points)}</span>

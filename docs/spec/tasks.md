@@ -174,7 +174,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: run the backtest evaluation on the Sep–Oct hold-out for base and fine-tuned E4B; band calibration with N, Brier score, tool-call miss rate; write `docs/results/finetune.md`.
   - Done when: report committed with model digests, prompt versions and seeds; re-run reproduces the numbers (NFR-012); decision recorded on whether `finetunedBookmaker` is on for the live app.
 
-- [ ] T-015: Backtest harness
+- [x] T-015: Backtest harness
   - Who / when: Agent W2 · Fri AM (branches from `main`); merged Fri PM; live run in T-019
   - Requirements: REQ-018 (AC-018.1–AC-018.4), REQ-019 (AC-019.3 harness); NFR-005, NFR-012
   - Depends on: T-005, T-006, T-011
@@ -188,7 +188,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `/api/score`; points, savings tiles with net-time note, judge overrule rate with N ("appeals off" until T-024's flag is on), calibration chart Gemma vs rule with N per band and "too few to judge" under 5, over the populations in AC-020.2, with the lucky-win share; empty state; flag `score`.
   - Done when: tests for AC-020.1–AC-020.4; axe check passes on the screen.
 
-- [ ] T-017: PAID OUT stamp animation
+- [x] T-017: PAID OUT stamp animation
   - Who / when: Agent W1 · Fri night (branches from `main` after the Fri PM merges); merged Sat AM
   - Requirements: REQ-017
   - Depends on: T-009

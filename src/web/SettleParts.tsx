@@ -1,4 +1,5 @@
 import type { Receipt, RecordedWeather, SavingsTotals } from "./api.js";
+import { stampClassName } from "./stamp.js";
 import {
   formatDuration,
   formatKwh,
@@ -53,7 +54,14 @@ export function WeatherLine({ weather }: { weather: { label: string; digest: Dig
  * fixed copy, with no stamp (AC-010.2). "Gemma's read" lists its reason and the numbers it used
  * (AC-028.1).
  */
-export function ReceiptCard({ receipt }: { receipt: Receipt }) {
+export function ReceiptCard({
+  receipt,
+  animateStamp = false,
+}: {
+  receipt: Receipt;
+  /** The `stampAnimation` flag; off, the stamp is static as in T-009. */
+  animateStamp?: boolean;
+}) {
   const paid = receipt.outcome === "paid_out";
   return (
     <article
@@ -63,7 +71,9 @@ export function ReceiptCard({ receipt }: { receipt: Receipt }) {
       <p className="eyebrow">Lazy Bookie · {paid ? "Payout receipt" : "Result"}</p>
       <div className="receipt-head">
         <h3>{receipt.title}</h3>
-        {receipt.stamp === null ? null : <p className="stamp">{receipt.stamp}</p>}
+        {receipt.stamp === null ? null : (
+          <p className={stampClassName(animateStamp)}>{receipt.stamp}</p>
+        )}
       </div>
       <p className="result-title">
         {receipt.verdict_title} · {formatPoints(receipt.points)}

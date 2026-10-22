@@ -26,6 +26,8 @@ export interface OllamaOptions {
   /** How long Ollama keeps the model loaded after a call. */
   readonly keepAlive: string | number;
   readonly temperature?: number;
+  /** Fixed sampling seed, sent as the `seed` option; unset in the live app, set by the backtest. */
+  readonly seed?: number;
   /** A health check that takes longer than this is "offline". */
   readonly healthTimeoutMs?: number;
   /** The warm-up may have to load the weights from disk. */
@@ -96,6 +98,7 @@ export class OllamaClient implements ModelClient {
       model: options.model,
       keepAlive: options.keepAlive,
       temperature: options.temperature ?? 0,
+      ...(options.seed === undefined ? {} : { seed: options.seed }),
     };
     this.fetchImpl = options.fetch ?? fetch;
     this.healthTimeoutMs = options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
@@ -192,6 +195,20 @@ export class OllamaClient implements ModelClient {
     return this.warming
       ? { state: "waking", detail: "loading the model" }
       : { state: "online", detail: this.settings.model };
+  }
+
+  /** Unloads the model (`keep_alive: 0`) so the GPU is free; never throws. */
+  async unload(): Promise<void> {
+    try {
+      await this.request(
+        "POST",
+        CHAT_PATH,
+        buildLoadBody({ ...this.settings, keepAlive: 0 }),
+        Math.max(this.healthTimeoutMs, 10_000),
+      );
+    } catch {
+      // Best effort: Ollama unloads the model after its keep_alive anyway.
+    }
   }
 
   /**
