@@ -122,7 +122,7 @@ Fixed values used below:
   - AC-009.1: WHEN a do-nothing bet is settled as a win THE SYSTEM SHALL add (100 − odds) × multiplier points, rounded to the nearest integer (halves up).
   - AC-009.2: WHEN a do-nothing bet is settled as a small, normal or harmful loss THE SYSTEM SHALL add −25, −50 or −150 points respectively, regardless of the evidence multiplier.
   - AC-009.3: WHEN a do-it decision is settled THE SYSTEM SHALL add +5 if the weather would not have done the chore and −10 if it would have.
-  - AC-009.4: THE SYSTEM SHALL compute the points total from the stored settled outcomes, so the total equals the sum of each bet's points.
+  - AC-009.4: THE SYSTEM SHALL compute the points total from the stored outcomes, so the total equals the sum of settled bets plus cash-outs plus advice followed (each bet counted once, by its final settlement).
 
 ### REQ-010: PAID OUT receipt
 - Story: As a household member, I want a payout receipt when I win, so that the win feels like one and shows what it saved.
@@ -151,8 +151,8 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-012.1: IF the forecast for a card's window crosses a fixed heat, frost or storm limit (values in design.md, Q-5) THEN THE SYSTEM SHALL show a "Do it now" alert with the reason and no bet action, whatever Gemma's answer. The check also covers the window of the settle time Gemma chose: if heat, frost or storm shows up there, the card becomes the alert instead of getting Gemma's odds.
   - AC-012.2: IF a request to place a bet arrives for a card in alert state THEN THE SYSTEM SHALL reject it.
-  - AC-012.3: WHEN a card is created THE SYSTEM SHALL ask the Gemma safety guard whether the chore touches safety (heat, frost, storm, vulnerable people) and, if it says yes, show a "Do it now" alert with its reason and no bet action.
-  - AC-012.4: IF the safety guard is unavailable THEN THE SYSTEM SHALL still apply the fixed backstop (AC-012.1).
+  - AC-012.3: WHEN a card is created THE SYSTEM SHALL ask the Gemma safety guard whether the chore touches safety (heat, frost, storm, vulnerable people) and, if it says yes, show a "Do it now" alert with its reason and no bet action. The guard answers `status: ok|unsure`; `unsure` is no verdict and leaves the card as it is. Betting stays allowed while the guard runs, and a guard alert always wins: it sets every open bet on the card to `undone` (a withdrawal by the system, separate from the 5-minute user undo of AC-006.4, with no points and no savings) and turns the card into the alert; when a bet was withdrawn, the reason ends with "Your bet was withdrawn for safety."
+  - AC-012.4: IF the safety guard is unavailable (offline, busy, late, invalid or unsure) THEN THE SYSTEM SHALL still apply the fixed backstop (AC-012.1). `cards.safety_checked_at` is set only when the guard gives a verdict; while it is NULL, Retry asks the guard again, and so does a restart that lost the guard's job (for a card that has no bet yet and whose odds have not run out).
 
 ### REQ-013: Rule odds while Gemma thinks or is offline
 - Story: As a household member, I want odds at once even when Gemma is slow or down, so that the app never blocks me.
@@ -197,15 +197,15 @@ Fixed values used below:
   - AC-016.1: THE SYSTEM SHALL support do-nothing bets for "water balcony plants" and "line-dry today (skip the dryer)", with catalogue savings and settle-time rules.
   - AC-016.4: WHEN the user creates a laundry card from 07:00 up to but not including 15:00 THE SYSTEM SHALL offer "Line-dry today (skip the dryer)", a bet that wins if the load is dry by its settle time (same day 18:00–21:00) and loses if it is still damp or rain wet it; its savings are the dryer's kWh from the household baseline and 0 minutes (AC-011.4). Outside that window the card says when it can be offered, with no odds and no bet action.
   - AC-016.5: IF the household baseline says the AC (or heater) is not used this season THEN THE SYSTEM SHALL show that chore as "Not needed this season" with no odds and no bet action (the baseline is `airConditioning` and `heaterThisSeason` in `config/household.json`; this check comes first). The one `heater` flag gates both seasonal chores: while it is off, a chore the household does use reads "Coming later".
-  - AC-016.2: WHEN the user creates a "Leave it out tonight" card between 1 h before and 2 h after sunset THE SYSTEM SHALL offer a "Leave it out tonight" bet (outside that window the card says when it can be offered) that wins if the laundry is dry in the morning and loses if dew or rain dampened it.
-  - AC-016.3: THE SYSTEM SHALL support a "skip the heater" bet settled by a one-tap comfort answer.
+  - AC-016.2: WHEN the user creates a "Leave it out tonight" card in [sunset − 1 h, sunset + 2 h) (lower bound included) THE SYSTEM SHALL offer a "Leave it out tonight" bet (outside that window the card says when it can be offered) that wins if the laundry is dry in the morning and loses if dew or rain dampened it. The card stores that day's sunset once (`cards.sunset_at`, write-once); its rule window, safety backstop and lucky-win label start at the stored sunset. Open-Meteo's daily `sunset` is requested only while the `laundryTonight` flag is on; for a day without one, the sunset is the start of the last `is_day` hour, and the fallback is logged.
+  - AC-016.3: THE SYSTEM SHALL support a "skip the heater" bet settled by a one-tap comfort answer, offered only while the one `heater` flag is on (it gates the AC chore too, AC-016.5).
 
 ### REQ-017: PAID OUT stamp animation
 - Story: As a demo viewer, I want the PAID OUT stamp to land, so that the win moment is memorable.
 - Priority: Should
 - Goals: G-1
 - Acceptance criteria:
-  - AC-017.1: WHEN the win receipt opens THE SYSTEM SHALL animate the stamp from scale 1.6 to 1 with a −8° rotation over 220–280 ms.
+  - AC-017.1: WHEN the win receipt opens THE SYSTEM SHALL animate the stamp from scale 1.6 to 1 with a −8° rotation over 220–280 ms. The animation plays for a receipt just produced on Today and, on Slips, only for wins settled today (Europe/Madrid); older wins show the static stamp. The stamp rests at −8° and the code holds that angle for the whole animation (only the scale and the fade animate).
   - AC-017.2: WHILE the device prefers reduced motion THE SYSTEM SHALL show the stamp with a fade only.
 
 ### REQ-018: Backtest
@@ -214,8 +214,8 @@ Fixed values used below:
 - Goals: G-4
 - Acceptance criteria:
   - AC-018.1: WHEN the backtest runs THE SYSTEM SHALL decide each simulated day only from forecasts issued by model runs that started before the decision time (Open-Meteo Previous Runs API, day-1 lead) at the chore's fixed decision time, and settle it with the chore's outcome label (design.md, Outcome labels) computed from recorded weather (archive).
-  - AC-018.2: IF day-1-lead forecasts are not available for a variable THEN THE SYSTEM SHALL fall back to the Historical Forecast API and label the affected results "short-lead forecast (optimistic)", or "perfect-forecast upper bound" if only recorded weather is available.
-  - AC-018.3: WHEN the backtest finishes THE SYSTEM SHALL report for Gemma E4B, Gemma E2B, the rule and the fixed routine: skips (do-nothing decisions taken), skips that worked, time, water and electricity saved, plant-risk days (simulated days where a strategy skipped watering and the plants' outcome label was false), and band calibration with N per band (the fixed routine has no odds: calibration n/a); the fine-tuned model's column comes from the hold-out evaluation (AC-019.3) and its Apr–Aug results, if shown, are labelled "in-sample"; the headline comparison uses Sep–Oct only.
+  - AC-018.2: IF day-1-lead forecasts are not available for a variable THEN THE SYSTEM SHALL fall back to the Historical Forecast API and label the affected results "short-lead forecast (optimistic)", or "perfect-forecast upper bound" if only recorded weather is available. The headline tables and the calibration use day-1 days only; fallback days are reported separately under their label.
+  - AC-018.3: WHEN the backtest finishes THE SYSTEM SHALL report for Gemma E4B, Gemma E2B, the rule and the fixed routine: skips (do-nothing decisions taken), skips that worked, time, water and electricity saved, plant-risk days (simulated days where a strategy skipped watering and the plants' outcome label was false), and band calibration with N per band over every day a strategy priced, not only its skips (the fixed routine has no odds: calibration n/a); a skip is a decision on a band of "likely" (70%) or better, the same for the rule and for Gemma; savings are measured against a baseline that does every chore every day it is in season, with a heat-pump dryer; the fine-tuned model's column comes from the hold-out evaluation (AC-019.3) and its Apr–Aug results, if shown, are labelled "in-sample"; the headline comparison uses Sep–Oct only.
   - AC-018.4: THE SYSTEM SHALL use no photos and no household data in the backtest.
 
 ### REQ-019: Fine-tuned bookmaker
@@ -237,61 +237,61 @@ Fixed values used below:
 - Priority: Should
 - Goals: G-3, G-4
 - Acceptance criteria:
-  - AC-020.1: WHEN the user opens Score THE SYSTEM SHALL show total points, savings tiles (chores skipped, water, electricity, net time back with its note) and the judge overrule rate with N, shown as "appeals off" while REQ-023 is disabled.
-  - AC-020.2: WHEN the user opens Score THE SYSTEM SHALL show band calibration (predicted odds vs share where doing nothing worked) separately for Gemma and the rule, with N per band, over settled do-nothing bets only (do-it decisions, cash-outs and undone bets excluded): Gemma's calibration uses bets with `odds_source = gemma` and their Gemma band; the rule's uses every settled do-nothing bet's rule band; every win counts as a success, lucky wins included.
+  - AC-020.1: WHEN the user opens Score THE SYSTEM SHALL show total points, all-time savings tiles (chores skipped, water, electricity, net time back with its note) and the judge overrule rate with N, shown as "appeals off" while REQ-023 is disabled. N counts settled do-nothing bets whose first verdict is a Gemma decision (`decision_id` not null, not the fake model); any change of verdict by an appeal counts as an overrule (AC-023.3). Percentages are whole numbers, halves up, computed from the integer counts.
+  - AC-020.2: WHEN the user opens Score THE SYSTEM SHALL show band calibration (predicted odds vs share where doing nothing worked) separately for Gemma and the rule, with N per band, over settled do-nothing bets only (do-it decisions, cash-outs and undone bets excluded): Gemma's calibration uses bets with `odds_source = gemma` and their Gemma band, and leaves out bets priced by the fake model (`model_version` like `fake%`); the rule's uses every settled do-nothing bet's rule band; every win counts as a success, lucky wins included.
   - AC-020.3: IF a band has fewer than 5 settled bets THEN THE SYSTEM SHALL show its N and mark it "too few to judge".
-  - AC-020.4: WHEN there are no settled bets THE SYSTEM SHALL show an empty state instead of the chart.
+  - AC-020.4: WHEN there are no settled do-nothing bets THE SYSTEM SHALL show an empty state instead of the chart.
 
 ### REQ-021: Laundry planner
 - Story: As a household member, I want to know whether to wash today, wait, or give up on outdoor drying this week, so that loads dry outside.
 - Priority: Could
 - Goals: G-2, G-3
 - Acceptance criteria:
-  - AC-021.1: WHEN the user adds a laundry chore THE SYSTEM SHALL ask the Gemma laundry planner to score drying weather for the next 4 days and show Wash today, Skip today or No good day.
-  - AC-021.2: WHEN the planner suggests Skip today THE SYSTEM SHALL first ask "Need anything washed before <day>?"; if yes, it SHALL show Wash today instead.
-  - AC-021.3: WHEN the user follows Wash today on the best drying day THE SYSTEM SHALL add +5 points; Wash today and No good day are never bets.
+  - AC-021.1: WHEN the user adds a laundry chore THE SYSTEM SHALL ask the Gemma laundry planner to score drying weather for the next 4 days (named `day_0` today to `day_3`) and show Wash today, Skip today or No good day. Code checks that the answer agrees with its own scores (the best day has the best score; Wash today and Skip today need a day scoring toss-up or better; Skip today names a later day that beats today; No good day means no day better than unlikely); an inconsistent answer is invalid (one retry).
+  - AC-021.2: WHEN the planner suggests Skip today THE SYSTEM SHALL first ask "Need anything washed before <day>?" (the "need it by" question: it is asked after the plan and is not an input of the planner); if yes, it SHALL show Wash today instead. IF the answer is no THEN THE SYSTEM SHALL first run the fixed backstop and the Gemma safety guard on the chosen day (asynchronously) and only then open the bet; an alert makes the card a "Do it now" alert. IF the plan's forecast is more than 1 h old, or the chosen day has reached 10:00, THEN THE SYSTEM SHALL refuse the answer with 409 and the person plans again.
+  - AC-021.3: WHEN the user follows Wash today on the best drying day, before 18:00, THE SYSTEM SHALL add +5 points, at most once per Madrid day; the points are stored on the planner card and added to the points total (AC-009.4). Wash today and No good day are never bets.
   - AC-021.4: WHEN a Skip today bet settles THE SYSTEM SHALL count it a win only if the load dried outside on the chosen day.
-  - AC-021.5: WHEN a Skip today bet is placed THE SYSTEM SHALL use the band the laundry planner gives for the chosen day's drying, mapped to the fixed odds.
+  - AC-021.5: WHEN a Skip today bet is placed THE SYSTEM SHALL use the band the laundry planner gives for the chosen day's drying, mapped to the fixed odds, and store the day's rule band beside it. IF the planner's band is two or more bands from the rule band THEN THE SYSTEM SHALL require a `disagreement_reason` (or a question to the user, asked instead of showing the plan), as in AC-004.3.
 
 ### REQ-022: Rescue alerts and cash-out
 - Story: As a household member, I want a warning when the forecast turns against an open bet, so that I can fold for a small cost.
 - Priority: Could
 - Goals: G-3
 - Acceptance criteria:
-  - AC-022.1: WHILE a bet is open THE SYSTEM SHALL re-check the forecast at least every hour and show a rescue alert on the slip if the rule band for the remaining window drops two or more bands below the bet's band.
-  - AC-022.2: WHEN the user cashes out THE SYSTEM SHALL settle the bet at −10 points with no savings.
+  - AC-022.1: WHILE a bet on doing nothing is open and its settle time is ahead THE SYSTEM SHALL re-check the forecast every 30 min and show a rescue alert on the slip if the rule band for the remaining window drops two or more bands below the bet's band, or if the fixed heat, frost or storm backstop crosses its limit in the remaining window, even when the window cannot be priced. A Skip today bet's window is the chosen day, 10:00–18:00.
+  - AC-022.2: WHEN the user cashes out, after a two-step confirm, THE SYSTEM SHALL settle the bet at −10 points with no savings. A bet can be cashed out only while it is open and before its settle time; do-it decisions cannot be cashed out (409). A cash-out is stored in its own table, not as a settlement (ADR-0010).
 
 ### REQ-023: Appeal a verdict
 - Story: As a household member, I want to appeal a verdict once with a new photo, so that a judge mistake can be corrected.
 - Priority: Could
 - Goals: G-4
 - Acceptance criteria:
-  - AC-023.1: WHEN the user appeals a settled bet with a new photo THE SYSTEM SHALL re-judge it, replace the points with the new verdict, and mark the second verdict final.
-  - AC-023.2: IF a bet has already been appealed THEN THE SYSTEM SHALL not offer another appeal.
-  - AC-023.3: WHEN an appeal changes the verdict THE SYSTEM SHALL count it as an overrule for the judge agreement metric.
+  - AC-023.1: WHEN the user appeals a settled bet on doing nothing with a new photo THE SYSTEM SHALL re-judge it (prompt `judge-appeal.v1`), replace the points with the new verdict, and mark the second verdict final: the appeal row has `final = 1` and `appeal_of`, and the original becomes `final = 0`. Wins can be appealed, and an appeal can turn a win into a loss; there is no deadline. The 24 h cap of AC-008.8 applies: an appeal decided 24 h or more after the settle time pays a win at ×0.5, and the offer says so. IF the judge cannot answer THEN THE SYSTEM SHALL change nothing, delete the new photo and its decision, log the attempt, and not queue the appeal.
+  - AC-023.2: IF a bet has already been appealed THEN THE SYSTEM SHALL not offer another appeal (the database allows one final row and one appeal row per bet).
+  - AC-023.3: WHEN an appeal changes the verdict (any change, including one loss size to another) THE SYSTEM SHALL count it as an overrule for the judge agreement metric.
 
 ### REQ-024: Onboarding and habit baseline
 - Story: As a new user, I want to say what is outside my door and how I usually do these chores, so that savings are measured against my habits.
 - Priority: Could
 - Goals: G-3, G-4
 - Acceptance criteria:
-  - AC-024.1: WHEN the app is opened for the first time THE SYSTEM SHALL ask for outdoor items, dryer type (none / heat pump / vented), AC and heater use, and location.
-  - AC-024.2: WHEN onboarding is skipped or not built THE SYSTEM SHALL use the baseline in the config file (A-6).
+  - AC-024.1: WHEN the app is opened for the first time THE SYSTEM SHALL ask for outdoor items, dryer type (none / heat pump / condenser / vented), AC and heater use, and location (entered as latitude and longitude text, rounded to 2 decimals before anything leaves the laptop). Outdoor items are stored but have no effect yet.
+  - AC-024.2: WHEN onboarding is skipped or not built THE SYSTEM SHALL use the baseline in the config file (A-6). A completed profile replaces the baseline for bets placed afterwards (a bet's savings snapshot stays write-once). A card keeps the location it was made under (`cards.location_lat` and `location_lon`, write-once, stamped only while the `onboarding` flag is on); settlement, the lucky-win label and rescue checks use the card's location.
 
 ### REQ-025: Ranks and achievements
 - Story: As a household member, I want ranks and achievements, so that the game has a sense of progress.
 - Priority: Could
 - Goals: G-3
 - Acceptance criteria:
-  - AC-025.1: THE SYSTEM SHALL show the rank for the points total: Hyperactive squirrel (0), Koala (200), Three-toed sloth (600), Grand master of inaction (1,800).
-  - AC-025.2: WHEN a condition is first met THE SYSTEM SHALL unlock the achievement once: First nap (first win), Cloud whisperer (win at odds ≤ 40%), Sky freeloader (three wins in a row), Knows when to fold (first cash-out).
+  - AC-025.1: THE SYSTEM SHALL show the rank for the points total: Hyperactive squirrel (0), Koala (200), Three-toed sloth (600), Grand master of inaction (1,800); the ids are `hyperactive_squirrel`, `koala`, `three_toed_sloth`, `grand_master_of_inaction`, and a threshold includes its lower bound. The rank and the achievements appear on Score, so `ranks` needs `score` on.
+  - AC-025.2: WHEN a condition is first met THE SYSTEM SHALL unlock the achievement once: First nap (first win), Cloud whisperer (win at odds ≤ 40%), Sky freeloader (three wins in a row), Knows when to fold (first cash-out). "In a row" counts settled do-nothing bets in the order of their first settlement (ties by bet id); a loss or a cash-out resets the streak, do-it decisions are ignored, and an appeal does not move a bet in the order. `unlocked_at` is the time of the event that met the condition. Unlocks are permanent, even after the bet's data is deleted or an appeal reverses the win.
 
 ### REQ-026: Split-flap weather board
 - Story: As a household member, I want a weather board with today's lazy window, so that I can see at a glance when the sky is doing chores.
 - Priority: Could
 - Goals: G-1
 - Acceptance criteria:
-  - AC-026.1: WHEN the user opens Today THE SYSTEM SHALL show the current temperature and condition as split-flap tiles and hourly bars marking the lazy window.
+  - AC-026.1: WHEN the user opens Today THE SYSTEM SHALL show the current temperature and condition as split-flap tiles and hourly bars marking the lazy window. A lazy hour is a remaining daylight hour whose drying index is at or above the line-dry toss-up row of `config/rules.json` (0.30), clipped to 18:00. The board reads cached forecasts only and shows the forecast age when it is stale; the Open-Meteo attribution (AC-014.6) appears once, in the footer.
   - AC-026.2: WHILE the device prefers reduced motion THE SYSTEM SHALL change tiles without the flip animation.
 
 ### REQ-027: Voice capture through Gemma
@@ -308,7 +308,7 @@ Fixed values used below:
 - Priority: Must
 - Goals: G-2, G-4
 - Acceptance criteria:
-  - AC-028.1: WHEN a bet sheet or settle screen shows a Gemma decision THE SYSTEM SHALL show "What Gemma saw" / "Gemma's read" with its observations, the weather numbers it used and its reason.
+  - AC-028.1: WHEN a card or settle screen shows a Gemma decision THE SYSTEM SHALL show "What Gemma saw" / "Gemma's read" with its observations, the weather numbers it used and its reason.
   - AC-028.2: THE SYSTEM SHALL store with every Gemma decision the job, model version, prompt version, latency and raw validated output, for evaluation.
 
 ### REQ-029: Feature flags for unfinished work
