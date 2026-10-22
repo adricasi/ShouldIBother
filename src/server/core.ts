@@ -109,7 +109,11 @@ export function createCore(deps: CoreDeps): Core {
     now: deps.now,
     ...deps.runner,
   });
+  let logEntry: LedgerDeps["log"] = () => undefined;
   const ledger: LedgerDeps = {
+    log: (entry) => {
+      logEntry(entry);
+    },
     db: deps.db,
     now: deps.now,
     weather: deps.weather,
@@ -128,6 +132,9 @@ export function createCore(deps: CoreDeps): Core {
     gemma.setLogger((entry) => {
       app.log.info(entry, "gemma job");
     });
+    logEntry = (entry) => {
+      app.log.info(entry, "gemma card");
+    };
     app.addHook("onSend", (_request, reply, payload) => {
       reply.header("cache-control", "no-store");
       return Promise.resolve(payload);

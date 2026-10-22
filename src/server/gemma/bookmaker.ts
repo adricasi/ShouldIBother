@@ -73,7 +73,13 @@ export interface BookmakerInput {
   readonly chore: ChoreType;
   /** What the person wrote about the chore; untrusted. */
   readonly label: string;
+  /** The real time of the call: the forecast read, the deadline and "hours from now". */
   readonly nowMs: number;
+  /**
+   * The time the card was made. Settle bounds and rule windows are anchored on it, not on `nowMs`,
+   * so a Retry or an answer after midnight does not move "next day 08:00 to 12:00" by a day.
+   */
+  readonly anchorMs: number;
   /** Rule band for the card's window at the time of asking (shown to Gemma, AC-004.3). */
   readonly ruleBand: Band;
   /** The rule's band for a given settle time, to check how far Gemma is from it (AC-004.3). */
@@ -97,7 +103,7 @@ function localTime(epochMs: number): string {
 
 /** The data block of the bookmaker prompt: enums, numbers and the person's own words. */
 export function bookmakerUserMessage(input: BookmakerInput): string {
-  const bounds = settleBoundsOf(input.chore, input.nowMs);
+  const bounds = settleBoundsOf(input.chore, input.anchorMs);
   const hoursFromNow = (epochMs: number): number =>
     Math.max(0, Math.round(((epochMs - input.nowMs) / HOUR_MS) * 10) / 10);
   return untrustedBlock({
@@ -118,9 +124,17 @@ export function bookmakerUserMessage(input: BookmakerInput): string {
   });
 }
 
-/** The settle time the answer stands for, clamped into the chore's bounds. */
-export function settleAtOf(chore: ChoreType, nowMs: number, settleInHours: number): number {
-  return clampSettle(chore, nowMs, nowMs + Math.round(settleInHours * HOUR_MS));
+/**
+ * The settle time the answer stands for: `settleInHours` from the real now, clamped into the
+ * bounds of the day the card was made.
+ */
+export function settleAtOf(
+  chore: ChoreType,
+  anchorMs: number,
+  nowMs: number,
+  settleInHours: number,
+): number {
+  return clampSettle(chore, anchorMs, nowMs + Math.round(settleInHours * HOUR_MS));
 }
 
 /** How many bands an `ok` answer is from the rule band for its own settle time; undefined if unsure. */
@@ -131,7 +145,9 @@ export function distanceFromRule(
   if (output.status !== "ok" || output.band === undefined || output.settle_in_hours === undefined) {
     return undefined;
   }
-  const ruleBand = input.ruleBandAt(settleAtOf(input.chore, input.nowMs, output.settle_in_hours));
+  const ruleBand = input.ruleBandAt(
+    settleAtOf(input.chore, input.anchorMs, input.nowMs, output.settle_in_hours),
+  );
   return Math.abs(bandOfName(output.band) - ruleBand);
 }
 
@@ -150,7 +166,7 @@ export function bookmakerCheck(
       return undefined;
     }
     const ruleBand = input.ruleBandAt(
-      settleAtOf(input.chore, input.nowMs, output.settle_in_hours ?? 0),
+      settleAtOf(input.chore, input.anchorMs, input.nowMs, output.settle_in_hours ?? 0),
     );
     return `Your band "${output.band ?? ""}" is two or more bands from the rule band "${nameOfOrdinal(ruleBand)}". Say why in "disagreement_reason", or ask the person one yes/no "question".`;
   };
@@ -161,7 +177,7 @@ export function runBookmaker(
   runner: JobRunner,
   input: BookmakerInput,
 ): Promise<JobResult<BookmakerOutput>> {
-  const bounds = settleBoundsOf(input.chore, input.nowMs);
+  const bounds = settleBoundsOf(input.chore, input.anchorMs);
   return runner.run({
     job: "bookmaker",
     prompt: BOOKMAKER_PROMPT,

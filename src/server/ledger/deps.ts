@@ -44,4 +44,6 @@ export interface LedgerDeps {
   readonly household: Household;
   readonly flags: Flags;
   readonly background: BackgroundTasks;
+  /** Structured log line for a notable event (ids and numbers only, never household text). */
+  readonly log: (entry: Readonly<Record<string, unknown>>) => void;
 }

@@ -1,6 +1,7 @@
 import { CHORES, isChoreType } from "../../domain/chores.js";
 import { MULTIPLIER, pointsFor } from "../../domain/points.js";
 import { judgeBet } from "../gemma/judge.js";
+import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
 import { markDueBets } from "./bets.js";
@@ -65,13 +66,21 @@ export async function settleByTap(
     throw new HttpError(400, "Unknown answer");
   }
 
-  const judged = await judgeBet(deps.gemma, {
-    chore,
-    odds: bet.odds,
-    answerId,
-    betId: bet.id,
-    cardId: bet.card_id,
-  });
+  let judged;
+  try {
+    judged = await judgeBet(deps.gemma, {
+      chore,
+      odds: bet.odds,
+      answerId,
+      betId: bet.id,
+      cardId: bet.card_id,
+    });
+  } catch (error) {
+    if (error instanceof JobQueueFullError) {
+      throw new HttpError(503, "Gemma is busy", "The bet stays open; try again in a minute.");
+    }
+    throw error;
+  }
   if (!judged.ok) {
     // The runner logged the failed decision (REQ-028).
     throw new HttpError(

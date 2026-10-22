@@ -1,9 +1,11 @@
 import { isChoreType } from "../../domain/chores.js";
 import { MAX_CAPTURE_CHARS, runListener } from "../gemma/listener.js";
+import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
 import { createChoreCard, createUnbettableCard } from "./cards.js";
 import type { LedgerDeps } from "./deps.js";
+import { assertGemmaCapacity, gemmaBusy } from "./gemma-cards.js";
 import type { CardView } from "./views.js";
 
 export { MAX_CAPTURE_CHARS };
@@ -16,7 +18,13 @@ export { MAX_CAPTURE_CHARS };
  * is invalid after the retry, no card is created and the person's text is untouched (AC-002.4).
  */
 export async function captureText(deps: LedgerDeps, text: string): Promise<CardView[]> {
-  const result = await runListener(deps.gemma, text);
+  assertGemmaCapacity(deps);
+  let result;
+  try {
+    result = await runListener(deps.gemma, text);
+  } catch (error) {
+    throw error instanceof JobQueueFullError ? gemmaBusy() : error;
+  }
   if (!result.ok) {
     if (result.failure === "invalid") {
       throw new HttpError(

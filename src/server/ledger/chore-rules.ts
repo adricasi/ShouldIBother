@@ -4,7 +4,8 @@ import { ruleQuote, type RuleQuote, type RulesConfig } from "../../domain/rules/
 import type { ForecastHour } from "../../domain/weather.js";
 
 /**
- * The window the rule band is computed over when Gemma settles at `settleAtMs`. Only the plants
+ * The window the rule band is computed over when Gemma settles at `settleAtMs`. `nowMs` is the
+ * card's creation time (the anchor), not the time of a later retry. Only the plants
  * window follows the settle time (design.md: "now to settle"); the other chores' windows are fixed
  * by the table (line-dry ends at 18:00, whatever the settle time within its bounds).
  */
