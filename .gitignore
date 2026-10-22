@@ -42,3 +42,17 @@ data/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# --- local databases, snapshots and training artifacts (NFR-002) ---
+*.db
+*.sqlite
+*.sqlite-*
+*-wal
+*-shm
+*.jsonl
+training/out*/
+checkpoints/
+adapters/
+
+# --- real household baseline (the committed fallback is config/household.example.json) ---
+config/household.json
