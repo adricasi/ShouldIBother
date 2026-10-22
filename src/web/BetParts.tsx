@@ -3,6 +3,9 @@ import { PhotoPicker } from "./PhotoParts.js";
 import { RescuePanel } from "./RescueParts.js";
 import { ReceiptCard, WeatherLine } from "./SettleParts.js";
 import { formatOdds, formatPoints, formatSettleTime, formatTimeLeft } from "./format.js";
+import { ChoreTile } from "./ui/ChoreTile.js";
+import { choreIconName, Icon } from "./ui/Icon.js";
+import { elapsedFraction, ProgressRing } from "./ui/ProgressRing.js";
 
 /** Plain words for the steps of the state machine after the settle time (AC-008.8). */
 const WAITING_STATUS_TEXT: Readonly<Record<string, string>> = {
@@ -71,8 +74,12 @@ export function WaitingLine({
   /** Where the rescue alert and Cash out are offered (REQ-022); absent: neither is shown. */
   onCashOut?: (betId: number) => void;
 }) {
+  const settleAtMs = Date.parse(bet.settle_at);
   return (
-    <li>
+    <li className="waiting-line">
+      <ProgressRing fraction={elapsedFraction(Date.parse(bet.placed_at), settleAtMs, nowMs)}>
+        <Icon name={choreIconName(bet.title)} />
+      </ProgressRing>
       <div className="line-main">
         <span className="line-title">
           {bet.title} · {betKindLabel(bet)}
@@ -80,14 +87,10 @@ export function WaitingLine({
         <span className="meta">
           {formatOdds(bet.band_name, bet.odds)} · settles {formatSettleTime(bet.settle_at)}
         </span>
-        <span className="meta countdown">
-          {formatTimeLeft(Date.parse(bet.settle_at) - nowMs)} left
-        </span>
-        {onCashOut === undefined ? null : (
-          <RescuePanel bet={bet} busy={busy} onCashOut={onCashOut} />
-        )}
+        <span className="meta countdown">{formatTimeLeft(settleAtMs - nowMs)} left</span>
       </div>
       <UndoButton bet={bet} nowMs={nowMs} busy={busy} onUndo={onUndo} />
+      {onCashOut === undefined ? null : <RescuePanel bet={bet} busy={busy} onCashOut={onCashOut} />}
     </li>
   );
 }
@@ -117,15 +120,23 @@ export function DueSlip({
   const fallbackNote = statusText(bet.status) ?? "Waiting to be settled.";
   return (
     <article className="slip due" aria-label={`${bet.title}, ready to settle`}>
-      <p className="eyebrow">
-        Settle now · {betKindLabel(bet)} at {formatOdds(bet.band_name, bet.odds)}
-      </p>
-      <h3>{bet.title}</h3>
+      <div className="slip-head">
+        <ChoreTile title={bet.title} />
+        <div className="line-main">
+          <h3>{bet.title}</h3>
+          <p className="eyebrow">
+            Settle now · {betKindLabel(bet)} at {formatOdds(bet.band_name, bet.odds)}
+          </p>
+        </div>
+        {settle?.state === "answer_needed" || settle?.state === "question" ? (
+          <span className="pill ready">Ready</span>
+        ) : null}
+      </div>
       {settle === null ? null : <WeatherLine weather={settle.weather} />}
       {settle?.state === "answer_needed" ? (
         <>
-          <p className="question">How did it turn out?</p>
-          <div className="answers">
+          <p className="question prompt">How did it turn out?</p>
+          <div className="answers row">
             {bet.tap_answers.map((answer) => (
               <button
                 key={answer.id}
@@ -158,9 +169,11 @@ export function DueSlip({
         </>
       ) : settle?.state === "question" && settle.question !== null ? (
         <div className="gemma-question">
-          <p className="eyebrow">Gemma has a question</p>
+          <p className="eyebrow">
+            <Icon name="sparkle" /> Gemma has a question
+          </p>
           <p className="question">{settle.question}</p>
-          <div className="answers">
+          <div className="answers row">
             {[true, false].map((yes) => (
               <button
                 key={String(yes)}
@@ -194,6 +207,7 @@ export function SettledLine({
 }) {
   return (
     <li className="settled-line">
+      <ChoreTile title={bet.title} />
       <div className="line-main">
         <span className="line-title">
           {bet.title} · {betKindLabel(bet)}
@@ -206,7 +220,9 @@ export function SettledLine({
           <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
         </details>
       </div>
-      <span className="line-points">{formatPoints(bet.result.points)}</span>
+      <span className={`line-points ${bet.result.points < 0 ? "minus" : "plus"}`}>
+        {formatPoints(bet.result.points)}
+      </span>
     </li>
   );
 }

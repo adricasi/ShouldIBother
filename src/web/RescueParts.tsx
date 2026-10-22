@@ -31,7 +31,7 @@ export function RescuePanel({
     <div className="rescue">
       <div role="status" aria-live="polite" className="rescue-live">
         {rescue.alert === null ? null : (
-          <p className="rescue-alert">
+          <p className="notice rescue-alert">
             <span>
               <strong>Rescue alert.</strong> {rescue.alert.text}
             </span>

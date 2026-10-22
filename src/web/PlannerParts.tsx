@@ -1,5 +1,7 @@
 import type { Card, Plan } from "./api.js";
 import { formatOdds, formatPoints } from "./format.js";
+import { ChoreTile } from "./ui/ChoreTile.js";
+import { Icon } from "./ui/Icon.js";
 
 export interface PlannerActions {
   /** "Need anything washed before <day>?" (AC-021.2). */
@@ -26,7 +28,11 @@ export function PlanDays({ plan }: { plan: Plan }) {
         <li key={day.date} className={day.date === plan.best_day?.date ? "best" : undefined}>
           <span className="plan-day">{day.weekday}</span>
           <span>{formatOdds(day.band_name, day.odds)}</span>
-          {day.date === plan.best_day?.date ? <span className="meta">best day</span> : null}
+          {day.date === plan.best_day?.date ? (
+            <span className="meta best-day">
+              <Icon name="check" /> best day
+            </span>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -50,7 +56,7 @@ function YesNo({
       <p id={labelId} className="question">
         {question}
       </p>
-      <div className="answers" role="group" aria-labelledby={labelId}>
+      <div className="answers row" role="group" aria-labelledby={labelId}>
         {[true, false].map((yes) => (
           <button
             key={String(yes)}
@@ -98,10 +104,13 @@ export function PlannerSlip({
       : null;
   return (
     <article className="slip" aria-label={`${card.title}, ${plan.headline ?? plan.stage}`}>
-      <p className="eyebrow">
-        Lazy Bookie · Laundry planner
-        {advice ? " · No bet" : plan.stage === "ask_need" ? " · One question first" : ""}
-      </p>
+      <div className="slip-head">
+        <ChoreTile title={card.title} choreType={card.chore_type} />
+        <p className="eyebrow">
+          Lazy Bookie · Laundry planner
+          {advice ? " · No bet" : plan.stage === "ask_need" ? " · One question first" : ""}
+        </p>
+      </div>
       {plan.stage === "thinking" ? (
         <>
           <h3>{card.title}</h3>

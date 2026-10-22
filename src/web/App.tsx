@@ -224,8 +224,21 @@ export function App() {
     });
   };
 
+  const reload = (): void => {
+    void act(() => Promise.resolve(undefined));
+  };
+
   if (showScore) {
-    return <ScoreScreen score={score} flags={today?.flags ?? {}} notice={notice} />;
+    return (
+      <ScoreScreen
+        score={score}
+        flags={today?.flags ?? {}}
+        notice={notice}
+        onReload={() => {
+          void refreshScore(false);
+        }}
+      />
+    );
   }
   if (route === "slips") {
     return (
@@ -240,6 +253,7 @@ export function App() {
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
         {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
+        onReload={reload}
       />
     );
   }
@@ -311,6 +325,7 @@ export function App() {
       onSettlePhoto={onSettlePhoto}
       onSettleAnswer={onSettleAnswer}
       onUndo={onUndo}
+      onReload={reload}
     />
   );
 }

@@ -6,6 +6,12 @@
   gap: var(--space-2);
 }
 
+/* Under the ring and the line, across the whole row of T-018's waiting-line grid. */
+.waiting .waiting-line > .rescue {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .rescue-alert {
   background: var(--color-amber-soft);
   color: var(--color-ink);
