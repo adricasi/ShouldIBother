@@ -7,12 +7,15 @@ import {
   captureCards,
   createQuickCard,
   deletePhoto,
+  fetchOnboarding,
   fetchScore,
   fetchSlips,
   fetchToday,
   followPlanAdvice,
   placeBet,
   retryCard,
+  saveOnboarding,
+  skipOnboarding,
   answerBetQuestion,
   settleBet,
   settleBetWithPhoto,
@@ -20,6 +23,8 @@ import {
   cashOutBet,
   uploadPhoto,
   type BetKind,
+  type Onboarding,
+  type OnboardingAnswers,
   type Receipt,
   type Score,
   type SettleResult,
@@ -28,6 +33,7 @@ import {
 } from "./api.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
+import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
 import { formatPoints } from "./format.js";
 import { createRefresher } from "./refresher.js";
 import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
@@ -86,6 +92,7 @@ export function App() {
   const [today, setToday] = useState<Today | undefined>(undefined);
   const [slips, setSlips] = useState<Slips | undefined>(undefined);
   const [score, setScore] = useState<Score | undefined>(undefined);
+  const [onboarding, setOnboarding] = useState<Onboarding | undefined>(undefined);
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const [results, setResults] = useState<Record<number, Receipt>>({});
   const [busy, setBusy] = useState(false);
@@ -138,6 +145,19 @@ export function App() {
       void refreshScore(true);
     });
   }, [showScore, scoreOn, refreshScore]);
+
+  // Onboarding (flag `onboarding`, REQ-024) is read once the server reports the flag on; the
+  // first time the app is opened it asks, and a skip keeps the baseline in the config file.
+  const onboardingOn = today?.flags["onboarding"] === true;
+  const refreshOnboarding = useMemo(
+    () => createRefresher({ load: fetchOnboarding, apply: setOnboarding, setNotice }),
+    [],
+  );
+  useEffect(() => {
+    if (onboardingOn) {
+      void refreshOnboarding(false);
+    }
+  }, [onboardingOn, refreshOnboarding]);
 
   // A card Gemma is still working on is polled faster than the 30 s default (design.md, Interfaces).
   const gemmaIsThinking =
@@ -249,6 +269,49 @@ export function App() {
     void act(() => Promise.resolve(undefined));
   };
 
+  const answerOnboarding = (action: () => Promise<Onboarding>, text: string): void => {
+    setBusy(true);
+    action()
+      .then((next) => {
+        setOnboarding(next);
+        setNotice({ kind: "info", text, origin: "action" });
+        window.location.hash = "#/today";
+      })
+      .catch((error: unknown) => {
+        setNotice(describeError(error, "action"));
+      })
+      .finally(() => {
+        setBusy(false);
+        void refresh(false);
+      });
+  };
+  const skipOnboardingNow = (): void => {
+    answerOnboarding(
+      () => skipOnboarding(),
+      "Skipped. Savings use the baseline in the config file.",
+    );
+  };
+  if (onboardingOn && route === "onboarding") {
+    return (
+      <OnboardingScreen
+        onboarding={onboarding}
+        flags={today?.flags ?? {}}
+        busy={busy}
+        notice={notice}
+        onSave={(answers: OnboardingAnswers) => {
+          answerOnboarding(
+            () => saveOnboarding(answers),
+            "Saved. New bets use these answers; bets already placed keep their figures.",
+          );
+        }}
+        onSkip={skipOnboardingNow}
+        onReload={() => {
+          void refreshOnboarding(false);
+        }}
+      />
+    );
+  }
+
   if (showScore) {
     return (
       <ScoreScreen
@@ -283,6 +346,10 @@ export function App() {
   return (
     <TodayScreen
       today={today}
+      // First open: Today asks in a card above the chips; everything below it keeps working.
+      {...(onboardingOn && onboarding?.state === "pending"
+        ? { prompt: <OnboardingPrompt busy={busy} onSkip={skipOnboardingNow} /> }
+        : {})}
       busy={busy}
       notice={notice}
       results={results}

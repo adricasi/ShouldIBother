@@ -20,6 +20,7 @@ import {
 import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
+import { unlockAfterCommit } from "./achievements.js";
 import { markDueBets } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
 import { luckyFlagFor } from "./lucky-flag.js";
@@ -573,6 +574,7 @@ export class Settler {
       return db.prepare<[number], SettlementRow>("SELECT * FROM settlements WHERE id = ?").get(id)!;
     });
     const settlement = commit();
+    unlockAfterCommit(this.deps);
     return {
       state: "settled",
       receipt: receiptOf(

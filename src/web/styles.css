@@ -1167,3 +1167,66 @@ label.button.disabled {
   gap: var(--space-1);
   color: var(--color-leaf);
 }
+
+/* Rank hero and achievements on Score (REQ-025). */
+.rank-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-leaf-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+/* ink-3-text is 4.39:1 on leaf-soft; the hero's small text uses ink-2 (checked in web-styles.test.ts). */
+.rank-hero .eyebrow,
+.rank-hero .meta {
+  color: var(--color-ink-2);
+}
+
+.rank-name {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-headline);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.rank-bar {
+  display: block;
+  width: 100%;
+  margin-right: 0;
+  background: var(--color-card);
+}
+
+.achievements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.achievements li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.achievements li.unlocked .icon {
+  color: var(--color-leaf);
+}
+
+.achievements li.locked .icon {
+  color: var(--color-ink-3-text);
+}
+
+.achievement-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

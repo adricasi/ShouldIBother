@@ -319,10 +319,29 @@ const calibrationBandSchema = z.object({
   too_few: z.boolean(),
 });
 
+const rankSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  min_points: z.number(),
+  /** The next rank and the points still missing; null at the top rank. */
+  next: z.object({ name: z.string(), min_points: z.number(), points_to_go: z.number() }).nullable(),
+});
+
+const achievementSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  condition: z.string(),
+  /** ISO time the condition was first met; null while locked. */
+  unlocked_at: z.string().nullable(),
+});
+
 /** The Score screen: points, savings, judge overrule rate and band calibration (REQ-020). */
 export const scoreSchema = z.object({
   now: z.string(),
   points: z.object({ total: z.number() }),
+  /** Rank and achievements (REQ-025) come only while the server's `ranks` flag is on. */
+  rank: rankSchema.optional(),
+  achievements: z.array(achievementSchema).optional(),
   savings: savingsTotalsSchema,
   judge: z.discriminatedUnion("appeals", [
     z.object({ appeals: z.literal("off") }),
@@ -360,6 +379,8 @@ export const settleResultSchema = z.discriminatedUnion("state", [
 ]);
 
 export type Score = z.infer<typeof scoreSchema>;
+export type Rank = z.infer<typeof rankSchema>;
+export type Achievement = z.infer<typeof achievementSchema>;
 export type CalibrationBand = z.infer<typeof calibrationBandSchema>;
 export type Card = z.infer<typeof cardSchema>;
 export type CardPhoto = z.infer<typeof photoSchema>;
@@ -390,7 +411,9 @@ async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   init?:
-    { method: "POST"; body: unknown } | { method: "POST"; form: FormData } | { method: "DELETE" },
+    | { method: "POST" | "PUT"; body: unknown }
+    | { method: "POST"; form: FormData }
+    | { method: "DELETE" },
 ): Promise<T> {
   let response: Response;
   try {
@@ -480,6 +503,29 @@ export const uploadPhoto = (cardId: number, file: File): Promise<Card> => {
 /** Deletes a photo and what was derived from it (AC-015.2). */
 export const deletePhoto = (photoId: string): Promise<undefined> =>
   request(`/api/photos/${photoId}`, z.undefined(), { method: "DELETE" });
+
+/** The onboarding questions and where they stand (flag `onboarding`, REQ-024). */
+export const onboardingSchema = z.object({
+  state: z.enum(["pending", "completed", "skipped"]),
+  household: z.object({
+    outdoorItems: z.array(z.enum(["balcony_plants", "clothes_line"])).optional(),
+    dryer: z.enum(["none", "heat-pump", "condenser", "vented"]),
+    airConditioning: z.boolean(),
+    heaterThisSeason: z.boolean(),
+    location: z.object({ latitude: z.number(), longitude: z.number() }),
+  }),
+});
+export type Onboarding = z.infer<typeof onboardingSchema>;
+export type OnboardingAnswers = Required<Onboarding["household"]>;
+
+export const fetchOnboarding = (): Promise<Onboarding> =>
+  request("/api/onboarding", onboardingSchema);
+
+export const saveOnboarding = (answers: OnboardingAnswers): Promise<Onboarding> =>
+  request("/api/onboarding", onboardingSchema, { method: "PUT", body: answers });
+
+export const skipOnboarding = (): Promise<Onboarding> =>
+  request("/api/onboarding/skip", onboardingSchema, { method: "POST", body: {} });
 
 export const fetchScore = (): Promise<Score> => request("/api/score", scoreSchema);
 

@@ -9,6 +9,7 @@ import {
 import type { WeatherSnapshot } from "../../domain/weather-digest.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
+import { cardLocationOf } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import type { BetRow, CardRow } from "./rows.js";
 
@@ -50,6 +51,7 @@ export async function luckyFlagFor(
       const recorded = await deps.weather.getRecorded({
         fromMs: window.startMs,
         toMs: window.endMs,
+        ...cardLocationOf(card),
       });
       if (recorded.complete) {
         return luckyWinOf(choreType, window, recorded.hours);

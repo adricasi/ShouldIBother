@@ -5,10 +5,19 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Bet, Card, Receipt, Slips, Today } from "./api.js";
 import { Nav } from "./Nav.js";
+import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
 import { ROUTE_TITLES, type Route } from "./route.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
-import { answerNeeded, emptyWeek, lossReceipt, winReceipt } from "./test-data.js";
+import {
+  answerNeeded,
+  emptyScore,
+  emptyWeek,
+  koala,
+  lockedAchievements,
+  lossReceipt,
+  winReceipt,
+} from "./test-data.js";
 import { TodayScreen, type TodayScreenProps } from "./TodayScreen.js";
 
 const payouts = {
@@ -533,6 +542,149 @@ describe("NFR-009: the laundry planner card (flag laundryPlanner on) has no axe 
       gemma: null,
     };
     expect(await violationsOf(planner([slip]))).toEqual([]);
+  });
+});
+
+describe("T-026: Score with a rank and achievements, and the heater chip, have no axe violations", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  async function violationsOf(html: string, route: Route): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES[route];
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  const scoreWith = (score: typeof emptyScore) =>
+    renderToStaticMarkup(
+      <ScoreScreen score={score} flags={{ score: true, ranks: true }} notice={undefined} />,
+    );
+
+  it("Score: rank hero with every achievement locked", async () => {
+    const html = scoreWith({
+      ...emptyScore,
+      rank: {
+        ...koala,
+        min_points: 0,
+        name: "Hyperactive squirrel",
+        id: "hyperactive_squirrel",
+        next: { name: "Koala", min_points: 200, points_to_go: 200 },
+      },
+      achievements: lockedAchievements,
+    });
+    expect(html).toContain("Hyperactive squirrel");
+    expect(await violationsOf(html, "score")).toEqual([]);
+  });
+
+  it("Score: a mid rank with unlocked achievements", async () => {
+    const html = scoreWith({
+      ...emptyScore,
+      points: { total: 450 },
+      rank: koala,
+      achievements: lockedAchievements.map((item, index) =>
+        index < 2 ? { ...item, unlocked_at: "2026-10-22T06:05:00.000Z" } : item,
+      ),
+    });
+    expect(html).toContain("Unlocked");
+    expect(await violationsOf(html, "score")).toEqual([]);
+  });
+
+  it("Score: the top rank has no next step", async () => {
+    const html = scoreWith({
+      ...emptyScore,
+      points: { total: 2000 },
+      rank: {
+        id: "grand_master_of_inaction",
+        name: "Grand master of inaction",
+        min_points: 1800,
+        next: null,
+      },
+      achievements: lockedAchievements.map((item) => ({
+        ...item,
+        unlocked_at: "2026-10-22T06:05:00.000Z",
+      })),
+    });
+    expect(await violationsOf(html, "score")).toEqual([]);
+  });
+
+  it("Today: the Skip the heater chip beside a heater card with odds", async () => {
+    const heaterCard: Card = {
+      ...card,
+      id: 20,
+      chore_type: "heater",
+      title: "Skip the heater",
+      gemma: null,
+      photo: null,
+    };
+    const html = today({
+      ...emptyToday,
+      flags: { score: true, heater: true },
+      cards: [heaterCard],
+    });
+    expect(html).toContain("Skip the heater");
+    expect(await violationsOf(html, "today")).toEqual([]);
+  });
+});
+
+describe("NFR-009: the household screen (flag onboarding on) has no axe violations", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const answers = {
+    outdoorItems: ["balcony_plants" as const],
+    dryer: "condenser" as const,
+    airConditioning: true,
+    heaterThisSeason: false,
+    location: { latitude: 41.4, longitude: 2.16 },
+  };
+
+  async function violationsOf(html: string): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES.onboarding;
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  const household = (
+    onboarding: Parameters<typeof OnboardingScreen>[0]["onboarding"],
+    notice?: { kind: "error"; text: string },
+  ): string =>
+    renderToStaticMarkup(
+      <OnboardingScreen
+        onboarding={onboarding}
+        flags={{ onboarding: true }}
+        busy={false}
+        notice={notice}
+        onSave={() => undefined}
+        onSkip={() => undefined}
+        onReload={() => undefined}
+      />,
+    );
+
+  it("first open, answered, loading and the failed first load", async () => {
+    expect(await violationsOf(household({ state: "pending", household: answers }))).toEqual([]);
+    expect(await violationsOf(household({ state: "completed", household: answers }))).toEqual([]);
+    expect(await violationsOf(household(undefined))).toEqual([]);
+    const failed = household(undefined, { kind: "error", text: "No answer." });
+    expect(await violationsOf(failed)).toEqual([]);
+  });
+
+  it("Today with the household card above the chips", async () => {
+    const html = today(emptyToday, {
+      prompt: <OnboardingPrompt busy={false} onSkip={() => undefined} />,
+    });
+    expect(html).toContain("Tell me about your home");
+    document.title = ROUTE_TITLES.today;
+    expect(await violationsOf(html)).toEqual([]);
   });
 });
 

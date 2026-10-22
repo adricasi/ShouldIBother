@@ -5,6 +5,7 @@ import { judgeBet, type JudgeEvidence } from "../gemma/judge.js";
 import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
+import { unlockAfterCommit } from "./achievements.js";
 import { appealPaysHalf, appealRefusal, originalSettlement } from "./appeal-state.js";
 import type { LedgerDeps } from "./deps.js";
 import { luckyFlagFor } from "./lucky-flag.js";
@@ -274,6 +275,8 @@ export class Appealer {
       }
       return db.prepare<[number], SettlementRow>("SELECT * FROM settlements WHERE id = ?").get(id)!;
     });
-    return { target, settlement: commit.immediate() };
+    const settlement = commit.immediate();
+    unlockAfterCommit(this.deps);
+    return { target, settlement };
   }
 }

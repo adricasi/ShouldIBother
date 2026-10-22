@@ -185,6 +185,7 @@ describe("sib delete-photos (AC-015.3)", () => {
       },
     );
     expect(questions[0]).toContain("config/household.json");
+    expect(questions[0]).toContain("onboarding");
     expect(questions[0]).toContain("kept");
     expect(questions[0]).toContain("delete everything");
   });
