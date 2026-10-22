@@ -300,6 +300,7 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
       cardPhotoView(deps.db, card, table),
     ),
     table,
+    deps.now(),
   );
 }
 
@@ -324,11 +325,16 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
       const quote = latestQuote(deps, card.id);
       if (quote !== undefined && quote.settle_at > now) {
         views.push(
-          withPlan(card, cardView(card, quote, table, cardPhotoView(deps.db, card, table)), table),
+          withPlan(
+            card,
+            cardView(card, quote, table, cardPhotoView(deps.db, card, table)),
+            table,
+            now,
+          ),
         );
       }
     } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
-      views.push(withPlan(card, cardView(card, undefined, table), table));
+      views.push(withPlan(card, cardView(card, undefined, table), table, now));
     }
   }
   return views;

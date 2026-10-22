@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { migrate, openDatabase } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
+/** This migration is the last one these tests know: later ones have their own tests. */
+const upTo8 = MIGRATIONS.filter((migration) => migration.id <= 8);
+
 describe("migration 0008: the sunset a laundry card was priced on and its safety verdict (NFR-003)", () => {
   it("is number 8", () => {
     expect(MIGRATIONS.map((migration) => migration.id)).toContain(8);
@@ -22,20 +25,13 @@ describe("migration 0008: the sunset a laundry card was priced on and its safety
         VALUES (1, 'do_nothing', 3, 70, 'rule', 'rain', 3, 10, 20, 30, 'open');
     `);
     const before = db.prepare("SELECT * FROM cards").all();
-    expect(migrate(db, MIGRATIONS)).toEqual(expect.arrayContaining([8]));
+    expect(migrate(db, upTo8)).toEqual([8]);
     expect(db.prepare("SELECT * FROM cards").all()).toEqual(
-      before.map((card) => ({
-        ...(card as object),
-        sunset_at: null,
-        safety_checked_at: null,
-        plan: null,
-        advice_followed_at: null,
-        advice_points: null,
-      })),
+      before.map((card) => ({ ...(card as object), sunset_at: null, safety_checked_at: null })),
     );
     expect(db.prepare("SELECT COUNT(*) AS n FROM bets").get()).toEqual({ n: 1 });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, upTo8)).toEqual([]);
     db.close();
   });
 

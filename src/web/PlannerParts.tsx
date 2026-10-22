@@ -8,6 +8,13 @@ export interface PlannerActions {
   readonly onFollow: (cardId: number) => void;
 }
 
+/** Why a followed Wash today earned no points, in words (AC-021.3). */
+export const ADVICE_REASON_TEXT = {
+  not_best_day: "No points: today is not the best drying day.",
+  too_late: "No points: the advice counts only before 18:00 on the best drying day.",
+  daily_cap: "No points: advice followed earns points once a day, and today's are taken.",
+} as const;
+
 /** The four days with Gemma's drying score for each (AC-021.1). */
 export function PlanDays({ plan }: { plan: Plan }) {
   if (plan.days.length === 0) {
@@ -23,6 +30,42 @@ export function PlanDays({ plan }: { plan: Plan }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function YesNo({
+  cardId,
+  question,
+  disabled,
+  ask,
+}: {
+  cardId: number;
+  question: string;
+  disabled: boolean;
+  ask: (yes: boolean) => void;
+}) {
+  const labelId = `plan-question-${String(cardId)}`;
+  return (
+    <div className="gemma-question">
+      <p id={labelId} className="question">
+        {question}
+      </p>
+      <div className="answers" role="group" aria-labelledby={labelId}>
+        {[true, false].map((yes) => (
+          <button
+            key={String(yes)}
+            type="button"
+            className="button secondary"
+            disabled={disabled}
+            onClick={() => {
+              ask(yes);
+            }}
+          >
+            {yes ? "Yes" : "No"}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -46,39 +89,36 @@ export function PlannerSlip({
   onRetry: (cardId: number) => void;
   onAnswer: (cardId: number, yes: boolean) => void;
 }) {
-  const yesNo = (ask: (yes: boolean) => void) => (
-    <div className="answers">
-      {[true, false].map((yes) => (
-        <button
-          key={String(yes)}
-          type="button"
-          className="button secondary"
-          disabled={busy || actions === undefined}
-          onClick={() => {
-            ask(yes);
-          }}
-        >
-          {yes ? "Yes" : "No"}
-        </button>
-      ))}
-    </div>
-  );
+  const advice = plan.stage === "wash_today" || plan.stage === "no_good_day";
+  const hintId = `plan-hint-${String(card.id)}`;
+  const hint = busy
+    ? "Working on your last tap. Try again in a moment."
+    : actions === undefined
+      ? "These actions are not available on this screen."
+      : null;
   return (
     <article className="slip" aria-label={`${card.title}, ${plan.headline ?? plan.stage}`}>
-      <p className="eyebrow">Lazy Bookie · Laundry planner · No bet</p>
+      <p className="eyebrow">
+        Lazy Bookie · Laundry planner
+        {advice ? " · No bet" : plan.stage === "ask_need" ? " · One question first" : ""}
+      </p>
       {plan.stage === "thinking" ? (
         <>
           <h3>{card.title}</h3>
-          <p role="status">Gemma is planning your wash.</p>
+          <p role="status">{plan.note ?? "Gemma is planning your wash."}</p>
         </>
       ) : null}
       {plan.stage === "question" && plan.question !== null ? (
         <>
           <h3>{card.title}</h3>
-          <p className="question">{plan.question}</p>
-          {yesNo((yes) => {
-            onAnswer(card.id, yes);
-          })}
+          <YesNo
+            cardId={card.id}
+            question={plan.question}
+            disabled={busy}
+            ask={(yes) => {
+              onAnswer(card.id, yes);
+            }}
+          />
         </>
       ) : null}
       {plan.stage === "offline" ? (
@@ -99,34 +139,43 @@ export function PlannerSlip({
           ) : null}
         </>
       ) : null}
-      {plan.stage === "ask_need" || plan.stage === "wash_today" || plan.stage === "no_good_day" ? (
+      {plan.stage === "ask_need" || advice ? (
         <>
           <h3>{plan.headline}</h3>
           {plan.reason === null ? null : <p>{plan.reason}</p>}
           <PlanDays plan={plan} />
         </>
       ) : null}
-      {plan.stage === "ask_need" && plan.question !== null ? (
-        <div className="gemma-question">
-          <p className="question">{plan.question}</p>
-          {yesNo((yes) => {
+      {plan.stage === "ask_need" && plan.stale ? (
+        <p role="status">
+          This plan is out of date: its forecast is more than an hour old, or the day has begun. Tap
+          Plan the wash for a new one.
+        </p>
+      ) : null}
+      {plan.stage === "ask_need" && !plan.stale && plan.question !== null ? (
+        <YesNo
+          cardId={card.id}
+          question={plan.question}
+          disabled={busy || actions === undefined}
+          ask={(yes) => {
             actions?.onNeed(card.id, yes);
-          })}
-        </div>
+          }}
+        />
       ) : null}
       {plan.stage === "wash_today" ? (
         plan.followed ? (
           <p className="meta">
             Followed.{" "}
-            {plan.advice_points === null || plan.advice_points === 0
-              ? "No points: today is not the best drying day."
-              : `${formatPoints(plan.advice_points)} points for advice followed.`}
+            {plan.advice_points !== null && plan.advice_points > 0
+              ? `${formatPoints(plan.advice_points)} points for advice followed.`
+              : ADVICE_REASON_TEXT[plan.advice_reason ?? "not_best_day"]}
           </p>
         ) : (
           <button
             type="button"
             className="button primary"
             disabled={busy || actions === undefined}
+            aria-describedby={hint === null ? undefined : hintId}
             onClick={() => {
               actions?.onFollow(card.id);
             }}
@@ -135,8 +184,12 @@ export function PlannerSlip({
           </button>
         )
       ) : null}
-      {plan.stage === "wash_today" || plan.stage === "no_good_day" ? (
-        <p className="meta">This is advice, not a bet.</p>
+      {advice ? <p className="meta">This is advice, not a bet.</p> : null}
+      {hint !== null &&
+      (plan.stage === "ask_need" || plan.can_follow || plan.stage === "question") ? (
+        <p id={hintId} className="meta">
+          {hint}
+        </p>
       ) : null}
     </article>
   );

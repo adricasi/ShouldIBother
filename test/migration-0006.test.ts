@@ -21,6 +21,9 @@ function seedLiveDatabase(db: Db): void {
   `);
 }
 
+/** The tests here know the schema up to migration 8; later ones have their own tests. */
+const upTo8 = MIGRATIONS.filter((migration) => migration.id <= 8);
+
 describe("migration 0006: where a card's photo stands with the inspector (NFR-003)", () => {
   it("is number 6", () => {
     expect(MIGRATIONS.map((migration) => migration.id)).toContain(6);
@@ -31,7 +34,7 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
     seedLiveDatabase(db);
     const betsBefore = db.prepare("SELECT * FROM bets").all();
     const cardsBefore = db.prepare("SELECT * FROM cards ORDER BY id").all();
-    expect(migrate(db, MIGRATIONS)).toEqual(expect.arrayContaining([6]));
+    expect(migrate(db, upTo8)).toEqual(expect.arrayContaining([6]));
     expect(db.prepare("SELECT * FROM cards ORDER BY id").all()).toEqual(
       cardsBefore.map((card) => ({
         ...(card as object),
@@ -39,9 +42,6 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
         photo_failure: null,
         sunset_at: null,
         safety_checked_at: null,
-        plan: null,
-        advice_followed_at: null,
-        advice_points: null,
       })),
     );
     expect(db.prepare("SELECT * FROM bets").all()).toEqual(betsBefore);
@@ -49,7 +49,7 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
     expect(db.prepare("SELECT COUNT(*) AS n FROM gemma_decisions").get()).toEqual({ n: 1 });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
     expect(db.pragma("foreign_key_check")).toEqual([]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, upTo8)).toEqual([]);
     db.close();
   });
 

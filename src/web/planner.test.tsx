@@ -24,6 +24,8 @@ const basePlan: Plan = {
   can_follow: true,
   followed: false,
   advice_points: null,
+  advice_reason: null,
+  stale: false,
   best_day: { date: "2026-10-22", weekday: "Thursday" },
   days,
 };
@@ -69,11 +71,11 @@ function today(cards: Card[], flags: Record<string, boolean> = { laundryPlanner:
   };
 }
 
-function screen(data: Today): string {
+function screen(data: Today, busy = false): string {
   return renderToStaticMarkup(
     <TodayScreen
       today={data}
-      busy={false}
+      busy={busy}
       notice={undefined}
       results={{}}
       nowMs={Date.parse("2026-10-22T07:01:00.000Z")}
@@ -161,6 +163,28 @@ describe("AC-021.2: Skip today first asks 'Need anything washed before <day>?'",
     best_day: { date: "2026-10-24", weekday: "Saturday" },
   });
 
+  it("AC-021.2: the Yes and No taps are a group named by the question", () => {
+    const html = screen(today([asking]));
+    expect(html).toContain('role="group" aria-labelledby="plan-question-7"');
+    expect(html).toContain('id="plan-question-7"');
+    expect(html).toContain("One question first");
+    expect(html).not.toContain("No bet");
+  });
+
+  it("AC-014.2: a plan more than an hour old asks for a new plan instead of Yes and No", () => {
+    const html = screen(
+      today([{ ...asking, laundry_plan: { ...asking.laundry_plan!, stale: true } }]),
+    );
+    expect(html).toContain("This plan is out of date");
+    expect(html).not.toContain(">Yes<");
+  });
+
+  it("explains a disabled tap while the app is busy", () => {
+    const html = screen(today([planCard({})]), true);
+    expect(html).toContain("Working on your last tap");
+    expect(html).toContain('aria-describedby="plan-hint-7"');
+  });
+
   it("AC-021.2: shows Skip today with the question as two tap answers and no bet action", () => {
     const html = screen(today([asking]));
     expect(html).toContain("Skip today");
@@ -177,8 +201,15 @@ describe("AC-021.3 and AC-021.5: following Wash today, and the Skip today bet sl
       today([planCard({ followed: true, can_follow: false, advice_points: 5 })]),
     );
     expect(earned).toContain("+5 points for advice followed.");
-    const none = screen(today([planCard({ followed: true, can_follow: false, advice_points: 0 })]));
-    expect(none).toContain("No points: today is not the best drying day.");
+    const followedWith = (advice_reason: Plan["advice_reason"]) =>
+      screen(
+        today([planCard({ followed: true, can_follow: false, advice_points: 0, advice_reason })]),
+      );
+    expect(followedWith("not_best_day")).toContain("No points: today is not the best drying day.");
+    expect(followedWith("too_late")).toContain("only before 18:00");
+    const capped = followedWith("daily_cap");
+    expect(capped).toContain("once a day");
+    expect(capped).not.toContain("not the best drying day");
     expect(screen(today([planCard({})]))).toContain("I am washing today");
   });
 

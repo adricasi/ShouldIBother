@@ -88,6 +88,10 @@ export const planSchema = z.object({
   can_follow: z.boolean(),
   followed: z.boolean(),
   advice_points: z.number().nullable(),
+  /** Why a followed Wash today earned no points (AC-021.3). */
+  advice_reason: z.enum(["not_best_day", "too_late", "daily_cap"]).nullable(),
+  /** The forecast behind the plan is more than an hour old, or the day has begun: plan again. */
+  stale: z.boolean(),
   best_day: z.object({ date: z.string(), weekday: z.string() }).nullable(),
   days: z.array(
     z.object({

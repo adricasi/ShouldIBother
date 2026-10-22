@@ -1,7 +1,7 @@
 import type { Band } from "./bands.js";
 import type { InstantWindow } from "./chores.js";
 import { lineDryFacts, ruleQuote, type RulesConfig } from "./rules/index.js";
-import { addDays, madridDateOf, madridWallTimeToEpochMs } from "./time.js";
+import { HOUR_MS, addDays, madridDateOf, madridWallTimeToEpochMs } from "./time.js";
 import { hoursInWindow, windowIsCovered, type ForecastHour } from "./weather.js";
 
 /**
@@ -161,4 +161,44 @@ export function planDayFacts(
       ruleReason: quote?.reason ?? null,
     };
   });
+}
+
+/** Odds are locked only from a forecast at most this old (AC-014.2: a forecast is reused for 1 h). */
+export const PLAN_MAX_FORECAST_AGE_MS = HOUR_MS;
+
+/**
+ * A plan can no longer be turned into a bet when the forecast behind it is more than an hour old,
+ * or the chosen day's drying hours have begun (10:00): the person plans the wash again.
+ */
+export function planIsStale(
+  forecastAtMs: number | null,
+  bestDay: string | null,
+  nowMs: number,
+): boolean {
+  if (forecastAtMs === null || bestDay === null) {
+    return true;
+  }
+  return (
+    nowMs - forecastAtMs > PLAN_MAX_FORECAST_AGE_MS ||
+    nowMs >= madridWallTimeToEpochMs(bestDay, DRYING_FROM)
+  );
+}
+
+/** Why following Wash today earned no points (the view shows matching words). */
+export type AdviceReason = "not_best_day" | "too_late" | "daily_cap";
+
+/**
+ * Whether following Wash today at `followedAtMs` can earn the +5 (AC-021.3): the plan said Wash
+ * today on its own best drying day, and the person follows before 18:00 on that day. Null: it can;
+ * the once-a-day cap is checked separately.
+ */
+export function adviceIneligible(
+  state: PlanState | null,
+  bestDay: string | null,
+  followedAtMs: number,
+): Exclude<AdviceReason, "daily_cap"> | null {
+  if (state !== "wash_today" || bestDay === null || bestDay !== madridDateOf(followedAtMs)) {
+    return "not_best_day";
+  }
+  return followedAtMs >= planSettleAt(bestDay) ? "too_late" : null;
 }

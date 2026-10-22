@@ -42,6 +42,8 @@ export const laundryPlannerOutputSchema = z
     best_day: z.enum(PLAN_DAY_KEYS).optional(),
     days: z.array(dayScoreSchema).max(PLAN_DAY_KEYS.length).optional(),
     reason: z.string().max(MAX_PLANNER_REASON_CHARS).optional(),
+    /** Required when the chosen day's band is 2 or more bands from the rule's (AC-004.3). */
+    disagreement_reason: z.string().max(200).optional(),
     question: z.string().max(200).optional(),
   })
   .strict()
@@ -60,8 +62,12 @@ type RawOutput = {
   best_day?: PlanDayKey | undefined;
   days?: { day: PlanDayKey; score: (typeof BAND_NAMES)[number] }[] | undefined;
   reason?: string | undefined;
+  disagreement_reason?: string | undefined;
   question?: string | undefined;
 };
+
+/** A percentage in the text: the odds are the app's to show, mapped from the band. */
+const PERCENTAGE = /\d\s*%/;
 
 /** Why an answer contradicts itself, or undefined when it holds together. */
 function planProblem(value: RawOutput): string | undefined {
@@ -72,6 +78,9 @@ function planProblem(value: RawOutput): string | undefined {
   }
   if (value.state === undefined || (value.reason ?? "").trim() === "") {
     return 'status "ok" needs state and reason';
+  }
+  if (PERCENTAGE.test(value.reason ?? "") || PERCENTAGE.test(value.disagreement_reason ?? "")) {
+    return 'the "reason" must not contain a percentage: say it in words, the app shows the odds';
   }
   const scores = scoresOf(value.days);
   if (scores === undefined) {
@@ -171,6 +180,37 @@ export function laundryPlannerUserMessage(input: LaundryPlannerInput): string {
   });
 }
 
+/** How many bands the chosen day's score is from its rule band; undefined without a Skip today. */
+export function distanceFromRule(
+  input: LaundryPlannerInput,
+  output: LaundryPlannerOutput,
+): number | undefined {
+  if (output.state !== "skip_today" || output.best_day === undefined) {
+    return undefined;
+  }
+  const score = output.days?.find((entry) => entry.day === output.best_day)?.score;
+  const rule = input.days.find((day) => day.key === output.best_day)?.ruleBand;
+  return score === undefined || rule === undefined || rule === null
+    ? undefined
+    : Math.abs(bandOfName(score) - rule);
+}
+
+/** AC-004.3 for the planner: a Skip today band 2 or more bands from the rule needs a reason or a question. */
+function unexplainedDisagreement(
+  input: LaundryPlannerInput,
+  output: LaundryPlannerOutput,
+): string | undefined {
+  const distance = distanceFromRule(input, output);
+  if (distance === undefined || distance < 2) {
+    return undefined;
+  }
+  if ((output.disagreement_reason ?? "").trim() !== "" || (output.question ?? "").trim() !== "") {
+    return undefined;
+  }
+  const rule = input.days.find((day) => day.key === output.best_day)?.ruleBand ?? 0;
+  return `Your score for ${output.best_day ?? "the best day"} is two or more bands from the rule band "${nameOfOrdinal(rule)}". Say why in "disagreement_reason", or ask the person one yes/no "question".`;
+}
+
 /**
  * What the days' facts rule out, as a message for the retry: a day with no drying hours left
  * scores "very_unlikely", and a skip needs a day the forecast covers (its rule band is stored on
@@ -182,6 +222,10 @@ export function laundryPlannerCheck(
   return (output) => {
     if (output.status !== "ok" || output.days === undefined) {
       return undefined;
+    }
+    const unexplained = unexplainedDisagreement(input, output);
+    if (unexplained !== undefined) {
+      return unexplained;
     }
     for (const entry of output.days) {
       const day = input.days.find((candidate) => candidate.key === entry.day);

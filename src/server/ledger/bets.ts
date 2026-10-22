@@ -39,6 +39,10 @@ export function placeBet(
   if (card.kind !== "weather") {
     throw new HttpError(409, "No bet on this card");
   }
+  if (card.chore_type === LAUNDRY_PLAN && !deps.flags.laundryPlanner) {
+    // The laundry planner is off: a leftover planner card takes no bet (REQ-029).
+    throw new HttpError(409, "No bet on this card");
+  }
   if (card.chore_type === LAUNDRY_PLAN && kind === "do_it") {
     // Washing today is the planner's Wash today advice, followed from the card (AC-021.3), and
     // never a decision that is scored against the weather.

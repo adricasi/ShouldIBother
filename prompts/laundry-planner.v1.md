@@ -32,7 +32,11 @@ Steps:
    - "best_day": "day_0" to "day_3", for "wash_today" and "skip_today" only.
    - "days": exactly four entries, one for each of "day_0" to "day_3", each with its "score" band.
    - "reason": one plain sentence a household member understands, at most 140 characters, with the
-     numbers that matter (for example, "Thursday has light wind and sun; today is damp").
+     numbers that matter (for example, "Thursday has light wind and sun; today is damp"). Never
+     write a percentage: the app shows the odds.
+   - "disagreement_reason": required for "skip_today" when your score for "best_day" is two or more
+     bands away from that day's "rule_band" (bands in order: very_unlikely, unlikely, toss_up,
+     likely, very_likely). Say what you see that the rule does not, in one sentence.
 
 "answers_so_far" in the data are earlier yes/no answers from the person; use them.
 
