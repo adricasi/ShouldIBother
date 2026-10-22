@@ -16,19 +16,20 @@ import { WeatherUnavailableError } from "../weather/client.js";
 
 import { ruleBandOrFallback, ruleQuoteAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
+import { cardPhotoView, currentObservations } from "./photo-view.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
 
-const FORECAST_HOURS = 48;
+export const FORECAST_HOURS = 48;
 /** The same look-back the card creation uses, so the rule windows are covered (T-005). */
-const FORECAST_PAST_HOURS = 24;
+export const FORECAST_PAST_HOURS = 24;
 
 /** Stored on the card when the failure is not one of the runner's. */
 type CardFailure = JobFailure | "weather";
 
 /** The forecast hours from the current hour on, at most `hoursAhead` (what `get_forecast` serves). */
-function forecastFrom(
+export function forecastFrom(
   hours: readonly ForecastHour[],
   nowMs: number,
   hoursAhead: number,
@@ -36,7 +37,7 @@ function forecastFrom(
   return hours.filter((hour) => hour.startsAt + HOUR_MS > nowMs).slice(0, hoursAhead);
 }
 
-function parseAnswers(text: string): QuestionAnswer[] {
+export function parseAnswers(text: string): QuestionAnswer[] {
   try {
     const value: unknown = JSON.parse(text);
     if (!Array.isArray(value)) {
@@ -53,7 +54,7 @@ function parseAnswers(text: string): QuestionAnswer[] {
   }
 }
 
-function hasActiveBet(deps: LedgerDeps, cardId: number): boolean {
+export function hasActiveBet(deps: LedgerDeps, cardId: number): boolean {
   return (
     deps.db
       .prepare<[number], { n: number }>(
@@ -102,6 +103,7 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
     return;
   }
 
+  const seen = currentObservations(deps.db, cardId);
   // The job's 45 s deadline starts here, before the forecast is fetched.
   const enqueuedAt = deps.now();
   const nowMs = enqueuedAt;
@@ -133,6 +135,8 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
     readForecast: (hoursAhead) => Promise.resolve(forecastFrom(hours, nowMs, hoursAhead)),
     cardId,
     enqueuedAt,
+    // A re-run (Retry, a tap on Gemma's question) still reads the card's photo (REQ-005).
+    ...(seen === undefined ? {} : { observations: seen.observations, photoId: seen.photoId }),
   };
   const result = await runBookmaker(deps.gemma, input);
   if (!result.ok) {
@@ -186,12 +190,29 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
           .run(cardId, rule.band, oddsOfBand(table, rule.band), rule.reason, settleAt, createdAt);
       }
     }
+    // The photo may have been deleted while Gemma worked: then the quote is made without it.
+    const photoId =
+      seen !== undefined &&
+      deps.db.prepare("SELECT 1 FROM photos WHERE id = ?").get(seen.photoId) !== undefined
+        ? seen.photoId
+        : null;
     deps.db
       .prepare(
-        `INSERT INTO quotes (card_id, source, band, odds, with_photo, reason, settle_at, decision_id, created_at)
-         VALUES (?, 'gemma', ?, ?, 0, ?, ?, ?, ?)`,
+        `INSERT INTO quotes (card_id, source, band, odds, with_photo, photo_id, reason, settle_at,
+           decision_id, created_at)
+         VALUES (?, 'gemma', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(cardId, band, oddsOfBand(table, band), reason, settleAt, result.decisionId, createdAt);
+      .run(
+        cardId,
+        band,
+        oddsOfBand(table, band),
+        photoId === null ? 0 : 1,
+        photoId,
+        reason,
+        settleAt,
+        result.decisionId,
+        createdAt,
+      );
     deps.db
       .prepare(
         `UPDATE cards SET gemma_state = 'answered', gemma_failure = NULL, gemma_question = NULL
@@ -236,7 +257,8 @@ function requireCard(deps: LedgerDeps, cardId: number): CardRow {
 
 function viewOf(deps: LedgerDeps, cardId: number): CardView {
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId)!;
-  return cardView(card, latestQuote(deps, cardId), bandTable(deps.rules));
+  const table = bandTable(deps.rules);
+  return cardView(card, latestQuote(deps, cardId), table, cardPhotoView(deps.db, card, table));
 }
 
 /**

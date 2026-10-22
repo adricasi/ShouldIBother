@@ -16,6 +16,9 @@ export interface CardRow {
   gemma_question: string | null;
   /** JSON list of `{question, yes}`: what Gemma asked and the taps that answered. */
   gemma_answers: string;
+  /** Where the before photo stands with the inspector (migration 0006); null without a photo. */
+  photo_state: "inspecting" | "seen" | "unsure" | "failed" | null;
+  photo_failure: string | null;
 }
 
 export interface QuoteRow {
@@ -25,6 +28,7 @@ export interface QuoteRow {
   band: Band;
   odds: number;
   with_photo: number;
+  photo_id: string | null;
   reason: string;
   settle_at: number;
   decision_id: number | null;

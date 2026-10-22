@@ -1,3 +1,4 @@
+import type { Band } from "../../domain/bands.js";
 import { canUndo, SETTLING_STATUSES, type BetStatus } from "../../domain/bet-state.js";
 import { UNDO_WINDOW_MS } from "../../domain/chores.js";
 import { bandTable } from "../../domain/rules/index.js";
@@ -6,6 +7,7 @@ import { HttpError } from "../problem.js";
 
 import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
+import { currentPhoto } from "./photo-view.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
 
@@ -78,6 +80,17 @@ export function placeBet(
         ? decision.model
         : `${decision.model}@${decision.model_digest}`;
 
+  // AC-005.5: a bet on a card with a photo also stores the band without it, for the photo
+  // ablation. It is written here, in the INSERT, because migration 0003 makes it write-once.
+  const bandWithoutPhoto =
+    currentPhoto(deps.db, cardId) === undefined
+      ? null
+      : (deps.db
+          .prepare<[number], { band: Band }>(
+            "SELECT band FROM quotes WHERE card_id = ? AND with_photo = 0 ORDER BY id DESC LIMIT 1",
+          )
+          .get(cardId)?.band ?? null);
+
   const place = deps.db.transaction((): BetRow => {
     const existing = deps.db
       .prepare<[number], { n: number }>(
@@ -91,8 +104,9 @@ export function placeBet(
       deps.db
         .prepare(
           `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, gemma_band, rule_band,
-             model_version, prompt_version, placed_at, undo_until, settle_at, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             band_without_photo, model_version, prompt_version, placed_at, undo_until, settle_at,
+             status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
         )
         .run(
           cardId,
@@ -103,6 +117,7 @@ export function placeBet(
           quote.reason,
           quote.source === "gemma" ? quote.band : null,
           ruleQuote.band,
+          bandWithoutPhoto,
           modelVersion,
           decision?.prompt_version ?? null,
           now,

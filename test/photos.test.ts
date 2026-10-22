@@ -94,6 +94,10 @@ describe("photo store", () => {
     );
     expect(png.statusCode).toBe(201);
     expect(png.json<Uploaded>().photo).toMatchObject({ width: 300, height: 200 });
+    await harness.idle();
+    expect((await sharp(join(harness.photos.dir, photoFiles()[0]!)).metadata()).format).toBe(
+      "jpeg",
+    );
     const webp = await uploadPhoto(
       harness,
       cardId,
@@ -111,17 +115,19 @@ describe("photo store", () => {
     await setup();
     const cardId = await newCard();
     const first = await uploadPhoto(harness, cardId, await syntheticPhoto());
-    const second = await uploadPhoto(harness, cardId, await syntheticPhoto());
-    const ids = [first, second].map((r) => r.json<Uploaded>().photo.id);
-    expect(ids[0]).not.toBe(ids[1]);
-    for (const id of ids) {
-      expect(id).toMatch(PHOTO_ID);
-    }
-    expect(photoFiles().sort()).toEqual(ids.map((id) => `${id}.jpg`).sort());
+    const { id } = first.json<Uploaded>().photo;
+    expect(id).toMatch(PHOTO_ID);
+    expect(photoFiles()).toEqual([`${id}.jpg`]);
     expect(statSync(harness.photos.dir).mode & 0o777).toBe(0o700);
-    for (const file of photoFiles()) {
-      expect(statSync(join(harness.photos.dir, file)).mode & 0o777).toBe(0o600);
-    }
+    expect(statSync(join(harness.photos.dir, `${id}.jpg`)).mode & 0o777).toBe(0o600);
+    await harness.idle();
+    // A second photo replaces the first: its file and rows are gone, the name is new.
+    const second = await uploadPhoto(harness, cardId, await syntheticPhoto());
+    const next = second.json<Uploaded>().photo.id;
+    expect(next).toMatch(PHOTO_ID);
+    expect(next).not.toBe(id);
+    expect(photoFiles()).toEqual([`${next}.jpg`]);
+    expect(tableCount("photos")).toBe(1);
   });
 
   it("AC-005.6: a non-image gets 415 with the message and the card, quotes and folder are unchanged", async () => {

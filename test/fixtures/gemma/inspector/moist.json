@@ -1,0 +1,11 @@
+{
+  "description": "Hand-written synthetic inspector answer: soil clearly moist and the pots are covered.",
+  "content": {
+    "status": "ok",
+    "observations": [
+      { "name": "item", "value": "herb pots" },
+      { "name": "soil_dryness", "value": "moist" },
+      { "name": "cover", "value": "covered" }
+    ]
+  }
+}

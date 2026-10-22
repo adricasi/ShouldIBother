@@ -55,6 +55,7 @@ async function plantPhotoWithDerivatives(tag: string): Promise<Planted> {
   await harness.idle();
   const upload = await uploadPhoto(harness, card.id, await syntheticPhoto());
   const photoId = upload.json<{ photo: { id: string } }>().photo.id;
+  await harness.idle();
   const markers = [`INSPECTOR-INPUT-${tag}`, `INSPECTOR-OUTPUT-${tag}`, `QUOTE-REASON-${tag}`];
   const decision = harness.db.prepare(
     `INSERT INTO gemma_decisions (job, card_id, photo_id, model, prompt_version, input_summary,
@@ -120,7 +121,40 @@ describe("delete a photo (AC-015.2)", () => {
     }
     expect(existsSync(join(harness.photos.dir, `${kept.photoId}.jpg`))).toBe(true);
     expect(count("photos")).toBe(1);
-    expect(count("gemma_decisions WHERE photo_id IS NOT NULL")).toBe(2);
+    expect(count(`gemma_decisions WHERE photo_id = '${kept.photoId}'`)).toBeGreaterThanOrEqual(3);
+    expect(count(`gemma_decisions WHERE photo_id = '${doomed.photoId}'`)).toBe(0);
+  });
+
+  it("AC-015.2: after a real inspection, deleting the photo erases what Gemma saw from the database file", async () => {
+    const dbPath = await setup();
+    harness.model.setScenario("bookmaker", "ok");
+    const card = (await harness.post("/api/cards/quick", { chore_type: "plants" })).json<{
+      id: number;
+    }>();
+    await harness.idle();
+    const upload = await uploadPhoto(harness, card.id, await syntheticPhoto());
+    const photoId = upload.json<{ photo: { id: string } }>().photo.id;
+    await harness.idle();
+    // The inspector's observation and the bookmaker run that read it are on disk...
+    harness.db.pragma("wal_checkpoint(TRUNCATE)");
+    expect(contains(databaseBytes(dbPath), "tomato pots")).toBe(true);
+    expect(contains(databaseBytes(dbPath), "photo observations")).toBe(true);
+    const withPhoto = harness.db
+      .prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM quotes WHERE with_photo = 1")
+      .get()!;
+    expect(withPhoto.n).toBe(1);
+
+    expect((await harness.delete(`/api/photos/${photoId}`)).statusCode).toBe(204);
+
+    // ...and gone after the delete: the observation, the photo's decisions and its quote.
+    const bytes = databaseBytes(dbPath);
+    expect(contains(bytes, "tomato pots")).toBe(false);
+    expect(contains(bytes, "photo observations")).toBe(false);
+    expect(contains(bytes, photoId)).toBe(false);
+    expect(count("gemma_decisions WHERE job = 'inspector'")).toBe(0);
+    expect(count("quotes WHERE with_photo = 1")).toBe(0);
+    const view = (await harness.get(`/api/cards/${card.id}`)).json<{ photo: unknown }>();
+    expect(view.photo).toBeNull();
   });
 
   it("AC-015.2: the card falls back to the odds it had without the photo", async () => {

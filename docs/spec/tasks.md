@@ -110,7 +110,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: job runner (prompt template, zod schema → JSON schema, validate, retry once with the error, 30 s per call and 45 s per job, tool loop ≤ 2 calls, tool-use enforcement); `prompts/listener.v1.md`, `prompts/bookmaker.v1.md`; `gemma_decisions` logging; typed capture → cards; provisional rule odds → Gemma odds swap; "unsure" question as tap answers; Gemma offline/timeout label + Retry; Gemma status on Today; odds with plain words.
   - Done when: integration tests on fixtures for AC-002.1–AC-002.5, AC-003.1–AC-003.6, AC-004.2, AC-004.3, AC-013.1–AC-013.5, AC-028.2, including invalid JSON, no tool call, ≥ 2-band disagreement without explanation, and timeout fixtures.
 
-- [ ] T-007: Photos and the inspector
+- [x] T-007: Photos and the inspector
   - Who / when: Agent W1 · Thu night (branches from `main` after the Thu PM merges); merged Fri PM
   - Requirements: REQ-005 (incl. AC-005.6), REQ-015 (AC-015.1, AC-015.2), REQ-028 (AC-028.1); NFR-002
   - Depends on: T-004, T-006

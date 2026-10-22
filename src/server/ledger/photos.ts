@@ -78,23 +78,55 @@ export async function addBeforePhoto(
       "A photo can only sharpen odds before the bet.",
     );
   }
+  if (card.photo_state === "inspecting") {
+    throw new HttpError(
+      409,
+      "Gemma is still looking at the first photo",
+      "Wait a moment, then send the next one.",
+    );
+  }
+  if (card.gemma_state === "thinking") {
+    // The first odds would otherwise land after the photo's and hide them.
+    throw new HttpError(
+      409,
+      "Gemma is still setting the odds",
+      "Add the photo in a moment, once the odds are in.",
+    );
+  }
   let stored;
   try {
     stored = await deps.photos.save(bytes);
   } catch (error) {
     throw error instanceof UnsupportedPhotoError ? unsupportedPhoto() : error;
   }
+  // A new photo replaces the card's earlier one, with everything derived from it, so the odds
+  // before the new photo are the odds without any photo.
+  const replaced = deps.db
+    .prepare<[number], PhotoRow>("SELECT * FROM photos WHERE card_id = ? AND role = 'before'")
+    .all(cardId);
   try {
-    deps.db
-      .prepare(
-        `INSERT INTO photos (id, card_id, bet_id, role, file, received_at, width, height)
-         VALUES (?, ?, NULL, 'before', ?, ?, ?, ?)`,
-      )
-      .run(stored.id, cardId, stored.file, deps.now(), stored.width, stored.height);
+    deps.db.transaction(() => {
+      removePhotoRows(
+        deps.db,
+        replaced.map((old) => old.id),
+      );
+      deps.db
+        .prepare(
+          `INSERT INTO photos (id, card_id, bet_id, role, file, received_at, width, height)
+           VALUES (?, ?, NULL, 'before', ?, ?, ?, ?)`,
+        )
+        .run(stored.id, cardId, stored.file, deps.now(), stored.width, stored.height);
+    })();
   } catch (error) {
     // No row: do not leave a file nothing points to.
     deps.photos.remove(stored.file);
     throw error;
+  }
+  for (const old of replaced) {
+    deps.photos.remove(old.file);
+  }
+  if (replaced.length > 0) {
+    checkpointAfterDelete(deps.db);
   }
   const photo = deps.db
     .prepare<[string], PhotoRow>("SELECT * FROM photos WHERE id = ?")
@@ -133,10 +165,23 @@ export function deletePhoto(deps: Pick<LedgerDeps, "db" | "photos">, id: string)
   const photo = getPhotoRow(deps.db, id);
   deps.photos.remove(photo.file);
   deps.db.transaction(() => {
-    deleteDerivedOfPhotos(deps.db, [photo.id]);
-    deps.db.prepare("DELETE FROM photos WHERE id = ?").run(photo.id);
+    removePhotoRows(deps.db, [photo.id]);
   })();
   checkpointAfterDelete(deps.db);
+}
+
+/** Rows of photos, their quotes and their decisions; the card forgets its photo state. */
+function removePhotoRows(db: Db, photoIds: readonly string[]): void {
+  if (photoIds.length === 0) {
+    return;
+  }
+  deleteDerivedOfPhotos(db, photoIds);
+  const marks = photoIds.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE cards SET photo_state = NULL, photo_failure = NULL
+     WHERE id IN (SELECT card_id FROM photos WHERE id IN (${marks}))`,
+  ).run(...photoIds);
+  db.prepare(`DELETE FROM photos WHERE id IN (${marks})`).run(...photoIds);
 }
 
 function deleteDerivedOfPhotos(db: Db, photoIds: readonly string[]): void {

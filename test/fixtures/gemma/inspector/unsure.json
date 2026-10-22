@@ -1,0 +1,7 @@
+{
+  "description": "Hand-written synthetic inspector answer: the photo is too dark to tell, asks a yes/no question.",
+  "content": {
+    "status": "unsure",
+    "question": "Is the soil visible in the photo?"
+  }
+}

@@ -16,6 +16,7 @@ import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
 import { answerCard, recoverThinkingCards, retryCard } from "./ledger/gemma-cards.js";
+import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
 import { photoRoutes } from "./photos/routes.js";
@@ -127,6 +128,7 @@ export function createCore(deps: CoreDeps): Core {
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
+  recoverInspections(ledger);
 
   const plugin: FastifyPluginAsync = async (app) => {
     // Household data: never cached by the browser or a proxy (a route may set a stricter value).
@@ -212,7 +214,10 @@ export function createCore(deps: CoreDeps): Core {
     await app.register(
       photoRoutes({
         deps: ledger,
-        afterStored: ({ cardId, photo }) => ({ photo, card: getCardView(ledger, cardId) }),
+        afterStored: ({ cardId, photo }) => {
+          startInspection(ledger, cardId, photo.id);
+          return { photo, card: getCardView(ledger, cardId) };
+        },
       }),
     );
   };

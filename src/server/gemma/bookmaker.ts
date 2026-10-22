@@ -87,6 +87,8 @@ export interface BookmakerInput {
   /** What the inspector saw in the photo (T-007). */
   readonly observations?: readonly { readonly name: string; readonly value: string }[];
   readonly enqueuedAt?: number;
+  /** The photo whose observations are in the input: the decision is filed under it (AC-015.2). */
+  readonly photoId?: string;
 }
 
 function localTime(epochMs: number): string {
@@ -174,7 +176,10 @@ export function runBookmaker(
       injectedHoursAhead: Math.ceil((bounds.latestMs - input.nowMs) / HOUR_MS),
     }),
     cardId: input.cardId,
-    inputSummary: `${input.chore} card, rule band ${input.ruleBand}, ${input.answers.length} answers`,
+    ...(input.photoId === undefined ? {} : { photoId: input.photoId }),
+    inputSummary: `${input.chore} card, rule band ${input.ruleBand}, ${input.answers.length} answers${
+      input.photoId === undefined ? "" : `, ${input.observations?.length ?? 0} photo observations`
+    }`,
     ...(input.enqueuedAt === undefined ? {} : { enqueuedAt: input.enqueuedAt }),
   });
 }

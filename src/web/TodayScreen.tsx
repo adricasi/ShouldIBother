@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import type { Card, Settled, Today } from "./api.js";
 import { DueSlip, VERDICT_TITLES, WaitingLine } from "./BetParts.js";
+import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
 import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
@@ -34,6 +35,10 @@ export interface TodayScreenProps {
   readonly onDoIt: (cardId: number, quoteId: number) => void;
   readonly onUndo: (betId: number) => void;
   readonly onSettle: (betId: number, answerId: string) => void;
+  /** Add or replace a card's before photo (REQ-005); absent in screens that cannot upload. */
+  readonly onPhoto?: (cardId: number, file: File) => void;
+  /** Delete a photo and what was derived from it (AC-015.2). */
+  readonly onDeletePhoto?: (photoId: string) => void;
 }
 
 function OddsTile({ odds, bandName }: { odds: number; bandName: string }) {
@@ -176,6 +181,7 @@ function CardSlip({
   onDoIt,
   onRetry,
   onAnswer,
+  photoActions,
 }: {
   card: Card;
   busy: boolean;
@@ -183,6 +189,7 @@ function CardSlip({
   onDoIt: (cardId: number, quoteId: number) => void;
   onRetry: (cardId: number) => void;
   onAnswer: (cardId: number, yes: boolean) => void;
+  photoActions: PhotoActions | undefined;
 }) {
   const { quote } = card;
   if (card.kind === "alert") {
@@ -219,6 +226,7 @@ function CardSlip({
       <p className="label-tag">{quote.label}</p>
       <p>{quote.reason}</p>
       <GemmaBlock card={card} busy={busy} onRetry={onRetry} onAnswer={onAnswer} />
+      <PhotoBlock card={card} busy={busy} actions={photoActions} />
       <p className="meta">Settles {formatSettleTime(quote.settle_at)}</p>
       <p className="payouts">
         <span className="win">Win {formatPoints(quote.payouts.win_with_tap)}</span>
@@ -274,6 +282,10 @@ function ResultSlip({ result }: { result: Settled }) {
 
 export function TodayScreen(props: TodayScreenProps) {
   const { today, busy, notice, results } = props;
+  const photoActions: PhotoActions | undefined =
+    props.onPhoto === undefined || props.onDeletePhoto === undefined
+      ? undefined
+      : { onPhoto: props.onPhoto, onDeletePhoto: props.onDeletePhoto };
   const settledResults = Object.values(results);
   return (
     <>
@@ -350,6 +362,7 @@ export function TodayScreen(props: TodayScreenProps) {
                     onDoIt={props.onDoIt}
                     onRetry={props.onRetry}
                     onAnswer={props.onAnswer}
+                    photoActions={photoActions}
                   />
                 ))
               )}
