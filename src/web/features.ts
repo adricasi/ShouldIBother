@@ -21,6 +21,7 @@ export interface FlaggedEntry {
  */
 export const FLAGGED_ENTRIES: readonly FlaggedEntry[] = [
   { flag: "score", id: "score", label: "Score", icon: "trophy" },
+  { flag: "onboarding", id: "onboarding", label: "Household", icon: "plant" },
 ];
 
 /** The flags as `/api/today` reports them: every flag name with its boolean. */

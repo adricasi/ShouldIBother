@@ -51,7 +51,11 @@ export interface Location {
 export interface OpenMeteoClientOptions {
   readonly db: Db;
   readonly now: () => number;
-  readonly location: Location;
+  /**
+   * Where the household is. A function is read at every request, so a location chosen in
+   * onboarding (T-025) applies without a restart; the cache keys carry the coordinates.
+   */
+  readonly location: Location | (() => Location);
   /** The HTTP layer; tests inject a transport that reaches a fake server. */
   readonly http?: OpenMeteoHttp;
   readonly fetch?: typeof fetch;
@@ -77,8 +81,7 @@ export interface OpenMeteoClientOptions {
 export class OpenMeteoWeatherClient implements WeatherClient {
   private readonly db: Db;
   private readonly now: () => number;
-  private readonly latitude: number;
-  private readonly longitude: number;
+  private readonly locate: () => Location;
   private readonly requestSunset: boolean;
   private readonly forecastDays: number;
   private readonly http: OpenMeteoHttp;
@@ -90,8 +93,8 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   constructor(options: OpenMeteoClientOptions) {
     this.db = options.db;
     this.now = options.now;
-    this.latitude = roundCoordinate(options.location.latitude);
-    this.longitude = roundCoordinate(options.location.longitude);
+    const { location } = options;
+    this.locate = typeof location === "function" ? location : () => location;
     this.requestSunset = options.requestSunset ?? false;
     this.forecastDays = options.forecastDays ?? FORECAST_DAYS;
     this.cache = new WeatherCache(options.db);
@@ -107,6 +110,15 @@ export class OpenMeteoWeatherClient implements WeatherClient {
       });
   }
 
+  private get latitude(): number {
+    return roundCoordinate(this.locate().latitude);
+  }
+
+  private get longitude(): number {
+    return roundCoordinate(this.locate().longitude);
+  }
+
+  /** A cache key and the request URL built from it are made in the same synchronous step. */
   private get coordinates(): string {
     return `${this.latitude}|${this.longitude}`;
   }

@@ -1,0 +1,52 @@
+/* The household form (REQ-024): 44 px targets, one column at phone width. */
+.onboarding {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.onboarding fieldset {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-hair) solid var(--color-ink);
+  border-radius: var(--radius-sm);
+  background: var(--color-card);
+}
+
+.onboarding legend {
+  font-weight: 700;
+  padding: 0 var(--space-2);
+}
+
+.onboarding .choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+}
+
+.onboarding .choice input {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: none;
+  margin: 0;
+  accent-color: var(--color-leaf);
+}
+
+.onboarding .coordinates {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.onboarding .coordinates input {
+  width: 100%;
+  min-height: var(--tap-min);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
