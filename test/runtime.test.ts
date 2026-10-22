@@ -66,7 +66,12 @@ describe("runtime wiring", () => {
     const port = await freePort();
     const output: string[] = [];
     server = await startServer(
-      { SIB_DATA_DIR: join(dir, "data"), SIB_PORT: String(port), SIB_LAN_ADDRESS: "127.0.0.2" },
+      {
+        SIB_DATA_DIR: join(dir, "data"),
+        SIB_PORT: String(port),
+        SIB_LAN_ADDRESS: "127.0.0.2",
+        SIB_FAKE_MODEL: "1",
+      },
       { output: (text) => output.push(text), configDir },
     );
     const text = output.join("\n");
@@ -103,7 +108,7 @@ describe("runtime wiring", () => {
     try {
       await expect(
         startServer(
-          { SIB_DATA_DIR: join(dir, "data"), SIB_PORT: String(port) },
+          { SIB_DATA_DIR: join(dir, "data"), SIB_PORT: String(port), SIB_FAKE_MODEL: "1" },
           { output: () => undefined, configDir },
         ),
       ).rejects.toThrow();
@@ -139,3 +144,63 @@ describe("loadRuntime port", () => {
     expect(() => statSync(join(dir, "never"))).toThrow();
   });
 });
+
+describe("the fake model never runs silently (SIB_FAKE_MODEL)", () => {
+  const baseEnv = (port: number) => ({
+    SIB_DATA_DIR: join(dir, "data"),
+    SIB_PORT: String(port),
+    SIB_FAKE_WEATHER: "1",
+  });
+
+  it("production mode with no model tag refuses to start and says how to set it", async () => {
+    await expect(
+      startServer(baseEnv(await freePort()), { output: () => undefined, configDir }),
+    ).rejects.toThrow(/config\/models\.json.*models\.e4b\.tag.*SIB_FAKE_MODEL=1/);
+  });
+
+  it("SIB_FAKE_MODEL=1 starts on the fake with a loud banner, and Today says so", async () => {
+    const output: string[] = [];
+    server = await startServer(
+      { ...baseEnv(await freePort()), SIB_FAKE_MODEL: "1" },
+      { output: (text) => output.push(text), configDir },
+    );
+    expect(output.join("\n")).toContain("!!! FAKE MODEL");
+    expect((await todayOf(server)).gemma).toMatchObject({ status: "online", detail: "fake model" });
+  });
+
+  it("Ollama down at start: the app starts on the Ollama client, Gemma shows offline, never the fake", async () => {
+    writeFileSync(
+      `${configDir}models.json`,
+      JSON.stringify({
+        models: { e4b: { tag: "gemma4:e4b" } },
+        ollama: { baseUrl: "http://127.0.0.1:9" },
+      }),
+    );
+    const output: string[] = [];
+    server = await startServer(baseEnv(await freePort()), {
+      output: (text) => output.push(text),
+      configDir,
+    });
+    const text = output.join("\n");
+    expect(text).not.toContain("FAKE MODEL");
+    expect(text).toContain("not usable yet");
+    expect((await todayOf(server)).gemma).toMatchObject({ status: "offline" });
+  });
+});
+
+async function todayOf(running: RunningServer): Promise<{ gemma: Record<string, unknown> }> {
+  const host = `127.0.0.1:${running.runtime.port}`;
+  const { token } = running.runtime.store.issuePairingToken();
+  const paired = await running.app.inject({
+    method: "GET",
+    url: `/pair?token=${token}`,
+    headers: { host },
+  });
+  const cookie = String(paired.headers["set-cookie"]).split(";")[0] ?? "";
+  const response = await running.app.inject({
+    method: "GET",
+    url: "/api/today",
+    headers: { host, cookie },
+  });
+  return response.json<{ gemma: Record<string, unknown> }>();
+}

@@ -66,7 +66,10 @@ export async function startServer(
     const fakes = createFakeServices(now);
     const household = loadHousehold();
     const modelsConfig = loadModelsConfig(`${configDir}models.json`);
-    const selection = await selectModel(modelsConfig, { fake: () => fakes.model });
+    const selection = await selectModel(modelsConfig, {
+      useFake: env["SIB_FAKE_MODEL"] === "1",
+      fake: () => fakes.model,
+    });
     modelNotice = selection.notice;
     const useFakeWeather = env["SIB_FAKE_WEATHER"] === "1";
     const weather: WeatherClient = useFakeWeather

@@ -333,7 +333,7 @@ describe("REQ-003: unsure, validation and tool use", () => {
     expect(model.calls.filter((call) => call.job === "bookmaker")).toHaveLength(3);
   });
 
-  it("allows two tool calls and refuses the third; a bad hours_ahead is answered with a message", async () => {
+  it("allows two tool calls and refuses the third with a message", async () => {
     const { h, model } = await setup();
     model.setScenario("bookmaker", "three-tool-calls");
     expect((await settledCard(h)).quote?.source).toBe("gemma");
@@ -344,13 +344,23 @@ describe("REQ-003: unsure, validation and tool use", () => {
       "<untrusted_data>\n{",
       "Too many tool call",
     ]);
+  });
 
+  it("AC-003.6: a bad hours_ahead is not a use of the tool: retried, then the answer counts as called", async () => {
+    const { h, model } = await setup();
     model.setScenario("bookmaker", "bad-tool-arguments");
     expect((await settledCard(h)).quote?.source).toBe("gemma");
-    const bad = model.calls.filter((call) => call.job === "bookmaker").at(-1);
-    expect(bad?.messages.find((message) => message.role === "tool")?.content).toContain(
-      "hours_ahead must be a whole number from 1 to 48",
-    );
+    expect(decisions(h)[0]).toMatchObject({ tool_mode: "called", retries: 1, valid: 1 });
+    expect(model.calls.filter((call) => call.job === "bookmaker")).toHaveLength(3);
+  });
+
+  it("AC-003.6: calls to a tool that does not exist end with the rule odds and a recorded miss", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "wrong-tool-name");
+    const after = await settledCard(h);
+    expect(after.quote?.source).toBe("rule");
+    expect(after.gemma).toMatchObject({ state: "offline", can_retry: true });
+    expect(decisions(h)[0]).toMatchObject({ tool_mode: "missed", valid: 0 });
   });
 
   it("injected-forecast fallback: the app makes the get_forecast call and records tool_mode = injected", async () => {

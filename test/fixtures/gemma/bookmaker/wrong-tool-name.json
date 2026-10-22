@@ -1,0 +1,23 @@
+{
+  "description": "Calls a tool that does not exist, twice (first attempt and retry).",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "delete_everything",
+          "arguments": {}
+        }
+      ],
+      "content": ""
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "delete_everything",
+          "arguments": {}
+        }
+      ],
+      "content": ""
+    }
+  ]
+}
