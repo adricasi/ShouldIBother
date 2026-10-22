@@ -18,6 +18,7 @@ import {
 } from "../../domain/weather-digest.js";
 import { HttpError } from "../problem.js";
 
+import { appealPaysHalf, canAppeal } from "./appeal-state.js";
 import type { LedgerDeps } from "./deps.js";
 import { pointsTotal } from "./points.js";
 import type { BetRow, CardRow, CashOutRow, ProgressRow, SettlementRow } from "./rows.js";
@@ -81,9 +82,38 @@ export interface Receipt {
     readonly basis: string;
   } | null;
   readonly settled_at: string;
+  /**
+   * Present once the bet was appealed (REQ-023): the first verdict this one replaced. The receipt
+   * above is the second, final verdict.
+   */
+  readonly appeal?: {
+    readonly first: {
+      readonly verdict: Verdict;
+      readonly verdict_title: string;
+      readonly points: number;
+      /** The first verdict's reason; null once its decision was deleted (AC-015.2). */
+      readonly reason: string | null;
+      readonly settled_at: string;
+    };
+    /** Whether the second verdict differs from the first (AC-023.3). */
+    readonly changed: boolean;
+  };
+  /**
+   * Whether an appeal is offered on this bet (AC-023.2). Present only while the `appeals` flag is
+   * on, so with it off the receipt is what it was before.
+   */
+  readonly can_appeal?: boolean;
+  /**
+   * With `can_appeal`: true when an appeal now would pay at most half points, because it comes 24 h
+   * or more after the settle time (AC-008.8). Present only while the `appeals` flag is on.
+   */
+  readonly appeal_pays_half?: boolean;
 }
 
-function readOf(deps: Pick<LedgerDeps, "db">, decisionId: number | null): Receipt["gemma_read"] {
+export function readOf(
+  deps: Pick<LedgerDeps, "db">,
+  decisionId: number | null,
+): Receipt["gemma_read"] {
   if (decisionId === null) {
     return null;
   }
@@ -107,8 +137,35 @@ function readOf(deps: Pick<LedgerDeps, "db">, decisionId: number | null): Receip
   }
 }
 
+/** The appeal part of a receipt: the first verdict, when `settlement` is the appeal's (REQ-023). */
+function appealOf(
+  deps: Pick<LedgerDeps, "db">,
+  settlement: SettlementRow,
+): Receipt["appeal"] | undefined {
+  if (settlement.appeal_of === null) {
+    return undefined;
+  }
+  const first = deps.db
+    .prepare<[number], SettlementRow>("SELECT * FROM settlements WHERE id = ?")
+    .get(settlement.appeal_of);
+  if (first === undefined) {
+    return undefined;
+  }
+  const verdict = first.verdict as Verdict;
+  return {
+    first: {
+      verdict,
+      verdict_title: VERDICT_TITLES[verdict],
+      points: first.points,
+      reason: readOf(deps, first.decision_id)?.reason ?? null,
+      settled_at: new Date(first.settled_at).toISOString(),
+    },
+    changed: first.verdict !== settlement.verdict,
+  };
+}
+
 export function receiptOf(
-  deps: Pick<LedgerDeps, "db" | "rules">,
+  deps: Pick<LedgerDeps, "db" | "rules" | "flags" | "now">,
   bet: BetRow,
   card: CardRow,
   settlement: SettlementRow,
@@ -123,6 +180,7 @@ export function receiptOf(
     settlement.evidence === "tap"
       ? (chore?.tapAnswers.find((answer) => answer.id === progress?.answer_id)?.label ?? null)
       : null;
+  const appeal = appealOf(deps, settlement);
   return {
     bet_id: bet.id,
     title: chore?.title ?? card.chore_type,
@@ -170,6 +228,10 @@ export function receiptOf(
             basis: saved.basis,
           },
     settled_at: new Date(settlement.settled_at).toISOString(),
+    ...(appeal === undefined ? {} : { appeal }),
+    ...(deps.flags.appeals
+      ? { can_appeal: canAppeal(deps.db, bet), appeal_pays_half: appealPaysHalf(bet, deps.now()) }
+      : {}),
   };
 }
 
@@ -210,7 +272,10 @@ export function cashOutReceiptOf(
 }
 
 /** The receipt of a settled or cashed-out bet; 404 for an unknown bet, 409 while it is open. */
-export function getReceipt(deps: Pick<LedgerDeps, "db" | "rules">, betId: number): Receipt {
+export function getReceipt(
+  deps: Pick<LedgerDeps, "db" | "rules" | "flags" | "now">,
+  betId: number,
+): Receipt {
   const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);
   if (bet === undefined) {
     throw new HttpError(404, "Bet not found");

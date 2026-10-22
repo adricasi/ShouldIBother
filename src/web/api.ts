@@ -195,6 +195,23 @@ export const receiptSchema = z.object({
     })
     .nullable(),
   settled_at: z.string(),
+  /** Present once the bet was appealed: the first verdict the final one replaced (REQ-023). */
+  appeal: z
+    .object({
+      first: z.object({
+        verdict: z.string(),
+        verdict_title: z.string(),
+        points: z.number(),
+        reason: z.string().nullable(),
+        settled_at: z.string(),
+      }),
+      changed: z.boolean(),
+    })
+    .optional(),
+  /** Whether an appeal is offered on this bet; present only while `appeals` is on (AC-023.2). */
+  can_appeal: z.boolean().optional(),
+  /** With `can_appeal`: an appeal now pays at most half points, being 24 h or more late (AC-008.8). */
+  appeal_pays_half: z.boolean().optional(),
 });
 
 /** The rescue alert and cash-out offer of a waiting bet; present only while `rescue` is on (REQ-022). */
@@ -475,6 +492,17 @@ export const cashOutBet = (betId: number): Promise<{ receipt: Receipt }> =>
     z.object({ state: z.literal("cashed_out"), receipt: receiptSchema }),
     { method: "POST", body: {} },
   );
+
+/** One appeal per settled bet, with a new photo; the second verdict is final (REQ-023). */
+export const appealBet = (betId: number, file: File): Promise<{ receipt: Receipt }> => {
+  const form = new FormData();
+  form.append("photo", file);
+  return request(
+    `/api/bets/${betId}/appeal`,
+    z.object({ state: z.literal("settled"), receipt: receiptSchema }),
+    { method: "POST", form },
+  );
+};
 
 /** One tap (AC-008.3). */
 export const settleBet = (betId: number, answer: string): Promise<SettleResult> =>

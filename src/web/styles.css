@@ -978,6 +978,20 @@ label.button.disabled {
   padding: var(--space-3);
 }
 
+.appeal-note,
+.appeal-action {
+  display: grid;
+  gap: var(--space-2);
+  border-top: var(--border-hair) dashed var(--color-line);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.appeal-note p,
+.appeal-action p {
+  margin: 0;
+}
+
 .week {
   border-block: var(--border-hair) dashed var(--color-line);
   padding-block: var(--space-3);

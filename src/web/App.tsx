@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   answerCard,
+  appealBet,
   answerPlanNeed,
   captureCards,
   createQuickCard,
@@ -27,6 +28,7 @@ import {
 } from "./api.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
+import { formatPoints } from "./format.js";
 import { createRefresher } from "./refresher.js";
 import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
@@ -87,6 +89,8 @@ export function App() {
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const [results, setResults] = useState<Record<number, Receipt>>({});
   const [busy, setBusy] = useState(false);
+  /** The bet whose appeal Gemma is deciding; the Slips line says so while it runs. */
+  const [appealingBetId, setAppealingBetId] = useState<number | undefined>(undefined);
   const todayNow = useServerNow(today?.now);
   const slipsNow = useServerNow(slips?.now);
 
@@ -224,6 +228,23 @@ export function App() {
     });
   };
 
+  const onAppeal = (betId: number, file: File): void => {
+    setAppealingBetId(betId);
+    void act(async () => {
+      try {
+        const { receipt } = await appealBet(betId, file);
+        return {
+          kind: "info" as const,
+          text: receipt.appeal?.changed
+            ? `Appeal decided: ${receipt.verdict_title}, ${formatPoints(receipt.points)} points. This verdict is final.`
+            : `Appeal decided: Gemma stands by ${receipt.verdict_title}. This verdict is final.`,
+        };
+      } finally {
+        setAppealingBetId(undefined);
+      }
+    });
+  };
+
   const reload = (): void => {
     void act(() => Promise.resolve(undefined));
   };
@@ -253,6 +274,8 @@ export function App() {
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
         {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
+        {...(today?.flags["appeals"] === true ? { onAppeal } : {})}
+        {...(appealingBetId === undefined ? {} : { appealingBetId })}
         onReload={reload}
       />
     );

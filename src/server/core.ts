@@ -16,6 +16,8 @@ import { JobRunner, type RunnerOptions } from "./gemma/runner.js";
 import { listDueBets, listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
+import { Appealer } from "./ledger/appeal.js";
+import { appealRoutes } from "./ledger/appeal-routes.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
 import {
   answerCard,
@@ -329,6 +331,10 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: with `score` off the route does not exist and a request gets a plain 404.
     if (deps.flags.score) {
       await app.register(scoreRoutes(ledger));
+    }
+    // Flagged: appeals (REQ-023) have no route while `appeals` is off.
+    if (deps.flags.appeals) {
+      await app.register(appealRoutes(new Appealer(ledger)));
     }
     // Flagged: the laundry planner (REQ-021) has no routes while `laundryPlanner` is off.
     if (deps.flags.laundryPlanner) {
