@@ -224,7 +224,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `sib export` of the live week; screenshots; 60–90 s video; fill the T-029 skeleton with numbers from `docs/results/`; photos checked by hand before publishing.
   - Done when: ≥ 8 settled live bets, ≥ 3 by photo, ≥ 2 chore types counted from the export (or the shortfall stated in the post); post published by Sat 24 Oct 23:00 Madrid.
 
-- [ ] T-029: Post skeleton
+- [x] T-029: Post skeleton
   - Who / when: Agent W2 · Fri AM (stacked on T-015); merged Fri PM
   - Requirements: G-1, G-4 (success metrics in product.md)
   - Depends on: —
