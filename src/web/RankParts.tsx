@@ -2,9 +2,9 @@ import type { Achievement, Rank } from "./api.js";
 import { formatPoints, formatSettleTime } from "./format.js";
 import { Icon } from "./ui/Icon.js";
 
-/** "1 point", "50 points". */
+/** "point" for one (plus or minus), "points" otherwise. */
 function points(count: number): string {
-  return `${count} ${count === 1 ? "point" : "points"}`;
+  return Math.abs(count) === 1 ? "point" : "points";
 }
 
 /**
@@ -26,8 +26,8 @@ export function RankHero({ rank, total }: { readonly rank: Rank; readonly total:
       </span>
       <p className="meta">
         {next === null
-          ? `${formatPoints(total)} pts. You are at the top rank.`
-          : `${formatPoints(total)} pts. ${points(next.points_to_go)} to go for ${next.name} (${next.min_points}).`}
+          ? `${formatPoints(total)} ${points(total)}. You are at the top rank.`
+          : `${formatPoints(total)} ${points(total)}. ${next.points_to_go} ${points(next.points_to_go)} to go for ${next.name} (${next.min_points}).`}
       </p>
     </section>
   );

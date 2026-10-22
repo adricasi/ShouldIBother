@@ -24,7 +24,7 @@ describe("AC-025.1: the rank hero on Score", () => {
     const html = screen(withRank);
     expect(html).toContain("Your rank");
     expect(html).toMatch(/<h2 id="rank-title"[^>]*>Koala<\/h2>/);
-    expect(html).toContain("+450 pts. 150 points to go for Three-toed sloth (600).");
+    expect(html).toContain("+450 points. 150 points to go for Three-toed sloth (600).");
   });
 
   it("AC-025.1: the progress bar is decorative and the words carry the figure", () => {
@@ -62,7 +62,7 @@ describe("AC-025.1: the rank hero on Score", () => {
       },
     });
     expect(html).toContain("Hyperactive squirrel");
-    expect(html).toContain("−40 pts. 240 points to go for Koala (200).");
+    expect(html).toContain("−40 points. 240 points to go for Koala (200).");
     expect(html).toContain("width:0%");
   });
 

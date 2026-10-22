@@ -9,6 +9,8 @@ import type { JobFailure, JobRunner } from "./runner.js";
 import { untrustedBlock } from "./untrusted.js";
 
 export const JUDGE_PROMPT = loadPrompt("judge", 2);
+/** The prompt of an appeal (REQ-023): the same job and schema, told that this is a second look. */
+export const APPEAL_PROMPT = loadPrompt("judge-appeal", 1);
 
 const DO_NOTHING_VERDICTS = ["win", "small_loss", "normal_loss", "harmful_loss"] as const;
 const DO_IT_VERDICTS = ["weather_would_have", "weather_would_not"] as const;
@@ -44,6 +46,14 @@ export interface JudgeFollowup {
   readonly yes: boolean;
 }
 
+/** The verdict an appeal disputes: what the first judgement said and how it knew (REQ-023). */
+export interface JudgeAppeal {
+  readonly firstVerdict: Verdict;
+  /** The first judgement's reason; null once its decision was deleted (AC-015.2). */
+  readonly firstReason: string | null;
+  readonly firstEvidence: JudgeEvidence["kind"];
+}
+
 export interface JudgeInput {
   readonly chore: BetChoreSpec;
   readonly kind: "do_nothing" | "do_it";
@@ -58,6 +68,8 @@ export interface JudgeInput {
   readonly cardId?: number;
   /** The after photo's id, so deleting the photo deletes this decision (AC-015.2). */
   readonly photoId?: string;
+  /** Set when the person appeals a settled bet with a new photo: the evidence is that photo. */
+  readonly appeal?: JudgeAppeal;
 }
 
 interface JudgeFacts {
@@ -118,6 +130,14 @@ function userMessage(input: JudgeInput): string {
       answer: followup.yes ? "yes" : "no",
     })),
     can_ask: input.canAsk,
+    appeal:
+      input.appeal === undefined
+        ? undefined
+        : {
+            first_verdict: input.appeal.firstVerdict,
+            first_reason: input.appeal.firstReason,
+            first_evidence: EVIDENCE_TEXT[input.appeal.firstEvidence],
+          },
   });
 }
 
@@ -129,7 +149,8 @@ function summary(input: JudgeInput): string {
       : evidence.kind === "photo"
         ? `photo${evidence.before === undefined ? "" : " with before"}`
         : "weather only";
-  return `${input.chore.judgeName} ${input.kind} at ${input.odds}%, ${how}, ${input.followups.length} follow-ups`;
+  const appeal = input.appeal === undefined ? "" : ` appeal of ${input.appeal.firstVerdict},`;
+  return `${input.chore.judgeName} ${input.kind} at ${input.odds}%,${appeal} ${how}, ${input.followups.length} follow-ups`;
 }
 
 function allowedVerdicts(kind: JudgeInput["kind"]): readonly Verdict[] {
@@ -152,7 +173,7 @@ export async function judgeBet(runner: JobRunner, input: JudgeInput): Promise<Ju
   const allowed = allowedVerdicts(input.kind);
   const result = await runner.run({
     job: "judge",
-    prompt: JUDGE_PROMPT,
+    prompt: input.appeal === undefined ? JUDGE_PROMPT : APPEAL_PROMPT,
     user: userMessage(input),
     ...(images === undefined ? {} : { images }),
     schema: judgeOutputSchema,

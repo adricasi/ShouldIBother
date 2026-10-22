@@ -3,7 +3,7 @@ import axe from "axe-core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { Bet, Card, Slips, Today } from "./api.js";
+import type { Bet, Card, Receipt, Slips, Today } from "./api.js";
 import { Nav } from "./Nav.js";
 import { ROUTE_TITLES, type Route } from "./route.js";
 import { ScoreScreen } from "./ScoreScreen.js";
@@ -286,6 +286,56 @@ describe("NFR-009: core screens have no axe violations (jsdom)", () => {
         },
       ],
     });
+    expect(await violationsOf(html, "slips")).toEqual([]);
+  });
+
+  it("Slips: a loss with the appeal offered, and an appealed bet with its first verdict (REQ-023)", async () => {
+    const appealed = {
+      first: {
+        verdict: "normal_loss",
+        verdict_title: "Loss",
+        points: -50,
+        reason: "The soil is dry.",
+        settled_at: "2026-10-23T06:05:00.000Z",
+      },
+      changed: true,
+    };
+    const settledBet = (id: number, receipt: Receipt, verdict: string, points: number) => ({
+      ...bet,
+      id,
+      status: "settled" as const,
+      result: { verdict, points, evidence: "photo", settled_at: "2026-10-23T06:05:00.000Z" },
+      receipt,
+    });
+    const html = renderToStaticMarkup(
+      <SlipsScreen
+        slips={{
+          ...emptySlips,
+          settled: [
+            settledBet(
+              10,
+              { ...lossReceipt, can_appeal: true, appeal_pays_half: true },
+              "normal_loss",
+              -50,
+            ),
+            settledBet(11, { ...winReceipt, can_appeal: false, appeal: appealed }, "win", 30),
+          ],
+        }}
+        flags={{ score: true, appeals: true }}
+        nowMs={NOW}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onUndo={() => undefined}
+        onAppeal={() => undefined}
+        appealingBetId={10}
+        onReload={() => undefined}
+      />,
+    );
+    expect(html).toContain("Appeal with a new photo");
+    expect(html).toContain("The second verdict is final.");
+    expect(html).toContain("Appeals now pay at most half points.");
+    expect(html).toContain("Gemma is re-judging…");
     expect(await violationsOf(html, "slips")).toEqual([]);
   });
 

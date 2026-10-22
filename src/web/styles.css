@@ -978,6 +978,20 @@ label.button.disabled {
   padding: var(--space-3);
 }
 
+.appeal-note,
+.appeal-action {
+  display: grid;
+  gap: var(--space-2);
+  border-top: var(--border-hair) dashed var(--color-line);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.appeal-note p,
+.appeal-action p {
+  margin: 0;
+}
+
 .week {
   border-block: var(--border-hair) dashed var(--color-line);
   padding-block: var(--space-3);
@@ -1162,6 +1176,12 @@ label.button.disabled {
   background: var(--color-leaf-soft);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
+}
+
+/* ink-3-text is 4.39:1 on leaf-soft; the hero's small text uses ink-2 (checked in web-styles.test.ts). */
+.rank-hero .eyebrow,
+.rank-hero .meta {
+  color: var(--color-ink-2);
 }
 
 .rank-name {

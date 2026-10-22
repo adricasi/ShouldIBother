@@ -90,6 +90,7 @@ describe("REQ-016: the heater bet (AC-016.3)", () => {
   });
 
   it.each([
+    [{ temperatureC: 10, dryProbabilityPct: 0 }, 0],
     [{ temperatureC: 14, dryProbabilityPct: 0 }, 1],
     [{ temperatureC: 16, dryProbabilityPct: 0 }, 2],
     [{ temperatureC: 22, dryProbabilityPct: 0 }, 4],
@@ -100,6 +101,13 @@ describe("REQ-016: the heater bet (AC-016.3)", () => {
       expect((await heaterCard(h)).quote?.band).toBe(band);
     },
   );
+
+  it("AC-016.3: 20 °C needs 5 h of sun for the top band; with 2 h of sun it is 'likely' (band 3)", async () => {
+    const h = await setup({
+      weatherProfile: { temperatureC: 20, dryProbabilityPct: 0, sunshineSeconds: 600 },
+    });
+    expect((await heaterCard(h)).quote).toMatchObject({ band: 3, odds: 70 });
+  });
 
   it("AC-016.3: a one-tap comfort answer settles the bet: Comfortable wins, through a Gemma verdict", async () => {
     const h = await setup();

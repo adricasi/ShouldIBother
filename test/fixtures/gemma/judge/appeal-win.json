@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer for an appeal: the new photo shows the plants are fine, so doing nothing won.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "win",
+    "reason": "The new photo shows fresh, upright leaves: skipping the watering worked.",
+    "evidence": ["New photo: leaves upright, soil dark", "Rain 3 mm overnight"]
+  }
+}
