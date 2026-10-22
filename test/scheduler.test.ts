@@ -43,20 +43,20 @@ describe("scheduler loop (design: every 60 s, all state in SQLite)", () => {
     scheduler.start();
     expect(statuses()).toEqual(["due"]);
 
-    db.prepare("UPDATE bets SET status = 'undone'").run();
+    db.prepare("DELETE FROM bets").run();
     seedBet(clock.current + 90_000);
     clock.advance(SCHEDULER_INTERVAL_MS);
     vi.advanceTimersByTime(SCHEDULER_INTERVAL_MS);
-    expect(statuses()).toEqual(["undone", "open"]); // 60 s later it is not yet due
+    expect(statuses()).toEqual(["open"]); // 60 s later it is not yet due
     clock.advance(SCHEDULER_INTERVAL_MS);
     vi.advanceTimersByTime(SCHEDULER_INTERVAL_MS);
-    expect(statuses()).toEqual(["undone", "due"]);
+    expect(statuses()).toEqual(["due"]);
 
     scheduler.stop();
-    db.prepare("UPDATE bets SET status = 'undone'").run();
+    db.prepare("DELETE FROM bets").run();
     seedBet(clock.current - 1);
     vi.advanceTimersByTime(10 * SCHEDULER_INTERVAL_MS);
-    expect(statuses()).toEqual(["undone", "undone", "open"]);
+    expect(statuses()).toEqual(["open"]);
   });
 
   it("start twice runs one loop", () => {

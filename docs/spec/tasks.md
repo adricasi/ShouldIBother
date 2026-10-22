@@ -117,7 +117,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: multipart upload ≤ 10 MB; sharp decode/auto-rotate/re-encode JPEG ≤ 1024 px without metadata; 415 problem+json for unsupported formats; UUID filenames; authenticated `/photos/:id`; inspector job + `prompts/inspector.v1.md`; "What Gemma saw" and odds before → after; band without photo stored on the bet; delete photo / bet data.
   - Done when: any new migration is tested on a seeded fixture database and keeps existing rows (NFR-003; the builder repeats the check on a copy of the live database at merge); tests prove stored photos have no EXIF/GPS and longest side ≤ 1024 (AC-005.1); a deleted photo's row, its quotes and the inspector decisions that used it are unrecoverable from the DB file after the WAL checkpoint (AC-015.2); a non-image and an unsupported format return 415 with the message and the card unchanged (AC-005.6); fixtures cover AC-005.2–AC-005.5; delete removes the file (AC-015.2).
 
-- [ ] T-008: Bets, undo and Slips
+- [x] T-008: Bets, undo and Slips
   - Who / when: Agent W1 · Thu AM (stacked on T-004); merged Thu PM
   - Requirements: REQ-006, REQ-007, REQ-012 (AC-012.2 on the API, once T-005 adds alerts); NFR-003
   - Depends on: T-004

@@ -322,7 +322,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     const invalid = [
       harness.post("/api/cards/quick", { chore_type: "car" }),
       harness.post("/api/cards/quick", {}),
-      harness.post("/api/bets", { card_id: 1, quote_id: 1, kind: "do_it" }),
+      harness.post("/api/bets", { card_id: 1, quote_id: 1, kind: "skip" }),
       harness.post("/api/bets/1/settle", { answer: "" }),
     ];
     for (const response of await Promise.all(invalid)) {

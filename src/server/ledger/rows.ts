@@ -1,4 +1,5 @@
 import type { Band } from "../../domain/bands.js";
+import type { BetStatus } from "../../domain/bet-state.js";
 
 export interface CardRow {
   id: number;
@@ -22,8 +23,7 @@ export interface QuoteRow {
   created_at: number;
 }
 
-export type BetStatus =
-  "open" | "due" | "awaiting_weather" | "awaiting_gemma" | "settled" | "undone" | "cashed_out";
+export type { BetStatus };
 
 export interface BetRow {
   id: number;
