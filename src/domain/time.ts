@@ -1,5 +1,10 @@
-/** All times in the app are Europe/Madrid (design.md, Overview); storage is epoch milliseconds. */
+/**
+ * Europe/Madrid time helpers: the single implementation behind the app's windows, settle bounds,
+ * the outcome labels and the backtest. All times in the app are Europe/Madrid (design.md,
+ * Overview); storage is epoch milliseconds. No dependencies: `Intl` has the tz database.
+ */
 export const MADRID_TIME_ZONE = "Europe/Madrid";
+export const HOUR_MS = 3_600_000;
 
 const formatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: MADRID_TIME_ZONE,
@@ -18,6 +23,7 @@ export interface MadridParts {
   readonly day: number;
   readonly hour: number;
   readonly minute: number;
+  readonly second: number;
 }
 
 export function madridParts(epochMs: number): MadridParts {
@@ -31,12 +37,75 @@ export function madridParts(epochMs: number): MadridParts {
     day: part("day"),
     hour: part("hour"),
     minute: part("minute"),
+    second: part("second"),
   };
 }
 
-/** The wall-clock time in Madrid as if it were UTC, to compare against a wanted wall time. */
-function asIfUtc(parts: MadridParts): number {
-  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+/** Madrid's offset from UTC at an instant, in milliseconds. */
+function madridOffsetMs(epochMs: number): number {
+  const p = madridParts(epochMs);
+  const wallAsUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return wallAsUtc - Math.floor(epochMs / 1000) * 1000;
+}
+
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
+
+function parseDate(date: string): { year: number; month: number; day: number } {
+  const match = DATE_PATTERN.exec(date);
+  if (match === null) {
+    throw new Error(`invalid date "${date}", expected YYYY-MM-DD`);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    throw new Error(`invalid calendar date "${date}"`);
+  }
+  return { year, month, day };
+}
+
+/** Throws unless `date` is a real calendar date written YYYY-MM-DD. */
+export function assertIsoDate(date: string): void {
+  parseDate(date);
+}
+
+/** Instant of a Madrid wall-clock time ("HH:MM") on a Madrid calendar date. */
+export function madridWallTimeToEpochMs(date: string, time: string): number {
+  const { year, month, day } = parseDate(date);
+  const timeMatch = TIME_PATTERN.exec(time);
+  if (timeMatch === null) {
+    throw new Error(`invalid time "${time}", expected HH:MM`);
+  }
+  const wallAsUtc = Date.UTC(year, month - 1, day, Number(timeMatch[1]), Number(timeMatch[2]));
+  const firstGuess = wallAsUtc - madridOffsetMs(wallAsUtc);
+  return wallAsUtc - madridOffsetMs(firstGuess);
+}
+
+/** Madrid calendar date (YYYY-MM-DD) of an instant. */
+export function madridDateOf(epochMs: number): string {
+  const p = madridParts(epochMs);
+  return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+/** Calendar arithmetic on YYYY-MM-DD strings (no time zone involved). */
+export function addDays(date: string, days: number): string {
+  const { year, month, day } = parseDate(date);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+/** Inclusive list of dates from `start` to `end` (empty if end < start). */
+export function dateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  for (let date = start; date <= end; date = addDays(date, 1)) {
+    dates.push(date);
+  }
+  return dates;
 }
 
 /**
@@ -49,15 +118,12 @@ export function madridWallTime(
   hour: number,
   minute = 0,
 ): number {
-  const today = madridParts(epochMs);
-  const wanted = Date.UTC(today.year, today.month - 1, today.day + dayOffset, hour, minute);
-  // Madrid is UTC+1 or UTC+2: try both offsets and keep the one that reads back as `wanted`.
-  for (const offsetHours of [1, 2]) {
-    const candidate = wanted - offsetHours * 3_600_000;
-    if (asIfUtc(madridParts(candidate)) === wanted) {
-      return candidate;
-    }
-  }
-  // The wanted wall time does not exist (spring-forward gap): use the first valid instant after.
-  return wanted - 2 * 3_600_000;
+  const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return madridWallTimeToEpochMs(addDays(madridDateOf(epochMs), dayOffset), time);
+}
+
+/** The first instant after `epochMs` at which Madrid's clock shows `hour:minute`. */
+export function nextMadridWallTime(epochMs: number, hour: number, minute = 0): number {
+  const today = madridWallTime(epochMs, 0, hour, minute);
+  return today > epochMs ? today : madridWallTime(epochMs, 1, hour, minute);
 }

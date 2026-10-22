@@ -2,6 +2,7 @@ import type { Band } from "../bands.js";
 import { hoursInWindow, windowIsCovered, type ForecastHour } from "../weather.js";
 
 import type { PlantsRow, RulesConfig } from "./schema.js";
+import { roundTo } from "./window.js";
 
 /** What the plants rule saw in its window; shown in the rule's reason. */
 export interface PlantsFacts {
@@ -9,12 +10,6 @@ export interface PlantsFacts {
   readonly maxHourlyProbabilityPct: number;
   readonly maxTempC: number;
   readonly hours: number;
-}
-
-/** Hourly values come in 0.1 mm steps; summing floats must not turn 5.0 into 4.999999. */
-function roundTo(value: number, decimals: number): number {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
 }
 
 /**

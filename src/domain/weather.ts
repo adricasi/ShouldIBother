@@ -1,3 +1,5 @@
+import { HOUR_MS } from "./time.js";
+
 /** One hour of forecast, as Gemma's `get_forecast` tool returns it (design.md, Interfaces). */
 export interface ForecastHour {
   /** Start of the hour, epoch milliseconds. */
@@ -11,9 +13,11 @@ export interface ForecastHour {
   readonly gustKmh: number;
   readonly sunshineSeconds: number;
   readonly weatherCode: number;
+  /** Daylight at the start of the hour (Open-Meteo `is_day`); the line-dry rule averages D over daylight hours. */
+  readonly isDay: boolean;
 }
 
-export const HOUR_MS = 60 * 60 * 1000;
+export { HOUR_MS } from "./time.js";
 
 /** The forecast hours that overlap `[fromMs, toMs)`; an hour covers `[startsAt, startsAt + 1 h)`. */
 export function hoursInWindow(
