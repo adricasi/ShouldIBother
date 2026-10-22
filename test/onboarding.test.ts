@@ -253,7 +253,6 @@ describe("access: the routes sit behind the session and the Origin check (REQ-00
       await setup({ flags: { onboarding: true } });
       const response = await harness.request({
         ...route,
-        payload: "payload" in route ? route.payload : undefined,
         headers: { origin: LOCAL_ORIGIN },
       });
       expect(response.statusCode).toBe(401);

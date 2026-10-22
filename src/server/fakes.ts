@@ -31,6 +31,10 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
     return "ok";
   }
   const text = request.messages.map((message) => message.content).join("\n");
+  if (text.includes('"appeal":{')) {
+    // An appeal brings a new photo; the fake judge reads it as proof the plants are fine.
+    return "appeal-win";
+  }
   if (text.includes('"bet":"do_it"')) {
     // A do-it decision is scored on the recorded weather: wet hours mean the weather had it.
     return /"wet_hours":[1-9]/.test(text) ? "do-it-would-have" : "do-it-would-not";

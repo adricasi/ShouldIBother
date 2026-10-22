@@ -16,12 +16,15 @@ export function PhotoPicker({
   busy,
   onPick,
   showPrivacy = true,
+  describedBy,
 }: {
   label: string;
   busy: boolean;
   onPick: (file: File) => void;
   /** The privacy line under the button; off where several buttons share one line below them. */
   showPrivacy?: boolean;
+  /** Id of the text that explains what the photo is for; read out with the picker. */
+  describedBy?: string;
 }) {
   const inputId = useId();
   const change = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -41,6 +44,7 @@ export function PhotoPicker({
         accept="image/*"
         disabled={busy}
         onChange={change}
+        {...(describedBy === undefined ? {} : { "aria-describedby": describedBy })}
       />
       <label htmlFor={inputId} className={`button secondary compact${busy ? " disabled" : ""}`}>
         <Icon name="camera" />

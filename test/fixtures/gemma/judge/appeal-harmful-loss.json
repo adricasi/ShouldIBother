@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer for an appeal: the new photo shows wilting plants, a harmful loss.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "harmful_loss",
+    "reason": "The new photo shows wilting leaves: skipping the watering hurt the plants.",
+    "evidence": ["New photo: leaves drooping"]
+  }
+}
