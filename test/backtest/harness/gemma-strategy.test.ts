@@ -4,6 +4,7 @@ import {
   GemmaStrategy,
   ModelDigestMismatchError,
   ModelOfflineError,
+  ModelStalledError,
   buildCases,
   type BacktestCase,
   type StrategyId,
@@ -51,9 +52,9 @@ describe("AC-018.1 / AC-003.1: the bookmaker job gets the day-1 forecast as the 
       .flatMap((call) => call.messages)
       .find((message) => message.role === "tool");
     expect(toolMessage?.content).toBe(
-      formatForecast(forecastFrom(c.input.hours, c.input.decisionAtMs, 24)),
+      formatForecast(forecastFrom(c.input.toolHours, c.input.decisionAtMs, 24)),
     );
-    for (const hour of forecastFrom(c.input.hours, c.input.decisionAtMs, 48)) {
+    for (const hour of forecastFrom(c.input.toolHours, c.input.decisionAtMs, 48)) {
       // Every served hour's day-1 run started before the decision.
       expect(hour.startsAt - 24 * HOUR_MS).toBeLessThan(c.input.decisionAtMs);
     }
@@ -129,11 +130,17 @@ describe("fallbacks keep the rule odds, as the live card does", () => {
     expect(decision).toMatchObject({ basis: "gemma", band: 4, action: "skip" });
   });
 
-  it("falls back on a timeout, as the live app shows rule odds", async () => {
+  it("does not decide a day whose call timed out: it throws the rule fallback for the run to retry", async () => {
+    const c = plants();
     const { gemma } = strategy("timeout");
-    const decision = await gemma.decide(plants().input);
+    const stalled = await gemma.decide(c.input).catch((error: unknown) => error);
     gemma.close();
-    expect(decision).toMatchObject({ basis: "rule_fallback", gemma: { failure: "timeout" } });
+    expect(stalled).toBeInstanceOf(ModelStalledError);
+    expect((stalled as ModelStalledError).decision).toMatchObject({
+      basis: "rule_fallback",
+      band: c.input.ruleBand,
+      gemma: { failure: "timeout" },
+    });
   });
 
   it("stops the run, instead of recording fallbacks, when the model is unreachable", async () => {

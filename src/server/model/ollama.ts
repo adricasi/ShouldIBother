@@ -197,6 +197,20 @@ export class OllamaClient implements ModelClient {
       : { state: "online", detail: this.settings.model };
   }
 
+  /** Unloads the model (`keep_alive: 0`) so the GPU is free; never throws. */
+  async unload(): Promise<void> {
+    try {
+      await this.request(
+        "POST",
+        CHAT_PATH,
+        buildLoadBody({ ...this.settings, keepAlive: 0 }),
+        Math.max(this.healthTimeoutMs, 10_000),
+      );
+    } catch {
+      // Best effort: Ollama unloads the model after its keep_alive anyway.
+    }
+  }
+
   /**
    * Loads the model into memory with `keep_alive` so the first card does not wait for it
    * (design.md, GPU and model residency). Status is "waking" while it runs. Never throws.

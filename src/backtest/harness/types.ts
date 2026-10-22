@@ -103,6 +103,9 @@ export interface DecisionInput {
   readonly forecast: DecisionForecast;
   /** The same hours in the app's shape, with daylight derived from the sunset. */
   readonly hours: readonly ForecastHour[];
+  /** What `get_forecast` serves: day-1 values only, 24 h from the decision hour (see cases.ts). */
+  readonly toolForecast: DecisionForecast;
+  readonly toolHours: readonly ForecastHour[];
   readonly sunsetMs: number | null;
   /** The rule baseline's window for this decision. */
   readonly ruleWindow: TimeWindow;
@@ -133,6 +136,10 @@ export interface Strategy {
   readonly id: StrategyId;
   readonly kind: StrategyKind;
   decide(input: DecisionInput): Promise<StrategyDecision>;
+  /** Whether the model runtime answers (Gemma strategies); the run waits on it after an outage. */
+  reachable?(): Promise<boolean>;
+  /** Frees the GPU when the strategy is done or the run pauses (Gemma strategies). */
+  release?(): Promise<void>;
 }
 
 /** What a strategy returns; the runner adds the identifiers and the outcome. */

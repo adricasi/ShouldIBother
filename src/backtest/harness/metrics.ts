@@ -9,7 +9,7 @@ import { OUTCOME_CHORES, type OutcomeChore } from "../../domain/outcomes.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import { snapshotFor, totalSavings, type SavingsCatalogue } from "../../domain/savings.js";
 
-import { BACKTEST_DRYER } from "./policy.js";
+import { BACKTEST_DRYER, inSavingsSeason } from "./policy.js";
 import type { DecisionRecord, StrategyKind } from "./types.js";
 
 /** Bands with fewer cases than this count as "too few to judge" (AC-020.2). */
@@ -71,6 +71,8 @@ export interface SavingsSummary {
   readonly netTimeS: number;
   readonly waterL: number;
   readonly electricityKwh: number;
+  /** Skips that worked outside the chore's savings season: counted, not credited. */
+  readonly winsOutsideSeason: Readonly<Record<string, number>>;
   readonly assumptions: readonly {
     readonly chore: OutcomeChore;
     readonly assumption: string;
@@ -216,8 +218,17 @@ export function summarisePeriod(
     context.kind === "fixed"
       ? 0
       : records.filter((record) => record.basis !== "safety_alert").length;
+  const credited = wins.filter((record) => inSavingsSeason(record.chore, record.date));
+  const winsOutsideSeason: Record<string, number> = {};
+  for (const record of wins) {
+    if (!inSavingsSeason(record.chore, record.date)) {
+      winsOutsideSeason[record.chore] = (winsOutsideSeason[record.chore] ?? 0) + 1;
+    }
+  }
   const totals = totalSavings(
-    wins.map((record) => snapshotFor(context.catalogue, record.chore, { dryer: BACKTEST_DRYER })),
+    credited.map((record) =>
+      snapshotFor(context.catalogue, record.chore, { dryer: BACKTEST_DRYER }),
+    ),
     betsPlaced,
   );
   const fallbacks: Record<string, number> = {};
@@ -245,6 +256,9 @@ export function summarisePeriod(
       netTimeS: totals.net_time_s,
       waterL: totals.water_l,
       electricityKwh: totals.electricity_kwh,
+      winsOutsideSeason: Object.fromEntries(
+        Object.entries(winsOutsideSeason).sort(([a], [b]) => a.localeCompare(b)),
+      ),
       assumptions: totals.assumptions.map((entry) => ({
         chore: entry.chore_type,
         assumption: entry.assumption,

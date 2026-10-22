@@ -3,10 +3,16 @@
  *
  * The headline period is the hold-out (1 Sep to the snapshot's last archive day); Apr-Aug is
  * always labelled in-sample. Everything under `results` and `method` is reproducible from the
- * snapshot and the decisions; `performance` is measured wall-clock time and is not.
+ * snapshot and the decisions, so `report.json` is byte-identical on a re-run; the measured model
+ * time is written apart (`performance.json`).
+ *
+ * AC-018.2: the headline tables and the calibration use the days decided on day-1-lead forecasts
+ * only. Days that fell back to a short-lead forecast or to recorded weather are in their own
+ * labelled breakdown, with their counts.
  */
 
 import { OUTCOME_CHORES, type OutcomeChore } from "../../domain/outcomes.js";
+import { madridParts } from "../../domain/time.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import type { SavingsCatalogue } from "../../domain/savings.js";
 import type { Split } from "../dataset.js";
@@ -14,7 +20,6 @@ import { FORECAST_QUALITY_LABELS, type ForecastQuality } from "../decision-forec
 import { HOLDOUT_START_DATE, TRAINING_END_DATE, TRAINING_START_DATE } from "../target-band.js";
 import type { WeatherSnapshot } from "../snapshot.js";
 
-import { formatDuration } from "./estimate.js";
 import {
   latencyOf,
   summarisePeriod,
@@ -23,11 +28,12 @@ import {
   type PeriodSummary,
 } from "./metrics.js";
 import {
+  ASSUMPTIONS,
   BACKTEST_DRYER,
   FIXED_ROUTINE_DESCRIPTION,
-  SAVINGS_BASELINE,
   SKIP_FROM_BAND,
 } from "./policy.js";
+import { TOOL_HORIZON_HOURS } from "./cases.js";
 import {
   STRATEGY_LABELS,
   kindOf,
@@ -62,7 +68,8 @@ export interface MethodInfo {
     readonly deadlineMs: number;
     readonly maxModelCalls: number;
   };
-  readonly habits: Readonly<Record<string, string | boolean>>;
+  /** The habits shown to the bookmaker; the values are never printed, only their hash. */
+  readonly habits: { readonly entries: number; readonly sha256: string | null };
   readonly savings: SavingsCatalogue;
 }
 
@@ -91,9 +98,19 @@ export interface StrategyReport {
   readonly label: string;
   readonly kind: StrategyKind;
   readonly model: { readonly tag: string | null; readonly digest: string | null } | null;
+  /** Days decided on day-1-lead forecasts: the headline numbers. */
   readonly holdout: PeriodSummary | null;
   readonly inSample: PeriodSummary | null;
+  /** Days on a fallback forecast, labelled; never mixed into the numbers above. */
+  readonly fallbackForecasts: Readonly<Record<"holdout" | "inSample", FallbackSummaries>>;
 }
+
+export type FallbackQuality = Exclude<ForecastQuality, "day1_previous_runs">;
+export const FALLBACK_QUALITIES: readonly FallbackQuality[] = [
+  "short_lead_forecast_optimistic",
+  "perfect_forecast_upper_bound",
+];
+export type FallbackSummaries = Readonly<Record<FallbackQuality, PeriodSummary | null>>;
 
 export interface BacktestReport {
   readonly schemaVersion: typeof REPORT_SCHEMA_VERSION;
@@ -127,9 +144,38 @@ export interface BacktestReport {
   readonly method: MethodInfo & {
     readonly decisionPolicy: string;
     readonly fixedRoutine: Readonly<Record<OutcomeChore, string>>;
-    readonly savingsBaseline: string;
+    readonly assumptions: readonly string[];
+    readonly toolHorizon: string;
+    readonly habitsNote: string;
   };
-  readonly performance: Readonly<Record<string, LatencySummary>>;
+}
+
+/** Measured model time per Gemma strategy (wall-clock, so not reproducible). */
+export function buildPerformance(
+  records: readonly DecisionRecord[],
+  strategies: readonly StrategyInfo[],
+): Record<string, LatencySummary> {
+  const performance: Record<string, LatencySummary> = {};
+  for (const info of strategies) {
+    const latency = latencyOf(records.filter((record) => record.strategy === info.id));
+    if (latency !== undefined) {
+      performance[info.id] = latency;
+    }
+  }
+  return performance;
+}
+
+const TOOL_HORIZON_TEXT = `get_forecast serves the hours from the decision hour for ${TOOL_HORIZON_HOURS} hours (the day-1 lead: a value for hour H comes from a run that started 24 h before H), day-1 values only; an hour with no such value is left out, never filled from the Historical Forecast or the archive. That covers every chore's settle bounds (plants run to 12:00 the next day).`;
+
+/** An ISO timestamp as Europe/Madrid wall-clock time. */
+export function madridTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) {
+    return iso;
+  }
+  const p = madridParts(ms);
+  const two = (n: number): string => String(n).padStart(2, "0");
+  return `${p.year}-${two(p.month)}-${two(p.day)} ${two(p.hour)}:${two(p.minute)} Europe/Madrid`;
 }
 
 function periodInfo(
@@ -179,10 +225,20 @@ export function buildReport(input: ReportInput): BacktestReport {
     const own = records.filter((record) => record.strategy === info.id);
     const kind = kindOf(info.id);
     const context = { rules: method.rules, catalogue: method.savings, kind };
-    const period = (split: Split): PeriodSummary | null => {
-      const inPeriod = own.filter((record) => record.split === split);
+    const period = (split: Split, quality?: FallbackQuality): PeriodSummary | null => {
+      const inPeriod = own.filter(
+        (record) =>
+          record.split === split &&
+          (quality === undefined
+            ? record.forecastQuality === "day1_previous_runs"
+            : record.forecastQuality === quality),
+      );
       return inPeriod.length === 0 ? null : summarisePeriod(inPeriod, context);
     };
+    const fallbacks = (split: Split): FallbackSummaries => ({
+      short_lead_forecast_optimistic: period(split, "short_lead_forecast_optimistic"),
+      perfect_forecast_upper_bound: period(split, "perfect_forecast_upper_bound"),
+    });
     return {
       id: info.id,
       label: STRATEGY_LABELS[info.id],
@@ -191,16 +247,10 @@ export function buildReport(input: ReportInput): BacktestReport {
         kind === "gemma" ? { tag: info.modelTag ?? null, digest: info.modelDigest ?? null } : null,
       holdout: period("holdout"),
       inSample: period("train"),
+      fallbackForecasts: { holdout: fallbacks("holdout"), inSample: fallbacks("train") },
     };
   });
 
-  const performance: Record<string, LatencySummary> = {};
-  for (const info of input.strategies) {
-    const latency = latencyOf(records.filter((record) => record.strategy === info.id));
-    if (latency !== undefined) {
-      performance[info.id] = latency;
-    }
-  }
   const notSimulated: Record<string, number> = {};
   for (const skip of input.skipped) {
     notSimulated[skip.reason] = (notSimulated[skip.reason] ?? 0) + 1;
@@ -215,7 +265,7 @@ export function buildReport(input: ReportInput): BacktestReport {
       startDate: snapshot.startDate,
       endDate: snapshot.endDate,
       requestedEndDate: snapshot.requestedEndDate,
-      fetchedAt: snapshot.fetchedAt,
+      fetchedAt: madridTime(snapshot.fetchedAt),
       attribution: snapshot.attribution,
       license: snapshot.license,
       sources: Object.values(snapshot.sources).map((source) => source.baseUrl),
@@ -236,9 +286,13 @@ export function buildReport(input: ReportInput): BacktestReport {
       ...method,
       decisionPolicy: `The simulated household bets on doing nothing when the odds band is at least "${method.rules.bandNames[SKIP_FROM_BAND]}" (${method.rules.bandOdds[SKIP_FROM_BAND]} %) and does the chore otherwise. Safety alerts (heat, frost, storm) are always "do it".`,
       fixedRoutine: FIXED_ROUTINE_DESCRIPTION,
-      savingsBaseline: SAVINGS_BASELINE,
+      assumptions: ASSUMPTIONS,
+      toolHorizon: TOOL_HORIZON_TEXT,
+      habitsNote:
+        method.habits.sha256 === null
+          ? "The bookmaker was shown no habits: the repository has no synthetic habit profile yet (T-031 defines it). The fine-tuned model must be evaluated with the profile it was trained on."
+          : `The bookmaker was shown a habit profile of ${method.habits.entries} entries (sha256 ${method.habits.sha256.slice(0, 12)}); the values are not printed here.`,
     },
-    performance,
   };
 }
 
@@ -416,10 +470,80 @@ function periodSection(
     .map((result) => `${result.label}: ${pick(result)?.safetyAlerts ?? 0}`)
     .join("; ");
   lines.push(`"Do it now" safety alerts (no odds, never a skip): ${alerts}.`, "");
+  const outside = present.flatMap((result) => {
+    const wins = pick(result)?.savings.winsOutsideSeason ?? {};
+    const text = Object.entries(wins)
+      .map(([chore, count]) => `${chore} ${count}`)
+      .join(", ");
+    return text === "" ? [] : [`${result.label}: ${text}`];
+  });
+  if (outside.length > 0) {
+    lines.push(
+      `Skips that worked outside the chore's savings season (counted as skips that worked, no savings credited): ${outside.join("; ")}.`,
+      "",
+    );
+  }
   return lines;
 }
 
 const emptySummary = { ruleFallbacks: {} } as unknown as PeriodSummary;
+
+function fallbackSection(report: BacktestReport): string[] {
+  const lines = [
+    "## Days on fallback forecasts (labelled; not in the tables above)",
+    "",
+    "Days where a forecast variable was missing from the day-1-lead data and came from a short-lead source or from recorded weather (AC-018.2).",
+    "",
+  ];
+  let any = false;
+  for (const [key, title] of [
+    ["holdout", "Hold-out"],
+    ["inSample", "In-sample"],
+  ] as const) {
+    for (const quality of FALLBACK_QUALITIES) {
+      const rows = report.results.flatMap((result) => {
+        const summary = result.fallbackForecasts[key][quality];
+        if (summary === null) {
+          return [];
+        }
+        const cal = summary.calibration;
+        return [
+          [
+            result.label,
+            String(summary.decisions),
+            String(summary.skips),
+            String(summary.skipsThatWorked),
+            String(summary.plantRiskDays),
+            cal.status === "ok" ? `${number(cal.brier)} (N = ${cal.n})` : "n/a",
+          ],
+        ];
+      });
+      if (rows.length > 0) {
+        any = true;
+        lines.push(
+          `**${title}: ${FORECAST_QUALITY_LABELS[quality]}** (${report.forecastData[key].byQuality[quality]} days)`,
+          "",
+          ...table(
+            [
+              "Strategy",
+              "Decisions",
+              "Skips taken",
+              "Skips that worked",
+              "Plant-risk days",
+              "Brier",
+            ],
+            rows,
+          ),
+          "",
+        );
+      }
+    }
+  }
+  if (!any) {
+    lines.push("None: every simulated day used day-1-lead forecasts.", "");
+  }
+  return lines;
+}
 
 function choreTable(
   report: BacktestReport,
@@ -479,7 +603,7 @@ export function renderMarkdown(report: BacktestReport): string {
   );
   if (optimistic) {
     out.push(
-      '> Some days could not use day-1-lead forecasts for every variable. Results on those days are labelled "short-lead forecast (optimistic)" or "perfect-forecast upper bound" above and must carry that label wherever they are quoted.',
+      '> Some days could not use day-1-lead forecasts for every variable. The headline tables and the calibration below use the day-1 days only; the other days are in "Days on fallback forecasts" with their label, which must travel with any number quoted from there.',
       "",
     );
   }
@@ -515,22 +639,24 @@ export function renderMarkdown(report: BacktestReport): string {
       (result) => result.inSample,
       (result) =>
         result.id === "e4b-ft"
-          ? " (in-sample: trained on these days)"
+          ? " (in-sample: trained on 1 Apr to 30 Aug; the 31 Aug overnight rows were not in training)"
           : result.id === "rule"
             ? " (thresholds in-sample)"
             : "",
     ),
   );
 
-  out.push("## By chore (hold-out): skips taken (skips that worked) of decisions", "");
+  out.push(...fallbackSection(report));
+
+  out.push("## By chore (hold-out, day-1 days): skips taken (skips that worked) of decisions", "");
   out.push(...choreTable(report, (result) => result.holdout), "");
 
   out.push("## Method and assumptions", "");
   out.push(
     `- ${report.method.decisionPolicy}`,
-    `- ${report.method.savingsBaseline}`,
+    ...report.method.assumptions.map((line) => `- Assumption: ${line}`),
+    `- Tool horizon: ${report.method.toolHorizon}`,
     "- Plant-risk day: a day a strategy skipped watering and the plants outcome label was false.",
-    "- Calibration: predicted odds against the share of days doing nothing worked (outcome label true), for the days the strategy priced; Brier score on the same days.",
     "- Fixed routine (the habit baseline, no forecast, no odds):",
     ...OUTCOME_CHORES.map((chore) => `  - ${chore}: ${report.method.fixedRoutine[chore]}`),
     `- Savings assumptions behind the figures (dryer: ${BACKTEST_DRYER}):`,
@@ -549,7 +675,7 @@ export function renderMarkdown(report: BacktestReport): string {
   out.push(
     `- Bookmaker prompt: ${report.method.bookmakerPrompt.version} (sha256 ${report.method.bookmakerPrompt.sha256.slice(0, 12)}).`,
     `- Model settings: temperature ${report.method.model.temperature}, seed ${report.method.model.seed}, tool use ${report.method.model.toolUse}, answer mode ${report.method.model.answerMode}; ${report.method.model.callTimeoutMs / 1000} s per call, ${report.method.model.deadlineMs / 1000} s per job, at most ${report.method.model.maxModelCalls} calls per job.`,
-    `- Habits shown to the bookmaker: ${Object.keys(report.method.habits).length === 0 ? "none" : JSON.stringify(report.method.habits)}.`,
+    `- Habits: ${report.method.habitsNote}`,
     "",
     "Models",
     "",
@@ -577,45 +703,9 @@ export function renderMarkdown(report: BacktestReport): string {
     "",
   );
 
-  out.push("## Model time (measured, not reproducible)", "");
-  const timing = Object.entries(report.performance);
-  out.push(
-    ...(timing.length === 0
-      ? ["No Gemma jobs were run."]
-      : table(
-          [
-            "Strategy",
-            "Jobs",
-            "Calls",
-            "Mean per job",
-            "Median",
-            "95th percentile",
-            "Mean per call",
-            "Total",
-          ],
-          timing.map(([id, latency]) => [
-            STRATEGY_LABELS[id as StrategyId],
-            String(latency.jobs),
-            String(latency.calls),
-            formatDuration(latency.meanJobMs),
-            formatDuration(latency.medianJobMs),
-            formatDuration(latency.p95JobMs),
-            `${(latency.meanCallMs / 1000).toFixed(1)} s`,
-            formatDuration(latency.totalMs),
-          ]),
-        )),
-    "",
-  );
   return `${out.join("\n")}\n`;
 }
 
 export function serializeReport(report: BacktestReport): string {
   return `${JSON.stringify(report, null, 2)}\n`;
-}
-
-/** The part of the report that must be identical on a re-run (NFR-012). */
-export function reproducible(report: BacktestReport): Omit<BacktestReport, "performance"> {
-  const copy: { -readonly [K in keyof BacktestReport]?: BacktestReport[K] } = { ...report };
-  delete copy.performance;
-  return copy as Omit<BacktestReport, "performance">;
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -16,13 +16,13 @@ import {
   estimateModel,
   parseDecisionLines,
   renderEstimate,
-  reproducible,
   runBacktest,
   type BacktestReport,
   type DecisionRecord,
+  type StrategyId,
 } from "../../../src/backtest/harness/index.js";
 import { FakeModelClient } from "../../../src/server/model/fake.js";
-import { RULES, sliceSnapshot, snapshotOnDisk, tempDir } from "./support.js";
+import { FOUR, RULES, reportFile, sliceSnapshot, snapshotOnDisk, tempDir } from "./support.js";
 
 const FAKE = ["--fake-model", "--strategies", "rule,fixed,e2b,e4b"];
 
@@ -38,8 +38,12 @@ function decisionLines(dir: string): string[] {
     .map((line) => line.replace(/"latencyMs":\d+/, '"latencyMs":0'));
 }
 
-function readReport(out: string): BacktestReport {
-  return JSON.parse(readFileSync(join(out, "report.json"), "utf8")) as BacktestReport;
+function readReport(
+  out: string,
+  ids: readonly StrategyId[] = FOUR,
+  splits: "all" | "train" | "holdout" = "all",
+): BacktestReport {
+  return JSON.parse(readFileSync(reportFile(out, "json", ids, splits), "utf8")) as BacktestReport;
 }
 
 describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2-week slice", () => {
@@ -79,7 +83,7 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
     expect(e4b.holdout?.toolCalls).toMatchObject({ firstAnswerMissRate: 0 });
     expect(report.fakeModel).toBe(true);
 
-    const markdown = readFileSync(join(out, "report.md"), "utf8");
+    const markdown = readFileSync(reportFile(out, "md"), "utf8");
     expect(markdown).toContain("FAKE MODEL");
     expect(markdown).toContain("Brier score");
     expect(markdown).toContain("Tool-call miss rate");
@@ -91,7 +95,7 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
     const fixed = readReport(out).results.find((r) => r.id === "fixed")!;
     expect(fixed.holdout?.calibration.status).toBe("n/a");
     expect(fixed.inSample?.calibration.status).toBe("n/a");
-    expect(readFileSync(join(out, "report.md"), "utf8")).toContain(
+    expect(readFileSync(reportFile(out, "md"), "utf8")).toContain(
       "**Fixed routine**: calibration n/a.",
     );
   });
@@ -103,7 +107,7 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
     expect(report.headline).toBe("holdout");
     expect(report.periods.holdout).toMatchObject({ from: "2026-09-01" });
     expect(report.periods.inSample).toMatchObject({ to: "2026-08-31" });
-    const markdown = readFileSync(join(out, "report.md"), "utf8");
+    const markdown = readFileSync(reportFile(out, "md"), "utf8");
     expect(markdown).toMatch(/## Headline: hold-out, 2026-09-01 to 2026-09-06/);
     expect(markdown).toMatch(/## In-sample \(2026-08-24 to 2026-08-31\)/);
     expect(markdown).toContain("In-sample, not a fair test");
@@ -118,7 +122,7 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
     expect(report.method.rules.bandOdds).toEqual([15, 35, 50, 70, 85]);
     expect(report.method.rulesSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(report.method.model.seed).toEqual(expect.any(Number));
-    expect(readFileSync(join(out, "report.md"), "utf8")).toContain('"rainMmAtLeast": 5');
+    expect(readFileSync(reportFile(out, "md"), "utf8")).toContain('"rainMmAtLeast": 5');
   });
 
   it("NFR-012: a fresh re-run gives the same decisions and the same reported numbers", async () => {
@@ -129,7 +133,12 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
       await backtestCommand(["--snapshot", snapshotDir, "--out", out, ...FAKE], () => undefined);
     }
     expect(decisionLines(second)).toEqual(decisionLines(first));
-    expect(reproducible(readReport(second))).toEqual(reproducible(readReport(first)));
+    expect(readFileSync(reportFile(second, "json"), "utf8")).toBe(
+      readFileSync(reportFile(first, "json"), "utf8"),
+    );
+    expect(readFileSync(reportFile(second, "md"), "utf8")).toBe(
+      readFileSync(reportFile(first, "md"), "utf8"),
+    );
   });
 
   it("AC-019.3 (harness): the fine-tuned model can be run on the hold-out only", async () => {
@@ -149,7 +158,7 @@ describe("T-015 done-when: sib backtest runs end to end on the fake model on a 2
       () => undefined,
     );
     expect(code).toBe(0);
-    const report = readReport(out);
+    const report = readReport(out, ["e4b", "e4b-ft"], "holdout");
     expect(report.results.map((r) => r.id)).toEqual(["e4b", "e4b-ft"]);
     for (const result of report.results) {
       expect(result.holdout).not.toBeNull();
@@ -200,7 +209,7 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
     );
     expect(code).toBe(0);
     expect(lines.some((l) => l.startsWith("Estimate"))).toBe(true);
-    expect(existsSync(join(out, "report.md"))).toBe(false);
+    expect(existsSync(reportFile(out, "md"))).toBe(false);
     // Only the measuring decisions were made: 3 per model.
     expect(parseDecisionLines(readFileSync(join(out, "decisions.jsonl"), "utf8"))).toHaveLength(6);
   });
@@ -219,11 +228,11 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
       (l) => lines.push(l),
       { now: clock },
     );
-    expect(first).toBe(0);
+    expect(first).toBe(3);
     expect(lines.some((l) => l.includes("paused"))).toBe(true);
     expect(lines.some((l) => l.startsWith("Paused with"))).toBe(true);
     expect(readReport(out).status).toBe("partial");
-    expect(readFileSync(join(out, "report.md"), "utf8")).toContain("PARTIAL");
+    expect(readFileSync(reportFile(out, "md"), "utf8")).toContain("PARTIAL");
     const done = parseDecisionLines(readFileSync(join(out, "decisions.jsonl"), "utf8")).length;
 
     const resumed: string[] = [];
@@ -236,7 +245,9 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
 
     const straight = tempDir();
     await backtestCommand(["--snapshot", snapshotDir, "--out", straight, ...FAKE], () => undefined);
-    expect(reproducible(readReport(out))).toEqual(reproducible(readReport(straight)));
+    expect(readFileSync(reportFile(out, "json"), "utf8")).toBe(
+      readFileSync(reportFile(straight, "json"), "utf8"),
+    );
     expect(decisionLines(out).sort()).toEqual(decisionLines(straight).sort());
   });
 
@@ -292,7 +303,7 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
   it("refuses to resume a run made with other inputs, and --restart starts over", async () => {
     const { snapshotDir, out } = await setup();
     const habits = join(tempDir(), "habits.json");
-    writeFileSync(habits, JSON.stringify({ balcony: true }));
+    writeFileSync(habits, JSON.stringify({ marker: "habit-value-xyz" }));
     await backtestCommand(
       ["--snapshot", snapshotDir, "--out", out, "--fake-model", "--strategies", "rule"],
       () => undefined,
@@ -330,7 +341,16 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
       () => undefined,
     );
     expect(restarted).toBe(0);
-    expect(readReport(out).method.habits).toEqual({ balcony: true });
+    const method = readReport(out, ["rule"]).method;
+    // The values never reach a file: only their count and hash.
+    expect(method.habits).toEqual({
+      entries: 1,
+      sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+    });
+    for (const name of readdirSync(out)) {
+      expect(readFileSync(join(out, name), "utf8")).not.toContain("habit-value-xyz");
+    }
+    expect(method.habits.entries).toBe(1);
   });
 
   it("stops with exit code 2 when Gemma goes offline, keeps the progress and resumes later", async () => {
@@ -340,7 +360,7 @@ describe("NFR-005: resumable, progress output, --pause-at", () => {
     const code = await backtestCommand(
       ["--snapshot", snapshotDir, "--out", out, "--strategies", "rule,e4b"],
       (l) => lines.push(l),
-      { createModel: () => Promise.resolve(scripted) },
+      { createModel: () => Promise.resolve(scripted), sleep: () => Promise.resolve() },
     );
     expect(code).toBe(2);
     expect(lines.join("\n")).toMatch(/Gemma is not reachable/);

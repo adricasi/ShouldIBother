@@ -44,6 +44,21 @@ export class ModelOfflineError extends Error {
   override readonly name = "ModelOfflineError";
 }
 
+/**
+ * The model did not answer in time (a call timeout or the 45 s job deadline). That says more about
+ * the laptop than about Gemma, so the run does not record it: it retries the day, and only after
+ * the cap does `decision` (the rule odds, as the live app would show) stand.
+ */
+export class ModelStalledError extends Error {
+  override readonly name = "ModelStalledError";
+  constructor(
+    message: string,
+    readonly decision: StrategyDecision,
+  ) {
+    super(message);
+  }
+}
+
 /** The runtime answered with another model than the one the config pins. */
 export class ModelDigestMismatchError extends Error {
   override readonly name = "ModelDigestMismatchError";
@@ -102,6 +117,16 @@ export class GemmaStrategy implements Strategy {
     this.db.close();
   }
 
+  /** Whether the runtime answers; the run waits on this after `ModelOfflineError`. */
+  async reachable(): Promise<boolean> {
+    return (await this.recorder.health()).state !== "offline";
+  }
+
+  /** Gives the GPU back (keep_alive 0): between strategies, on a pause and at the end. */
+  async release(): Promise<void> {
+    await this.recorder.unload();
+  }
+
   private bookmakerInput(input: DecisionInput): BookmakerInput {
     this.cardId += 1;
     return {
@@ -117,10 +142,10 @@ export class GemmaStrategy implements Strategy {
           this.rules,
         )?.band ?? input.ruleBand,
       answers: [],
-      // Only hours the day-1-lead forecast offers at the decision time; the lookahead guard has
-      // checked their provenance before a strategy runs.
+      // Only hours the day-1-lead forecast offers at the decision time (24 h from the decision
+      // hour, day-1 values only); the lookahead guard has checked their provenance.
       readForecast: (hoursAhead) =>
-        Promise.resolve(forecastFrom(input.hours, input.decisionAtMs, hoursAhead)),
+        Promise.resolve(forecastFrom(input.toolHours, input.decisionAtMs, hoursAhead)),
       cardId: this.cardId,
       habits: this.habits,
     };
@@ -168,6 +193,9 @@ export class GemmaStrategy implements Strategy {
     if (!result.ok) {
       if (result.failure === "unavailable") {
         throw new ModelOfflineError(result.error);
+      }
+      if (result.failure === "timeout" || result.failure === "deadline") {
+        throw new ModelStalledError(result.error, fallback(result.failure));
       }
       return fallback(result.failure);
     }

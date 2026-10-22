@@ -7,6 +7,7 @@
 import { CHORES } from "../../domain/chores.js";
 import {
   DECISION_TIMES,
+  HOUR_MS,
   IncompleteWeatherError,
   OUTCOME_CHORES,
   dateRange,
@@ -20,9 +21,11 @@ import { ruleQuote, safetyAlert, type RulesConfig } from "../../domain/rules/ind
 import type { ForecastHour } from "../../domain/weather.js";
 import { splitOf } from "../dataset.js";
 import {
+  LookaheadError,
   assertIssuedBefore,
   decisionForecast,
   windowFor,
+  type DecisionForecast,
   type ForecastHour as ProvenancedHour,
   type ForecastSource,
 } from "../decision-forecast.js";
@@ -43,6 +46,34 @@ export const TOOL_VARIABLES: readonly WeatherVariable[] = [
   "weather_code",
   "sunshine_duration",
 ];
+
+/**
+ * How far ahead `get_forecast` can see in the backtest: 24 hours from the decision hour. A day-1
+ * value for hour H comes from a run that started 24 h before H, so hours from decision + 24 h on
+ * were not issued yet. The live tool serves up to 48 hours; the day-1 lead limits the backtest
+ * to these 24, which cover every chore's settle bounds (plants run to 12:00 the next day).
+ * `sib dataset` (T-031) must build the tool result of its rows the same way.
+ */
+export const TOOL_HORIZON_HOURS = 24;
+
+/**
+ * The hours `get_forecast` serves at the decision: from the decision hour for
+ * `TOOL_HORIZON_HOURS`, day-1-lead values only. An hour with no such value is left out; it is
+ * never filled from the Historical Forecast or the archive.
+ */
+export function toolForecastOf(
+  snapshot: WeatherSnapshot,
+  chore: OutcomeChore,
+  date: string,
+  decisionAtMs: number,
+): DecisionForecast {
+  const startMs = Math.floor(decisionAtMs / HOUR_MS) * HOUR_MS;
+  return decisionForecast(snapshot, chore, date, {
+    variables: TOOL_VARIABLES,
+    fallback: "none",
+    window: { startMs, endMs: decisionAtMs + TOOL_HORIZON_HOURS * HOUR_MS },
+  });
+}
 
 export interface BuildCasesOptions {
   /** First and last Madrid date to simulate (inclusive); default: the whole snapshot. */
@@ -153,7 +184,8 @@ export function buildCases(
         continue;
       }
       const sunsetMs = snapshot.sunsetMsByDate[date] ?? null;
-      if (chore === "laundry_tonight" && sunsetMs === null) {
+      // Laundry tonight starts at sunset and line-dry reads daylight (from the sunset).
+      if ((chore === "laundry_tonight" || chore === "laundry_line") && sunsetMs === null) {
         skip("no_sunset");
         continue;
       }
@@ -172,6 +204,7 @@ export function buildCases(
       const forecast = decisionForecast(snapshot, chore, date, { variables: TOOL_VARIABLES });
       const hours = toAppHours(snapshot, forecast.hours);
       const decisionAtMs = forecast.decisionAtMs;
+      const toolForecast = toolForecastOf(snapshot, chore, date, decisionAtMs);
       const ruleWindow = ruleWindowOf(chore, decisionAtMs, sunsetMs);
       const rule = ruleBandFor({ chore, hours }, ruleWindow, rules);
       if (rule === undefined) {
@@ -184,6 +217,11 @@ export function buildCases(
         decisionAtMs,
         forecast,
         hours,
+        toolForecast,
+        toolHours: toAppHours(
+          snapshot,
+          toolForecast.hours.filter((hour) => Object.keys(hour.values).length > 0),
+        ),
         sunsetMs,
         ruleWindow,
         ruleBand: rule.band,
@@ -223,6 +261,15 @@ export function assertNoLookahead(input: DecisionInput): void {
     throw new DecisionTimeError(input.chore, input.date, input.decisionAtMs);
   }
   assertIssuedBefore(input.forecast.hours, input.decisionAtMs, DAY1_ONLY);
+  assertIssuedBefore(input.toolForecast.hours, input.decisionAtMs, DAY1_ONLY);
+  for (const hour of input.toolForecast.hours) {
+    for (const [variable, value] of Object.entries(hour.values)) {
+      // The tool serves day-1 values only.
+      if (value.source !== "previous_runs_day1") {
+        throw new LookaheadError(variable, hour.timeMs, value.issuedAtMs, input.decisionAtMs);
+      }
+    }
+  }
   // The app-shaped hours must be exactly the hours that carry provenance.
   const withProvenance = new Set(input.forecast.hours.map((hour) => hour.timeMs));
   for (const hour of input.hours) {

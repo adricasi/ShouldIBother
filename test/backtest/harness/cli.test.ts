@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { buildChatBody } from "../../../src/server/model/ollama-wire.js";
-import { sliceSnapshot, snapshotOnDisk, tempDir } from "./support.js";
+import { reportFile, sliceSnapshot, snapshotOnDisk, tempDir } from "./support.js";
 
 const run = promisify(execFile);
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -35,8 +35,8 @@ describe("T-015 done-when: `sib backtest` is a subcommand of the sib CLI", () =>
     );
     expect(stderr).toContain("Estimate (decisions to go");
     expect(stderr).toContain("Report (complete)");
-    expect(existsSync(join(out, "report.md"))).toBe(true);
-    expect(readFileSync(join(out, "report.md"), "utf8")).toContain("## Headline: hold-out");
+    expect(existsSync(reportFile(out, "md"))).toBe(true);
+    expect(readFileSync(reportFile(out, "md"), "utf8")).toContain("## Headline: hold-out");
   }, 60_000);
 
   it("lists backtest in the usage text", async () => {

@@ -148,6 +148,8 @@ export interface DecisionForecastOptions {
    */
   readonly fallback?: FallbackPolicy;
   readonly variables?: readonly WeatherVariable[];
+  /** The hours to build instead of the chore's feature window (the backtest's tool horizon). */
+  readonly window?: TimeWindow;
 }
 
 const indexCache = new WeakMap<
@@ -221,7 +223,7 @@ export function decisionForecast(
   const decisionAtMs = options.decisionAtMs ?? decisionTimeMs(chore, date);
   const fallback = options.fallback ?? "historical_and_archive";
   const variables = options.variables ?? CHORE_FORECAST_VARIABLES[chore];
-  const window = featureWindowFor(snapshot, chore, date);
+  const window = options.window ?? featureWindowFor(snapshot, chore, date);
   const { previous, historical, archive } = indexesOf(snapshot);
 
   const hours: ForecastHour[] = windowHourStarts(window).map((timeMs) => {

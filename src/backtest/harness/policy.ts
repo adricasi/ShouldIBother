@@ -26,6 +26,9 @@ export function actionForBand(band: Band): Action {
  */
 export const BACKTEST_DRYER: Dryer = "heat-pump";
 
+/** The backtest keeps a model loaded 5 minutes after a call; the live app keeps it 24 h. */
+export const BACKTEST_KEEP_ALIVE = "5m";
+
 /** Fixed sampling seed of every Gemma call (NFR-012); temperature comes from `config/models.json`. */
 export const BACKTEST_SEED = 20261024;
 
@@ -76,7 +79,34 @@ export const FIXED_ROUTINE_DESCRIPTION: Readonly<Record<OutcomeChore, string>> =
   heater: "heater every day from 1 Nov to 31 Mar; no heater the rest of the year (skips)",
 };
 
-/** The simulated household does every chore every day unless a strategy skips it. */
-export const SAVINGS_BASELINE =
-  "Savings are counted on skips that worked (the weather delivered), against a household that would otherwise do every chore every day; the dryer is a " +
-  `${BACKTEST_DRYER} dryer (no household data in the backtest). Time counts skipped steps only; net time subtracts 30 s per bet or do-it decision made in the app (the fixed routine uses no app).`;
+/**
+ * Seasons in which the household's baseline would use the chore (month ranges, inclusive). The
+ * spec gives none (AC-016.5 gates AC and heater by household data, which the backtest does not
+ * use), so these are invented: the same dates as the fixed routine. Savings are credited only
+ * inside them; a win outside is counted and reported apart.
+ */
+export const SAVINGS_SEASON_DESCRIPTION: Readonly<Partial<Record<OutcomeChore, string>>> = {
+  ac: "AC: 1 Jun to 30 Sep",
+  heater: "heater: 1 Nov to 31 Mar",
+};
+
+export function inSavingsSeason(chore: OutcomeChore, date: string): boolean {
+  const m = month(date);
+  switch (chore) {
+    case "ac":
+      return m >= 6 && m <= 9;
+    case "heater":
+      return m >= 11 || m <= 3;
+    default:
+      return true;
+  }
+}
+
+/** The assumptions behind the figures that the spec does not give; printed in every report. */
+export const ASSUMPTIONS: readonly string[] = [
+  `Decision threshold: the household bets on doing nothing from the "likely" band (odds of 70 % or more) and does the chore otherwise; the spec does not say how a band becomes a decision.`,
+  `Savings baseline: a household that does every chore every day it is in season (plants and laundry: every day; ${SAVINGS_SEASON_DESCRIPTION.ac}; ${SAVINGS_SEASON_DESCRIPTION.heater}); the season dates are invented because the spec gives none. A skip that worked outside the season saves nothing and is counted apart.`,
+  `Savings are credited only on skips that worked, with the catalogue figures and a ${BACKTEST_DRYER} dryer (the lowest figure; no household data in the backtest). Time counts skipped steps only; net time subtracts 30 s per bet or do-it decision made in the app (the fixed routine uses no app).`,
+  "Fixed routine: the definitions above are invented to match the examples in product.md (water every other day, tumble dry every load, AC on warm evenings).",
+  "Calibration covers every day a strategy priced (not only the skips it took); a win of the outcome label counts as a success.",
+];

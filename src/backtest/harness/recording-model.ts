@@ -34,6 +34,11 @@ export class RecordingModelClient implements ModelClient {
     return this.inner.health();
   }
 
+  /** Unloads the model from the GPU when the runtime can; never throws. */
+  async unload(): Promise<void> {
+    await this.inner.unload?.();
+  }
+
   /** The calls since the last `take`, oldest first. */
   take(): RecordedCall[] {
     const taken = this.calls;
