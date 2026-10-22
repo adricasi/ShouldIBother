@@ -26,6 +26,9 @@ export const QUICK_CHIPS: readonly QuickChip[] = [
   { choreType: "laundry_line", label: "Line-dry today" },
 ];
 
+/** The chip for "Skip the heater" (REQ-016, AC-016.3); shown only while the `heater` flag is on. */
+export const HEATER_CHIP: QuickChip = { choreType: "heater", label: "Skip the heater" };
+
 export interface TodayScreenProps {
   readonly today: Today | undefined;
   readonly busy: boolean;
@@ -397,6 +400,19 @@ export function TodayScreen(props: TodayScreenProps) {
                 {chip.label}
               </button>
             ))}
+            {today?.flags["heater"] === true ? (
+              <button
+                type="button"
+                className="chip"
+                disabled={busy}
+                onClick={() => {
+                  props.onQuickCard(HEATER_CHIP.choreType);
+                }}
+              >
+                <Icon name={choreIconName(HEATER_CHIP.label, HEATER_CHIP.choreType)} />
+                {HEATER_CHIP.label}
+              </button>
+            ) : null}
             {today?.flags["laundryPlanner"] === true ? (
               <button
                 type="button"

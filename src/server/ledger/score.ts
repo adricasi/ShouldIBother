@@ -4,9 +4,11 @@ import {
   type BandCount,
   type CalibrationBand,
 } from "../../domain/calibration.js";
+import { rankFor, type RankStanding } from "../../domain/ranks.js";
 import { bandTable } from "../../domain/rules/index.js";
 import type { SavingsTotals } from "../../domain/savings.js";
 
+import { syncAchievements, type AchievementView } from "./achievements.js";
 import type { LedgerDeps } from "./deps.js";
 import { luckyWinShare, type LuckyShare } from "./lucky.js";
 import { pointsTotal } from "./points.js";
@@ -30,6 +32,10 @@ export type JudgeOverrule =
 export interface Score {
   readonly now: string;
   readonly points: { readonly total: number };
+  /** The rank for the points total (AC-025.1); present only while the `ranks` flag is on. */
+  readonly rank?: RankStanding;
+  /** Every achievement, unlocked or not (AC-025.2); present only while the `ranks` flag is on. */
+  readonly achievements?: readonly AchievementView[];
   /** All time, every bet (REQ-011): wins skipped a chore, net time subtracts 30 s per bet. */
   readonly savings: SavingsTotals;
   readonly judge: JudgeOverrule;
@@ -133,9 +139,12 @@ export function getScore(deps: ScoreDeps): Score {
   // The rule is scored on every settled do-nothing bet, whoever priced it (AC-020.2).
   const rule = countsBy(deps, "rule_band", "");
   const lucky = luckyWinShare(deps.db);
+  const total = pointsTotal(deps);
   return {
     now: new Date(deps.now()).toISOString(),
-    points: { total: pointsTotal(deps) },
+    points: { total },
+    // Flagged (REQ-029): with `ranks` off the response has neither key, as before T-026.
+    ...(deps.flags.ranks ? { rank: rankFor(total), achievements: syncAchievements(deps) } : {}),
     savings: savingsTotals(deps),
     judge: overruleOf(deps),
     calibration: {
