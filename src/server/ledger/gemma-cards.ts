@@ -1,7 +1,7 @@
 import { oddsOfBand } from "../../domain/bands.js";
 import { isChoreType, type ChoreType } from "../../domain/chores.js";
 import { bandTable, safetyAlert } from "../../domain/rules/index.js";
-import type { ForecastHour } from "../../domain/weather.js";
+import { hoursInWindow, type ForecastHour } from "../../domain/weather.js";
 import {
   bandOfName,
   distanceFromRule,
@@ -10,6 +10,7 @@ import {
   type BookmakerInput,
 } from "../gemma/bookmaker.js";
 import { JobQueueFullError, type JobFailure } from "../gemma/runner.js";
+import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
@@ -35,24 +36,33 @@ import { cardView, type CardView } from "./views.js";
  */
 type CardFailure = JobFailure | "weather" | "restart" | "busy" | "superseded" | "unresolved";
 
+/** Added to a guard alert's reason when a bet on the card had to be withdrawn. */
+export const BET_WITHDRAWN_COPY = "Your bet was withdrawn for safety.";
+
 /** A card asks at most this many questions; after that Gemma must answer or the rule odds stay. */
 export const MAX_QUESTIONS_PER_CARD = 2;
 /** The displayed reason is at most this long (design.md, Gemma jobs). */
 const MAX_REASON_CHARS = 140;
 
 /**
- * The fixed backstop found heat, frost or storm in the window an answer settles on: the card
- * becomes a "Do it now" alert with no odds (AC-012.1), whatever Gemma said. Shared by the
- * bookmaker and the photo's bookmaker run.
+ * The card becomes a "Do it now" alert with no odds and no bet action: the fixed backstop found
+ * heat, frost or storm in the window an answer settles on (AC-012.1), whatever Gemma said, or the
+ * Gemma safety guard said the chore touches safety (AC-012.3). Shared by the bookmaker, the
+ * photo's bookmaker run and the guard.
  */
-export function turnIntoAlert(deps: LedgerDeps, cardId: number, reason: string): void {
+export function turnIntoAlert(
+  deps: LedgerDeps,
+  cardId: number,
+  reason: string,
+  event = "alert_on_final_window",
+): void {
   deps.db
     .prepare(
       `UPDATE cards SET kind = 'alert', alert_reason = ?, gemma_state = NULL,
          gemma_failure = NULL, gemma_question = NULL WHERE id = ?`,
     )
     .run(reason, cardId);
-  deps.log({ event: "alert_on_final_window", cardId });
+  deps.log({ event, cardId });
 }
 
 /** Marks a card whose job finished without an answer: rule odds stay, Retry is offered. */
@@ -100,6 +110,8 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
   const enqueuedAt = deps.now();
   const nowMs = enqueuedAt;
   const anchorMs = card.created_at;
+  // Laundry tonight's window starts at the sunset stored on its card (AC-016.2).
+  const sunsetMs = card.sunset_at ?? undefined;
   let hours: readonly ForecastHour[];
   try {
     hours = (
@@ -124,7 +136,15 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
     anchorMs,
     ruleBand: ruleRow.band,
     ruleBandAt: (settleAtMs) =>
-      ruleBandOrFallback(choreType, hours, anchorMs, settleAtMs, deps.rules, ruleRow.band),
+      ruleBandOrFallback(
+        choreType,
+        hours,
+        anchorMs,
+        settleAtMs,
+        deps.rules,
+        ruleRow.band,
+        sunsetMs,
+      ),
     answers: parseAnswers(card.gemma_answers),
     readForecast: (hoursAhead) => Promise.resolve(forecastFrom(hours, nowMs, hoursAhead)),
     cardId,
@@ -177,7 +197,7 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
 
   // The fixed backstop also covers the window Gemma settled on: if heat, frost or storm shows
   // up there, the card becomes a "Do it now" alert instead of getting Gemma's odds (AC-012.1).
-  const finalWindow = ruleWindowAt(choreType, anchorMs, settleAt);
+  const finalWindow = ruleWindowAt(choreType, anchorMs, settleAt, sunsetMs);
   const alert = safetyAlert(hours, finalWindow.fromMs, finalWindow.toMs, deps.rules);
   const table = bandTable(deps.rules);
   // One line of at most 140 characters: the reason, then (cut if need be) why it differs.
@@ -211,7 +231,7 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
     const createdAt = deps.now();
     if (settleAt !== ruleRow.settle_at) {
       // Gemma moved the settle time: the rule band is stored for the final window (AC-004.2).
-      const rule = ruleQuoteAt(choreType, hours, anchorMs, settleAt, deps.rules);
+      const rule = ruleQuoteAt(choreType, hours, anchorMs, settleAt, deps.rules, sunsetMs);
       if (rule === null) {
         // The forecast does not reach the final window: the card keeps its original rule quote,
         // so a bet's `rule_band` is the original window's band. Logged, not hidden.
@@ -256,6 +276,167 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
       .run(cardId);
   });
   swap();
+}
+
+/**
+ * The Gemma safety guard for a card that was just created (REQ-012, AC-012.3). If it says the chore
+ * touches safety, the card becomes a "Do it now" alert with Gemma's reason and no bet action, and
+ * no bookmaker job is ever queued for it. Returns true when it did.
+ *
+ * The guard can only add an alert. The fixed backstop has already run when the card was created
+ * (AC-012.1), so a card that reaches the guard is one the backstop let through; a guard that is
+ * offline, late, unsure or invalid leaves the card as it is (AC-012.4), and no answer of the guard
+ * can turn an alert card back into a bettable one.
+ */
+async function guardCard(deps: LedgerDeps, cardId: number): Promise<boolean> {
+  const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId);
+  if (card === undefined || card.kind !== "weather" || !isChoreType(card.chore_type)) {
+    return false;
+  }
+  const choreType: ChoreType = card.chore_type;
+  const ruleRow = deps.db
+    .prepare<[number], QuoteRow>(
+      "SELECT * FROM quotes WHERE card_id = ? AND source = 'rule' ORDER BY id DESC LIMIT 1",
+    )
+    .get(cardId);
+  if (ruleRow === undefined) {
+    return false;
+  }
+  const enqueuedAt = deps.now();
+  let hours: readonly ForecastHour[];
+  try {
+    hours = (
+      await deps.weather.getForecast({
+        fromMs: enqueuedAt,
+        hours: FORECAST_HOURS,
+        pastHours: FORECAST_PAST_HOURS,
+      })
+    ).hours;
+  } catch (error) {
+    if (error instanceof WeatherUnavailableError) {
+      deps.log({ event: "safety_guard_unavailable", cardId, failure: "weather" });
+      return false;
+    }
+    throw error;
+  }
+  const window = ruleWindowAt(
+    choreType,
+    card.created_at,
+    ruleRow.settle_at,
+    card.sunset_at ?? undefined,
+  );
+  let result;
+  try {
+    result = await runSafetyGuard(deps.gemma, {
+      chore: choreType,
+      label: card.input_text,
+      nowMs: enqueuedAt,
+      window,
+      forecast: hoursInWindow(hours, window.fromMs, window.toMs).sort(
+        (a, b) => a.startsAt - b.startsAt,
+      ),
+      cardId,
+      enqueuedAt,
+    });
+  } catch (error) {
+    if (error instanceof JobQueueFullError) {
+      deps.log({ event: "safety_guard_unavailable", cardId, failure: "busy" });
+      return false;
+    }
+    throw error;
+  }
+  if (!result.ok) {
+    deps.log({ event: "safety_guard_unavailable", cardId, failure: result.failure });
+    return false;
+  }
+  const { output } = result;
+  if (output.status === "ok") {
+    // A verdict, either way: the card never needs the guard again. A failed or unsure guard
+    // leaves this null, so Retry and a restart ask again (AC-012.4).
+    deps.db
+      .prepare("UPDATE cards SET safety_checked_at = ? WHERE id = ? AND safety_checked_at IS NULL")
+      .run(deps.now(), cardId);
+  }
+  if (output.status === "unsure" || output.alert !== true) {
+    return false;
+  }
+  const reason = (output.reason ?? "").trim();
+  // A guard alert always wins (safety is never a bet): a bet placed while the guard was thinking
+  // is withdrawn by the system, which is not the 5-minute user undo. It scores nothing and keeps
+  // its row; the person is told on the card.
+  const alert = deps.db.transaction((): boolean => {
+    const fresh = deps.db
+      .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
+      .get(cardId);
+    if (fresh?.kind !== "weather") {
+      return false;
+    }
+    const live = deps.db
+      .prepare<[number], { id: number; status: string }>(
+        "SELECT id, status FROM bets WHERE card_id = ? AND status != 'undone'",
+      )
+      .all(cardId);
+    if (live.some((bet) => bet.status !== "open")) {
+      // A bet past `open` cannot be withdrawn (the state machine of migration 0003 allows only
+      // open to undone). Not reachable within the guard's 45 s: a quote settles hours ahead.
+      deps.log({ event: "safety_alert_skipped_settling_bet", cardId });
+      return false;
+    }
+    for (const bet of live) {
+      deps.db
+        .prepare("UPDATE bets SET status = 'undone' WHERE id = ? AND status = 'open'")
+        .run(bet.id);
+      deps.log({ event: "safety_alert_withdrew_bet", cardId, betId: bet.id });
+    }
+    turnIntoAlert(
+      deps,
+      cardId,
+      live.length === 0 ? reason : `${reason} ${BET_WITHDRAWN_COPY}`,
+      "alert_from_safety_guard",
+    );
+    return true;
+  });
+  return alert();
+}
+
+/**
+ * The Gemma steps of a new weather card, in order: the safety guard when its flag is on, then the
+ * bookmaker unless the guard raised an alert. Safety is never a bet, so no bookmaker job is queued
+ * for an alert card.
+ */
+async function runCardJobs(deps: LedgerDeps, cardId: number): Promise<void> {
+  if (deps.flags.safetyGuard) {
+    let alerted = false;
+    try {
+      alerted = await guardCard(deps, cardId);
+    } catch (error) {
+      // A guard that breaks is a guard that is unavailable (AC-012.4): the fixed backstop stood
+      // at creation, the card goes on to the bookmaker, and the error is logged.
+      deps.log({
+        event: "safety_guard_unavailable",
+        cardId,
+        failure: "internal",
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
+    if (alerted) {
+      return;
+    }
+  }
+  await bookmakeCard(deps, cardId);
+}
+
+/**
+ * Starts the Gemma steps of a new card in the background (the safety guard, then the bookmaker).
+ * The card must already be `thinking`; the response to the person does not wait (AC-013.1).
+ */
+export function launchNewCardJobs(deps: LedgerDeps, cardId: number): void {
+  deps.background.track(
+    runCardJobs(deps, cardId).catch((error: unknown) => {
+      markOffline(deps, cardId, "internal");
+      throw error;
+    }),
+  );
 }
 
 /**
@@ -332,7 +513,12 @@ export function retryCard(deps: LedgerDeps, cardId: number): CardView {
     )
     .run(cardId).changes;
   if (moved === 1) {
-    launchBookmaker(deps, cardId);
+    // A card the guard never gave a verdict on is asked again, then goes on to the bookmaker.
+    if (deps.flags.safetyGuard && card.safety_checked_at === null) {
+      launchNewCardJobs(deps, cardId);
+    } else {
+      launchBookmaker(deps, cardId);
+    }
   }
   return viewOf(deps, cardId);
 }
@@ -373,4 +559,32 @@ export function recoverThinkingCards(deps: Pick<LedgerDeps, "db">): number {
        WHERE gemma_state = 'thinking'`,
     )
     .run().changes;
+}
+
+/**
+ * After a restart, a card that lost its job before the safety guard gave a verdict is asked
+ * again (guard, then bookmaker) while the flag is on. Run after `recoverThinkingCards`, which
+ * turns the dead `thinking` cards into `offline · restart`. Cards with a bet, or whose odds have
+ * run out, are left alone.
+ */
+export function resumeUnguardedCards(deps: LedgerDeps): number {
+  if (!deps.flags.safetyGuard) {
+    return 0;
+  }
+  const ids = deps.db
+    .prepare<[number], { id: number }>(
+      `SELECT c.id FROM cards c
+       WHERE c.kind = 'weather' AND c.safety_checked_at IS NULL
+         AND c.gemma_state = 'offline' AND c.gemma_failure = 'restart'
+         AND NOT EXISTS (SELECT 1 FROM bets b WHERE b.card_id = c.id AND b.status != 'undone')
+         AND EXISTS (SELECT 1 FROM quotes q WHERE q.card_id = c.id AND q.settle_at > ?)`,
+    )
+    .all(deps.now());
+  for (const { id } of ids) {
+    deps.db
+      .prepare("UPDATE cards SET gemma_state = 'thinking', gemma_failure = NULL WHERE id = ?")
+      .run(id);
+    launchNewCardJobs(deps, id);
+  }
+  return ids.length;
 }

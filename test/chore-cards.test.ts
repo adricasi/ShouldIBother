@@ -277,8 +277,8 @@ describe("AC-016.5: AC and heater are not needed when the household does not use
     });
   });
 
-  it("laundry tonight reads Coming later until T-013 offers it", async () => {
-    await setup({ flags: { laundryTonight: true } });
+  it("laundry tonight reads Coming later while its feature flag is off", async () => {
+    await setup({ flags: {} });
     expect(await quick("laundry_tonight")).toMatchObject({ notice: "Coming later", quote: null });
   });
 });

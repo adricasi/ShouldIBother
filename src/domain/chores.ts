@@ -1,5 +1,5 @@
 import { OUTCOME_CHORES, type OutcomeChore } from "./outcomes.js";
-import { madridDateOf, madridParts, madridWallTime, nextMadridWallTime } from "./time.js";
+import { HOUR_MS, madridDateOf, madridParts, madridWallTime, nextMadridWallTime } from "./time.js";
 
 /**
  * Chore types: the listener's `chore_type` values that have a rule baseline and an outcome label
@@ -209,4 +209,51 @@ export function offerNotice(choreType: ChoreType, nowMs: number, nextAtMs: numbe
       ? ""
       : ` is offered from ${hours(offerWindow.fromHour)} to ${hours(offerWindow.toHour)}`;
   return `${title}${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
+}
+
+/**
+ * "Leave it out tonight" is offered from 1 h before to 2 h after sunset, lower bound included
+ * (AC-016.2): the laundry goes out as the light goes. Intervals are half-open like the rest.
+ */
+export const LAUNDRY_TONIGHT_OFFER = {
+  beforeSunsetMs: HOUR_MS,
+  afterSunsetMs: 2 * HOUR_MS,
+} as const;
+
+/** Whether "Leave it out tonight" can be offered now; when not, when it can next (if known). */
+export type SunsetOffer =
+  { readonly offered: true } | { readonly offered: false; readonly nextAtMs: number | undefined };
+
+/**
+ * The offer gate of laundry tonight. `sunsetMs` is today's sunset; `nextSunsetMs` tomorrow's, used
+ * for "next chance" once today's window has closed (unknown: the card says "tomorrow evening").
+ */
+export function laundryTonightOffer(
+  nowMs: number,
+  sunsetMs: number,
+  nextSunsetMs?: number,
+): SunsetOffer {
+  const opensAtMs = sunsetMs - LAUNDRY_TONIGHT_OFFER.beforeSunsetMs;
+  if (nowMs < opensAtMs) {
+    return { offered: false, nextAtMs: opensAtMs };
+  }
+  if (nowMs >= sunsetMs + LAUNDRY_TONIGHT_OFFER.afterSunsetMs) {
+    return {
+      offered: false,
+      nextAtMs:
+        nextSunsetMs === undefined
+          ? undefined
+          : nextSunsetMs - LAUNDRY_TONIGHT_OFFER.beforeSunsetMs,
+    };
+  }
+  return { offered: true };
+}
+
+/** The card text when laundry tonight cannot be offered now (AC-016.2). */
+export function laundryTonightNotice(nowMs: number, nextAtMs: number | undefined): string {
+  const open = "is offered from 1 h before to 2 h after sunset";
+  const { title } = CHORES.laundry_tonight;
+  return nextAtMs === undefined
+    ? `${title} ${open}. Next chance: tomorrow evening.`
+    : `${title} ${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
 }

@@ -12,6 +12,27 @@ import { madridDateOf } from "./time.js";
 interface BetTimes {
   readonly placedAt: number;
   readonly settleAt: number;
+  /**
+   * The sunset the bet's card was priced on (laundry tonight only, `cards.sunset_at`): the label
+   * window starts there, not when the bet was placed (design.md, Outcome labels).
+   */
+  readonly sunsetAt?: number | null;
+}
+
+/** A laundry-tonight bet whose card stored no sunset: its label window cannot be known. */
+export class MissingSunsetError extends Error {
+  override readonly name = "MissingSunsetError";
+}
+
+/** The chore's full fixed window for the day of the bet (laundry tonight: from its stored sunset). */
+function fixedWindowOf(chore: ChoreType, bet: BetTimes): TimeWindow {
+  if (chore === "laundry_tonight") {
+    if (bet.sunsetAt === undefined || bet.sunsetAt === null) {
+      throw new MissingSunsetError("laundry tonight needs the sunset stored on its card");
+    }
+    return outcomeWindow(chore, madridDateOf(bet.sunsetAt), bet.sunsetAt);
+  }
+  return outcomeWindow(chore, madridDateOf(bet.placedAt));
 }
 
 /**
@@ -19,11 +40,11 @@ interface BetTimes {
  * chore's full fixed window on the day the bet was placed (line-dry 10:00 to 18:00, plants 19:00 to
  * 10:00 next day). The hours before the bet was placed have been recorded too, so the window is
  * not cut at the start. It is cut at the end only where the hours are not there yet: at `nowMs`.
- * Laundry tonight starts at sunset, which a bet does not store; the moment it was placed stands in
- * for it (T-013 owns that chore's settlement).
+ * Laundry tonight starts at the sunset stored on its card (`bet.sunsetAt`); without one it throws
+ * `MissingSunsetError`, and the caller leaves the win's lucky flag unknown.
  */
 export function labelWindowOf(chore: ChoreType, bet: BetTimes, nowMs: number): TimeWindow {
-  const fixed = outcomeWindow(chore, madridDateOf(bet.placedAt), bet.placedAt);
+  const fixed = fixedWindowOf(chore, bet);
   return { startMs: fixed.startMs, endMs: Math.min(fixed.endMs, nowMs) };
 }
 
@@ -34,7 +55,7 @@ export function labelWindowOf(chore: ChoreType, bet: BetTimes, nowMs: number): T
  */
 export function cutWindowOf(chore: ChoreType, bet: BetTimes): TimeWindow {
   const own: TimeWindow = { startMs: bet.placedAt, endMs: bet.settleAt };
-  const fixed = outcomeWindow(chore, madridDateOf(bet.placedAt), bet.placedAt);
+  const fixed = fixedWindowOf(chore, bet);
   const clipped: TimeWindow = {
     startMs: Math.max(fixed.startMs, own.startMs),
     endMs: Math.min(fixed.endMs, own.endMs),
