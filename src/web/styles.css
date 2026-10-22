@@ -488,7 +488,7 @@ label.button.disabled {
   gap: var(--space-3);
 }
 
-/* Static in T-009; the landing animation is T-017 (flag stampAnimation). */
+/* Static (T-009); `.stamp-animated` adds the landing animation behind the flag stampAnimation (T-017). */
 .stamp {
   font-family: var(--font-display);
   font-weight: 900;
@@ -499,6 +499,38 @@ label.button.disabled {
   border-radius: var(--radius-xs);
   padding: var(--space-1) var(--space-3);
   transform: rotate(-8deg);
+}
+
+/* AC-017.1: scale 1.6 -> 1 at -8 degrees; var(--motion-stamp) is 250 ms in tokens.css. */
+.stamp-animated {
+  animation: stamp-land var(--motion-stamp) both;
+}
+
+@keyframes stamp-land {
+  from {
+    opacity: 0;
+    transform: rotate(-8deg) scale(1.6);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+
+/* AC-017.2: reduced motion fades the stamp in; no transform is animated. */
+@media (prefers-reduced-motion: reduce) {
+  .stamp-animated {
+    animation: stamp-fade 250ms ease-out both;
+  }
+}
+
+@keyframes stamp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .receipt-rows,

@@ -2,6 +2,7 @@ import type { Slips } from "./api.js";
 import { DueSlip, SettledLine, WaitingLine } from "./BetParts.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
+import { isStampAnimated } from "./stamp.js";
 
 export interface SlipsScreenProps {
   readonly slips: Slips | undefined;
@@ -101,7 +102,11 @@ export function SlipsScreen(props: SlipsScreenProps) {
               ) : (
                 <ul className="waiting">
                   {slips.settled.map((bet) => (
-                    <SettledLine key={bet.id} bet={bet} />
+                    <SettledLine
+                      key={bet.id}
+                      bet={bet}
+                      animateStamp={isStampAnimated(props.flags)}
+                    />
                   ))}
                 </ul>
               )}
