@@ -51,6 +51,7 @@ async function setupLive(
   profile: FakeWeatherProfile,
   time: string,
   configure: (fake: FakeOpenMeteo) => void = () => undefined,
+  options: { requestSunset?: boolean; logLines?: string[] } = {},
 ): Promise<{ h: CoreHarness; fake: FakeOpenMeteo }> {
   const clock = new FakeClock();
   clock.current = at(TODAY, time);
@@ -62,6 +63,7 @@ async function setupLive(
   harness = await createCoreHarness({
     clock,
     flags: { laundryTonight: true },
+    ...(options.logLines === undefined ? {} : { logLines: options.logLines }),
     liveWeather: (db, now) =>
       new OpenMeteoWeatherClient({
         db,
@@ -70,6 +72,7 @@ async function setupLive(
         fetch: fake.transport,
         sleep: () => Promise.resolve(),
         random: () => 0,
+        requestSunset: options.requestSunset ?? true,
       }),
   });
   await pair(harness);
@@ -248,13 +251,51 @@ describe("AC-016.2: the window and the rule start at sunset", () => {
     await h.idle();
   });
 
-  it("AC-016.2: when the answer has no daily sunset, the end of the last daylight hour stands in", async () => {
-    const { h } = await setupLive(FAKE_WEATHER_PROFILES.mild, "20:30", (fake) => {
-      fake.omitDaily = true;
-    });
+  it("AC-016.2: when the answer has no daily sunset, the start of the last daylight hour stands in and is logged", async () => {
+    const logLines: string[] = [];
+    const { h } = await setupLive(
+      FAKE_WEATHER_PROFILES.mild,
+      "20:30",
+      (fake) => {
+        fake.omitDaily = true;
+      },
+      { logLines },
+    );
     const card = await quick(h);
     expect(card.kind).toBe("weather");
-    expect(sunsetOfCard(h, card.id)).toBe(SUNSET);
+    // Daylight runs to 20:00, so its last hour starts at 19:00: that hour is inside the window.
+    expect(sunsetOfCard(h, card.id)).toBe(at(TODAY, "19:00"));
+    expect(logLines.map((line) => JSON.parse(line) as Record<string, unknown>)).toContainEqual(
+      expect.objectContaining({ event: "sunset_fallback", date: TODAY }),
+    );
+    await h.idle();
+  });
+
+  it("AC-016.2: the daily sunset is not logged as a fallback", async () => {
+    const logLines: string[] = [];
+    const { h } = await setupLive(FAKE_WEATHER_PROFILES.mild, "20:30", () => undefined, {
+      logLines,
+    });
+    await quick(h);
+    expect(logLines.join("")).not.toContain("sunset_fallback");
+    await h.idle();
+  });
+
+  it("REQ-029: with the laundryTonight flag off the forecast request is the one it was before: no daily sunset", async () => {
+    const { h, fake } = await setupLive(FAKE_WEATHER_PROFILES.mild, "20:30", () => undefined, {
+      requestSunset: false,
+    });
+    expect((await quick(h, "plants")).kind).toBe("weather");
+    expect(fake.forecastRequests[0]?.searchParams.has("daily")).toBe(false);
+    expect([...fake.forecastRequests[0]!.searchParams.keys()].sort()).toEqual([
+      "forecast_days",
+      "hourly",
+      "latitude",
+      "longitude",
+      "past_days",
+      "timeformat",
+      "timezone",
+    ]);
     await h.idle();
   });
 });
@@ -430,5 +471,64 @@ describe("the lucky-win window of laundry tonight (domain)", () => {
     expect(
       labelWindowOf("laundry_line", { placedAt: at(TODAY, "13:00"), settleAt }, at(TODAY, "18:00")),
     ).toEqual({ startMs: at(TODAY, "10:00"), endMs: at(TODAY, "18:00") });
+  });
+});
+
+describe("AC-016.2: the night the clocks go back (Sat 24 to Sun 25 Oct 2026)", () => {
+  const SAT = "2026-10-24";
+  const SUN = "2026-10-25";
+  // Sunset on Saturday is about 19:20 CEST; on Sunday, after the change, about 18:25 CET.
+  const satSunset = at(SAT, "19:20");
+  const sunSunset = at(SUN, "18:25");
+
+  it("the night is 13 h 40 min long: sunset in CEST to 08:00 CET", () => {
+    expect(satSunset).toBe(Date.UTC(2026, 9, 24, 17, 20));
+    const window = ruleWindowAt(
+      "laundry_tonight",
+      satSunset + HOUR_MS,
+      at(SUN, "08:00"),
+      satSunset,
+    );
+    expect(window).toEqual({ fromMs: satSunset, toMs: Date.UTC(2026, 9, 25, 7, 0) });
+    expect(window.toMs - window.fromMs).toBe(13 * HOUR_MS + 40 * 60_000);
+  });
+
+  it("Gemma's settle time is clamped to 08:00 to 10:00 CET on Sunday", () => {
+    const now = at(SAT, "20:30");
+    expect(clampSettleAt("laundry_tonight", now, now + 5 * HOUR_MS)).toBe(
+      Date.UTC(2026, 9, 25, 7, 0),
+    );
+    expect(clampSettleAt("laundry_tonight", now, now + 40 * HOUR_MS)).toBe(
+      Date.UTC(2026, 9, 25, 9, 0),
+    );
+  });
+
+  it("after the window closes the next chance is 1 h before Sunday's earlier sunset", () => {
+    const offer = laundryTonightOffer(at(SAT, "22:30"), satSunset, sunSunset);
+    expect(offer).toEqual({ offered: false, nextAtMs: at(SUN, "17:25") });
+    expect(laundryTonightNotice(at(SAT, "22:30"), at(SUN, "17:25"))).toContain(
+      "Next chance: tomorrow at 17:25.",
+    );
+  });
+
+  it("the label window of a Saturday bet runs sunset to 08:00 CET", () => {
+    expect(
+      labelWindowOf(
+        "laundry_tonight",
+        { placedAt: at(SAT, "20:30"), settleAt: at(SUN, "08:00"), sunsetAt: satSunset },
+        at(SUN, "09:00"),
+      ),
+    ).toEqual({ startMs: satSunset, endMs: Date.UTC(2026, 9, 25, 7, 0) });
+  });
+
+  it("a card made on Saturday evening settles at 08:00 CET Sunday", async () => {
+    const h = await setup({}, "20:30");
+    h.clock.current = at(SAT, "20:30");
+    const card = await quick(h);
+    expect(card).toMatchObject({
+      kind: "weather",
+      quote: { settle_at: new Date(Date.UTC(2026, 9, 25, 7, 0)).toISOString() },
+    });
+    await h.idle();
   });
 });

@@ -112,6 +112,11 @@ async function inspectPhoto(deps: InspectDeps, cardId: number, photoId: string):
     return;
   }
   const choreType: ChoreType = card.chore_type;
+  if (card.kind !== "weather") {
+    // The safety guard made the card an alert while the photo waited its turn: no odds for it.
+    setPhotoState(deps, cardId, photoId, "seen", "odds_kept");
+    return;
+  }
   let image: Buffer;
   try {
     image = deps.photos.read(photo.file);

@@ -487,6 +487,9 @@ export class Settler {
         }
       }
     }
+    // The hours before the bet was placed could not be fetched: the label uses the hours the bet
+    // was open, which can differ from the full window. Logged with the bet id only.
+    this.deps.log({ event: "lucky_win_cut_window", bet_id: bet.id });
     return luckyWinOf(choreType, cutWindowOf(choreType, times), snapshot.hours);
   }
 

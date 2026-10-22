@@ -11,6 +11,8 @@ export interface Forecast {
    * means the offer cannot be priced.
    */
   readonly sunsetMsByDate: Readonly<Record<string, number>>;
+  /** Dates whose sunset is the start of the last daylight hour, not Open-Meteo's own figure. */
+  readonly sunsetFallbackDates?: readonly string[];
 }
 
 /**

@@ -214,6 +214,9 @@ export async function createChoreCard(
     if (sunsetMs === undefined) {
       return noOddsCard(deps, choreType, NOTICES.noForecast, label);
     }
+    if (forecast.sunsetFallbackDates?.includes(today) === true) {
+      deps.log({ event: "sunset_fallback", date: today });
+    }
     const offer = laundryTonightOffer(now, sunsetMs, forecast.sunsetMsByDate[addDays(today, 1)]);
     if (!offer.offered) {
       return noOddsCard(deps, choreType, laundryTonightNotice(now, offer.nextAtMs), label);

@@ -10,7 +10,7 @@ import {
   type BookmakerInput,
 } from "../gemma/bookmaker.js";
 import { JobQueueFullError, type JobFailure } from "../gemma/runner.js";
-import { MAX_SAFETY_REASON_CHARS, runSafetyGuard } from "../gemma/safety.js";
+import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
@@ -35,6 +35,9 @@ import { cardView, type CardView } from "./views.js";
  * placed first, `unresolved` the question budget is spent).
  */
 type CardFailure = JobFailure | "weather" | "restart" | "busy" | "superseded" | "unresolved";
+
+/** Added to a guard alert's reason when a bet on the card had to be withdrawn. */
+export const BET_WITHDRAWN_COPY = "Your bet was withdrawn for safety.";
 
 /** A card asks at most this many questions; after that Gemma must answer or the rule odds stay. */
 export const MAX_QUESTIONS_PER_CARD = 2;
@@ -347,10 +350,20 @@ async function guardCard(deps: LedgerDeps, cardId: number): Promise<boolean> {
     return false;
   }
   const { output } = result;
+  if (output.status === "ok") {
+    // A verdict, either way: the card never needs the guard again. A failed or unsure guard
+    // leaves this null, so Retry and a restart ask again (AC-012.4).
+    deps.db
+      .prepare("UPDATE cards SET safety_checked_at = ? WHERE id = ? AND safety_checked_at IS NULL")
+      .run(deps.now(), cardId);
+  }
   if (output.status === "unsure" || output.alert !== true) {
     return false;
   }
-  const reason = (output.reason ?? "").trim().slice(0, MAX_SAFETY_REASON_CHARS);
+  const reason = (output.reason ?? "").trim();
+  // A guard alert always wins (safety is never a bet): a bet placed while the guard was thinking
+  // is withdrawn by the system, which is not the 5-minute user undo. It scores nothing and keeps
+  // its row; the person is told on the card.
   const alert = deps.db.transaction((): boolean => {
     const fresh = deps.db
       .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
@@ -358,12 +371,29 @@ async function guardCard(deps: LedgerDeps, cardId: number): Promise<boolean> {
     if (fresh?.kind !== "weather") {
       return false;
     }
-    if (hasActiveBet(deps, cardId)) {
-      // A bet is locked to the odds its person saw (AC-006.2): it stays, and the miss is logged.
-      deps.log({ event: "safety_alert_after_bet", cardId });
+    const live = deps.db
+      .prepare<[number], { id: number; status: string }>(
+        "SELECT id, status FROM bets WHERE card_id = ? AND status != 'undone'",
+      )
+      .all(cardId);
+    if (live.some((bet) => bet.status !== "open")) {
+      // A bet past `open` cannot be withdrawn (the state machine of migration 0003 allows only
+      // open to undone). Not reachable within the guard's 45 s: a quote settles hours ahead.
+      deps.log({ event: "safety_alert_skipped_settling_bet", cardId });
       return false;
     }
-    turnIntoAlert(deps, cardId, reason, "alert_from_safety_guard");
+    for (const bet of live) {
+      deps.db
+        .prepare("UPDATE bets SET status = 'undone' WHERE id = ? AND status = 'open'")
+        .run(bet.id);
+      deps.log({ event: "safety_alert_withdrew_bet", cardId, betId: bet.id });
+    }
+    turnIntoAlert(
+      deps,
+      cardId,
+      live.length === 0 ? reason : `${reason} ${BET_WITHDRAWN_COPY}`,
+      "alert_from_safety_guard",
+    );
     return true;
   });
   return alert();
@@ -483,7 +513,12 @@ export function retryCard(deps: LedgerDeps, cardId: number): CardView {
     )
     .run(cardId).changes;
   if (moved === 1) {
-    launchBookmaker(deps, cardId);
+    // A card the guard never gave a verdict on is asked again, then goes on to the bookmaker.
+    if (deps.flags.safetyGuard && card.safety_checked_at === null) {
+      launchNewCardJobs(deps, cardId);
+    } else {
+      launchBookmaker(deps, cardId);
+    }
   }
   return viewOf(deps, cardId);
 }
@@ -524,4 +559,32 @@ export function recoverThinkingCards(deps: Pick<LedgerDeps, "db">): number {
        WHERE gemma_state = 'thinking'`,
     )
     .run().changes;
+}
+
+/**
+ * After a restart, a card that lost its job before the safety guard gave a verdict is asked
+ * again (guard, then bookmaker) while the flag is on. Run after `recoverThinkingCards`, which
+ * turns the dead `thinking` cards into `offline · restart`. Cards with a bet, or whose odds have
+ * run out, are left alone.
+ */
+export function resumeUnguardedCards(deps: LedgerDeps): number {
+  if (!deps.flags.safetyGuard) {
+    return 0;
+  }
+  const ids = deps.db
+    .prepare<[number], { id: number }>(
+      `SELECT c.id FROM cards c
+       WHERE c.kind = 'weather' AND c.safety_checked_at IS NULL
+         AND c.gemma_state = 'offline' AND c.gemma_failure = 'restart'
+         AND NOT EXISTS (SELECT 1 FROM bets b WHERE b.card_id = c.id AND b.status != 'undone')
+         AND EXISTS (SELECT 1 FROM quotes q WHERE q.card_id = c.id AND q.settle_at > ?)`,
+    )
+    .all(deps.now());
+  for (const { id } of ids) {
+    deps.db
+      .prepare("UPDATE cards SET gemma_state = 'thinking', gemma_failure = NULL WHERE id = ?")
+      .run(id);
+    launchNewCardJobs(deps, id);
+  }
+  return ids.length;
 }

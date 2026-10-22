@@ -39,6 +39,7 @@ interface CachedTable {
   readonly fetchedAt: number;
   readonly table: HourlyTable;
   readonly sunsetMsByDate: Readonly<Record<string, number>>;
+  readonly sunsetFallbackDates: readonly string[];
 }
 
 /** Where the household is, from `config/household.json` (rounded again here, before any request). */
@@ -57,6 +58,11 @@ export interface OpenMeteoClientOptions {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly random?: () => number;
   readonly log?: (entry: CallLogEntry) => void;
+  /**
+   * Ask for the daily sunset (laundry tonight). Off: the forecast request is exactly what it was
+   * before the feature existed, and a sunset comes from the daylight hours alone.
+   */
+  readonly requestSunset?: boolean;
 }
 
 /**
@@ -71,6 +77,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   private readonly now: () => number;
   private readonly latitude: number;
   private readonly longitude: number;
+  private readonly requestSunset: boolean;
   private readonly http: OpenMeteoHttp;
   private readonly cache: WeatherCache;
   readonly calls: PersistentCallCounter;
@@ -82,6 +89,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     this.now = options.now;
     this.latitude = roundCoordinate(options.location.latitude);
     this.longitude = roundCoordinate(options.location.longitude);
+    this.requestSunset = options.requestSunset ?? false;
     this.cache = new WeatherCache(options.db);
     this.calls = new PersistentCallCounter(options.db, options.now);
     this.http =
@@ -146,10 +154,12 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     }
     try {
       const table = parseHourlyTable(entry.body);
+      const { sunsets, fallbackDates } = parseSunsets(entry.body, forecastHours(table));
       return {
         fetchedAt: entry.fetchedAt,
         table,
-        sunsetMsByDate: parseSunsets(entry.body, forecastHours(table)),
+        sunsetMsByDate: sunsets,
+        sunsetFallbackDates: fallbackDates,
       };
     } catch (error) {
       if (error instanceof OpenMeteoFormatError) {
@@ -172,12 +182,12 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     pastHours?: number;
   }): Promise<Forecast> {
     const pastHours = request.pastHours ?? 0;
-    const { fetchedAt, table, sunsetMsByDate } = await this.forecastTable();
+    const { fetchedAt, table, sunsetMsByDate, sunsetFallbackDates } = await this.forecastTable();
     const firstHour = Math.floor(request.fromMs / HOUR_MS) * HOUR_MS - pastHours * HOUR_MS;
     const hours = forecastHours(table)
       .filter((hour) => hour.startsAt >= firstHour)
       .slice(0, pastHours + request.hours);
-    return { fetchedAt, hours, sunsetMsByDate };
+    return { fetchedAt, hours, sunsetMsByDate, sunsetFallbackDates };
   }
 
   /** Cached table younger than 1 h, else a fresh fetch, else the cache if it is under 24 h old. */
@@ -195,14 +205,20 @@ export class OpenMeteoWeatherClient implements WeatherClient {
               [QUERY.forecastDays]: String(FORECAST_DAYS),
               [QUERY.pastDays]: String(FORECAST_PAST_DAYS),
             },
-            true,
+            this.requestSunset,
           ),
         );
         // Refuse an answer the app cannot read before it replaces a good cache entry.
         const table = parseHourlyTable(body);
         const fetchedAt = this.now();
         this.cache.put(key, fetchedAt, body);
-        return { fetchedAt, table, sunsetMsByDate: parseSunsets(body, forecastHours(table)) };
+        const { sunsets, fallbackDates } = parseSunsets(body, forecastHours(table));
+        return {
+          fetchedAt,
+          table,
+          sunsetMsByDate: sunsets,
+          sunsetFallbackDates: fallbackDates,
+        };
       });
     } catch (error) {
       if (cached !== undefined && this.now() - cached.fetchedAt < FORECAST_MAX_AGE_MS) {

@@ -138,17 +138,21 @@ const dailySchema = z.object({
     .optional(),
 });
 
+/** The sunset of each Madrid date, and the dates whose sunset came from the daylight fallback. */
+export interface ParsedSunsets {
+  readonly sunsets: Readonly<Record<string, number>>;
+  readonly fallbackDates: readonly string[];
+}
+
 /**
  * The sunset of each Madrid date as epoch milliseconds (laundry tonight's window starts there).
- * Taken from the daily `sunset` column when the answer has one; for a date it lacks, the end of
- * that date's last daylight hour (`is_day`), at most an hour late. A date whose daylight is not
- * fully in the answer (the first or last day of a range) gets none. Never throws: a missing
- * sunset only means laundry tonight cannot be offered.
+ * Taken from the daily `sunset` column when the answer has one; for a date it lacks, the START of
+ * that date's last daylight hour (`is_day`), so the hour that contains the sunset is inside the
+ * window (design.md, Outcome labels), at most an hour early. A date whose daylight is not fully in
+ * the answer (the first or last day of a range) gets none. Never throws: a missing sunset only
+ * means laundry tonight cannot be offered.
  */
-export function parseSunsets(
-  body: unknown,
-  hours: readonly ForecastHour[],
-): Record<string, number> {
+export function parseSunsets(body: unknown, hours: readonly ForecastHour[]): ParsedSunsets {
   const sunsets: Record<string, number> = {};
   const parsed = dailySchema.safeParse(body);
   const daily = parsed.success ? parsed.data.daily : undefined;
@@ -162,24 +166,27 @@ export function parseSunsets(
     });
   }
   const lastDaylight = new Map<string, number>();
-  const darkAfter = new Set<string>();
   for (const hour of hours) {
-    const date = madridDateOf(hour.startsAt);
     if (hour.isDay === true) {
+      const date = madridDateOf(hour.startsAt);
       lastDaylight.set(date, Math.max(lastDaylight.get(date) ?? 0, hour.startsAt));
     }
   }
-  for (const hour of hours) {
-    const date = madridDateOf(hour.startsAt);
-    const last = lastDaylight.get(date);
-    if (hour.isDay === false && last !== undefined && hour.startsAt > last) {
-      darkAfter.add(date);
-    }
-  }
+  const darkDates = new Set(
+    hours
+      .filter(
+        (hour) =>
+          hour.isDay === false &&
+          hour.startsAt > (lastDaylight.get(madridDateOf(hour.startsAt)) ?? Infinity),
+      )
+      .map((hour) => madridDateOf(hour.startsAt)),
+  );
+  const fallbackDates: string[] = [];
   for (const [date, startsAt] of lastDaylight) {
-    if (sunsets[date] === undefined && darkAfter.has(date)) {
-      sunsets[date] = startsAt + HOUR_MS;
+    if (sunsets[date] === undefined && darkDates.has(date)) {
+      sunsets[date] = startsAt;
+      fallbackDates.push(date);
     }
   }
-  return sunsets;
+  return { sunsets, fallbackDates };
 }
