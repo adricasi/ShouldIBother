@@ -5,6 +5,7 @@ import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
 import type { LedgerDeps } from "./deps.js";
+import { cardPhotoView } from "./photo-view.js";
 import { launchBookmaker } from "./gemma-cards.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
@@ -253,7 +254,13 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
     throw new HttpError(404, "Card not found");
   }
   // An alert has no odds, even if it began as a weather card (its old rule quote stays stored).
-  return cardView(card, card.kind === "weather" ? quote : undefined, bandTable(deps.rules));
+  const table = bandTable(deps.rules);
+  return cardView(
+    card,
+    card.kind === "weather" ? quote : undefined,
+    table,
+    cardPhotoView(deps.db, card, table),
+  );
 }
 
 /**
@@ -276,7 +283,7 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
     if (card.kind === "weather") {
       const quote = latestQuote(deps, card.id);
       if (quote !== undefined && quote.settle_at > now) {
-        views.push(cardView(card, quote, table));
+        views.push(cardView(card, quote, table, cardPhotoView(deps.db, card, table)));
       }
     } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
       views.push(cardView(card, undefined, table));

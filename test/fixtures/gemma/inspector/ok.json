@@ -1,0 +1,12 @@
+{
+  "description": "Hand-written synthetic inspector answer: a pot of plants, soil dry, no wilting, open to the rain.",
+  "content": {
+    "status": "ok",
+    "observations": [
+      { "name": "item", "value": "tomato pots" },
+      { "name": "soil_dryness", "value": "dry" },
+      { "name": "wilting", "value": "none" },
+      { "name": "cover", "value": "open" }
+    ]
+  }
+}

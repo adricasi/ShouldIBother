@@ -3,6 +3,7 @@ import type { Household } from "../config.js";
 import type { Db } from "../db.js";
 import type { Flags } from "../flags.js";
 import type { JobRunner } from "../gemma/runner.js";
+import type { PhotoStore } from "../photos/store.js";
 import type { WeatherClient } from "../weather/client.js";
 
 /**
@@ -43,6 +44,8 @@ export interface LedgerDeps {
   /** The household baseline: whether the AC and heater are used this season (AC-016.5). */
   readonly household: Household;
   readonly flags: Flags;
+  /** The photo files in the data folder (REQ-005, REQ-015). */
+  readonly photos: PhotoStore;
   readonly background: BackgroundTasks;
   /** Structured log line for a notable event (ids and numbers only, never household text). */
   readonly log: (entry: Readonly<Record<string, unknown>>) => void;

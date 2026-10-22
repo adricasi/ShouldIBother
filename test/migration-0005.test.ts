@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
+const UP_TO_5 = MIGRATIONS.filter((migration) => migration.id <= 5);
 const BEFORE = MIGRATIONS.filter((migration) => migration.id < 5);
 
 /** A database as the live week leaves it at migration 0004: an open bet and a card with rule odds. */
@@ -22,14 +23,14 @@ function seedLiveDatabase(db: Db): void {
 
 describe("migration 0005: where a card stands with Gemma (NFR-003)", () => {
   it("is number 5", () => {
-    expect(MIGRATIONS.map((migration) => migration.id).at(-1)).toBe(5);
+    expect(MIGRATIONS.map((migration) => migration.id)).toContain(5);
   });
 
   it("keeps every existing card, quote, decision and open bet; old cards have no stored state", () => {
     const db = openDatabase(":memory:");
     seedLiveDatabase(db);
     const betsBefore = db.prepare("SELECT * FROM bets").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([5]);
+    expect(migrate(db, UP_TO_5)).toEqual([5]);
     expect(
       db
         .prepare(
@@ -60,7 +61,7 @@ describe("migration 0005: where a card stands with Gemma (NFR-003)", () => {
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
     expect(db.pragma("foreign_key_check")).toEqual([]);
     // Running it again is a no-op.
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, UP_TO_5)).toEqual([]);
     db.close();
   });
 

@@ -4,12 +4,14 @@ import {
   answerCard,
   captureCards,
   createQuickCard,
+  deletePhoto,
   fetchSlips,
   fetchToday,
   placeBet,
   retryCard,
   settleBet,
   undoBet,
+  uploadPhoto,
   type BetKind,
   type Settled,
   type Slips,
@@ -102,7 +104,10 @@ export function App() {
   );
 
   // A card Gemma is still working on is polled faster than the 30 s default (design.md, Interfaces).
-  const gemmaIsThinking = today?.cards.some((card) => card.gemma?.state === "thinking") ?? false;
+  const gemmaIsThinking =
+    today?.cards.some(
+      (card) => card.gemma?.state === "thinking" || card.photo?.state === "inspecting",
+    ) ?? false;
   useEffect(() => {
     if (!gemmaIsThinking) {
       return undefined;
@@ -206,6 +211,18 @@ export function App() {
         void act(async () => {
           await answerCard(cardId, yes);
           return undefined;
+        });
+      }}
+      onPhoto={(cardId, file) => {
+        void act(async () => {
+          await uploadPhoto(cardId, file);
+          return undefined;
+        });
+      }}
+      onDeletePhoto={(photoId) => {
+        void act(async () => {
+          await deletePhoto(photoId);
+          return { kind: "info", text: "Photo deleted, with what Gemma read from it." };
         });
       }}
       onBet={(cardId, quoteId) => {

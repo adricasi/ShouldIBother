@@ -26,6 +26,12 @@ export interface DecisionInput {
  * made by the fake model: `WHERE model NOT LIKE 'fake%'` (the fixtures say `fake-gemma`).
  */
 export function logDecision(db: Db, input: DecisionInput): number {
+  // A photo deleted while its job ran has no row to point at (and AC-015.2 says nothing derived
+  // from it may stay): the decision is logged without the photo id and without what Gemma said.
+  const photoGone =
+    input.photoId !== undefined &&
+    input.photoId !== null &&
+    db.prepare("SELECT 1 FROM photos WHERE id = ?").get(input.photoId) === undefined;
   const result = db
     .prepare(
       `INSERT INTO gemma_decisions (job, card_id, bet_id, photo_id, model, model_digest,
@@ -37,17 +43,17 @@ export function logDecision(db: Db, input: DecisionInput): number {
       input.job,
       input.cardId,
       input.betId,
-      input.photoId ?? null,
+      photoGone ? null : (input.photoId ?? null),
       input.model,
       input.modelDigest ?? null,
       input.promptVersion,
       input.toolMode ?? null,
       input.inputSummary,
-      input.output ?? null,
+      photoGone ? null : (input.output ?? null),
       input.valid ? 1 : 0,
       input.retries,
       input.latencyMs,
-      input.error ?? null,
+      photoGone ? "the photo was deleted while the job ran" : (input.error ?? null),
       input.createdAt,
     );
   return Number(result.lastInsertRowid);

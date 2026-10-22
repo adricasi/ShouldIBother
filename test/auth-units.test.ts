@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -129,6 +129,7 @@ function runtimeFor(databasePath: string, clock: FakeClock): Runtime {
   const db = openDatabase(databasePath);
   migrate(db, MIGRATIONS);
   return {
+    dataDir: dirname(databasePath),
     db,
     store: new AuthStore(db, clock.now),
     port: PORT,

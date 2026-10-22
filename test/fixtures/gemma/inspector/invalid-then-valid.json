@@ -1,0 +1,7 @@
+{
+  "description": "First answer fails the schema, the retry is valid.",
+  "steps": [
+    { "content": { "status": "ok", "observations": [{ "name": "mood", "value": "happy" }] } },
+    { "content": { "status": "ok", "observations": [{ "name": "soil_dryness", "value": "dry" }] } }
+  ]
+}

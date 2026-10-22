@@ -372,3 +372,68 @@ h3 {
   gap: var(--space-2);
   margin: var(--space-3) 0;
 }
+
+.photo-block {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The real file input stays in the page for assistive tech and keyboards; the label is the button. */
+.photo-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.photo-input:focus-visible + label {
+  outline: 3px solid var(--color-leaf);
+  outline-offset: 2px;
+}
+
+label.button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.photo-thumb {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: var(--border-hair) solid var(--color-line);
+}
+
+.odds-change {
+  font-weight: 700;
+}
+
+.saw dl {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.saw-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.saw-row dt {
+  color: var(--color-ink);
+  opacity: 0.8;
+}
+
+.saw-row dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

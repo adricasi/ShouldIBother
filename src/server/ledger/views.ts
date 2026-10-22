@@ -3,6 +3,7 @@ import { CHORES, NOTICES, isChoreType } from "../../domain/chores.js";
 import { canUndo } from "../../domain/bet-state.js";
 import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 
+import type { CardPhotoView } from "./photo-view.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 
 /** What the person can win or lose at these odds, computed by code (AC-003.2). */
@@ -57,7 +58,7 @@ export function quoteLabel(source: "rule" | "gemma", state: GemmaState): string 
 }
 
 /** Plain words for why Gemma has no answer, by failure code (AC-003.4, AC-013.3). */
-const FAILURE_NOTES: Readonly<Record<string, string>> = {
+export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   unavailable: "Gemma is not running.",
   timeout: "Gemma took too long to answer.",
   deadline: "Gemma did not finish in time.",
@@ -84,6 +85,8 @@ export function quoteView(quote: QuoteRow, table: BandTable, state: GemmaState) 
     settle_at: new Date(quote.settle_at).toISOString(),
     label: quoteLabel(quote.source, state),
     provisional,
+    /** True when the odds were set with the card's photo (AC-005.3). */
+    with_photo: quote.with_photo === 1,
     payouts: payoutsAt(quote.odds),
   };
 }
@@ -140,7 +143,12 @@ function gemmaView(card: CardRow) {
 /** Plain words on a typed chore that has no weather link (AC-002.2). */
 const NOT_WEATHER_NOTICE = "Not a weather chore";
 
-export function cardView(card: CardRow, quote: QuoteRow | undefined, table: BandTable) {
+export function cardView(
+  card: CardRow,
+  quote: QuoteRow | undefined,
+  table: BandTable,
+  photo: CardPhotoView = null,
+) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
   return {
     id: card.id,
@@ -160,6 +168,8 @@ export function cardView(card: CardRow, quote: QuoteRow | undefined, table: Band
     /** Null on every card that cannot be bet on. */
     quote: quote === undefined ? null : quoteView(quote, table, gemmaStateOf(card)),
     gemma: gemmaView(card),
+    /** The before photo with What Gemma saw and the odds before → after (REQ-005); null without one. */
+    photo,
   };
 }
 

@@ -6,6 +6,7 @@ import { HttpError } from "../problem.js";
 
 import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
+import { currentPhoto, withoutPhotoQuote } from "./photo-view.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
 
@@ -78,6 +79,14 @@ export function placeBet(
         ? decision.model
         : `${decision.model}@${decision.model_digest}`;
 
+  // AC-005.5: a bet on a card with a photo also stores the band without it, for the photo
+  // ablation. It is written here, in the INSERT, because migration 0003 makes it write-once.
+  const bandWithoutPhoto =
+    currentPhoto(deps.db, cardId) === undefined
+      ? null
+      : (withoutPhotoQuote(deps.db, cardId, quote.with_photo === 1 ? quote.id : null)?.band ??
+        null);
+
   const place = deps.db.transaction((): BetRow => {
     const existing = deps.db
       .prepare<[number], { n: number }>(
@@ -91,8 +100,9 @@ export function placeBet(
       deps.db
         .prepare(
           `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, gemma_band, rule_band,
-             model_version, prompt_version, placed_at, undo_until, settle_at, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             band_without_photo, model_version, prompt_version, placed_at, undo_until, settle_at,
+             status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
         )
         .run(
           cardId,
@@ -103,6 +113,7 @@ export function placeBet(
           quote.reason,
           quote.source === "gemma" ? quote.band : null,
           ruleQuote.band,
+          bandWithoutPhoto,
           modelVersion,
           decision?.prompt_version ?? null,
           now,

@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { FastifyInstance } from "fastify";
@@ -12,6 +13,7 @@ import { loadModelsConfig } from "./model/config.js";
 import { selectModel } from "./model/select.js";
 import { loadFlags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
+import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
 import { loadRules } from "./rules.js";
 import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
@@ -86,6 +88,7 @@ export async function startServer(
       rules: loadRules(),
       household,
       flags,
+      photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
       runner: { toolUse: modelsConfig.gemma.toolUse, answerMode: modelsConfig.gemma.answerMode },
       onSchedulerError: (error) => {
         console.error("Scheduler pass failed", error);

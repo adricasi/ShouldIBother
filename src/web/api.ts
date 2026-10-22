@@ -22,7 +22,30 @@ const quoteSchema = z.object({
   settle_at: z.string(),
   label: z.string(),
   provisional: z.boolean(),
+  /** True when the odds were set with the card's photo (AC-005.3). */
+  with_photo: z.boolean().optional(),
   payouts: payoutsSchema,
+});
+
+/** The card's before photo, with What Gemma saw and the odds before → after (REQ-005). */
+export const photoSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  state: z.enum(["inspecting", "seen", "unsure", "failed"]),
+  /** "What Gemma saw" (AC-005.3). */
+  saw: z.array(z.object({ name: z.string(), label: z.string(), value: z.string() })),
+  /** Gemma's yes/no question when it could not tell from the photo (AC-005.4). */
+  question: z.string().nullable(),
+  note: z.string().nullable(),
+  odds_change: z
+    .object({
+      before: z.number(),
+      after: z.number(),
+      before_band_name: z.string(),
+      after_band_name: z.string(),
+      text: z.string(),
+    })
+    .nullable(),
 });
 
 export const cardSchema = z.object({
@@ -48,6 +71,7 @@ export const cardSchema = z.object({
       can_retry: z.boolean(),
     })
     .nullable(),
+  photo: photoSchema.nullish(),
 });
 
 export const betSchema = z.object({
@@ -117,6 +141,7 @@ export const settledSchema = z.object({
 });
 
 export type Card = z.infer<typeof cardSchema>;
+export type CardPhoto = z.infer<typeof photoSchema>;
 export type Bet = z.infer<typeof betSchema>;
 export type Today = z.infer<typeof todaySchema>;
 export type Slips = z.infer<typeof slipsSchema>;
@@ -139,7 +164,8 @@ const problemSchema = z.object({ title: z.string(), detail: z.string().optional(
 async function request<T>(
   path: string,
   schema: z.ZodType<T>,
-  init?: { method: "POST"; body: unknown } | { method: "DELETE" },
+  init?:
+    { method: "POST"; body: unknown } | { method: "POST"; form: FormData } | { method: "DELETE" },
 ): Promise<T> {
   let response: Response;
   try {
@@ -149,11 +175,14 @@ async function request<T>(
         ? {}
         : init.method === "DELETE"
           ? { method: "DELETE" }
-          : {
-              method: init.method,
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(init.body),
-            }),
+          : "form" in init
+            ? // The browser sets the multipart boundary itself.
+              { method: "POST", body: init.form }
+            : {
+                method: init.method,
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(init.body),
+              }),
     });
   } catch {
     throw new ApiError(0, "Can't reach the laptop. Check the Wi-Fi and try again.");
@@ -170,6 +199,9 @@ async function request<T>(
       ? [problem.data.title, problem.data.detail].filter(Boolean).join(": ")
       : `The laptop answered ${response.status}.`;
     throw new ApiError(response.status, text);
+  }
+  if (response.status === 204) {
+    return schema.parse(undefined);
   }
   return schema.parse(await response.json());
 }
@@ -196,6 +228,20 @@ export const retryCard = (cardId: number): Promise<Card> =>
 /** The tap on Gemma's yes/no question (AC-003.3). */
 export const answerCard = (cardId: number, yes: boolean): Promise<Card> =>
   request(`/api/cards/${cardId}/answer`, cardSchema, { method: "POST", body: { yes } });
+
+/** Sends a before photo; Gemma then looks at it and the card is polled (AC-005.2). */
+export const uploadPhoto = (cardId: number, file: File): Promise<Card> => {
+  const form = new FormData();
+  form.append("photo", file);
+  return request(`/api/cards/${cardId}/photo`, z.object({ card: cardSchema }), {
+    method: "POST",
+    form,
+  }).then((result) => result.card);
+};
+
+/** Deletes a photo and what was derived from it (AC-015.2). */
+export const deletePhoto = (photoId: string): Promise<undefined> =>
+  request(`/api/photos/${photoId}`, z.undefined(), { method: "DELETE" });
 
 export const fetchSlips = (): Promise<Slips> => request("/api/slips", slipsSchema);
 

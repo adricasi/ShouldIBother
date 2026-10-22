@@ -15,9 +15,18 @@ import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bet
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
-import { answerCard, recoverThinkingCards, retryCard } from "./ledger/gemma-cards.js";
+import {
+  answerCard,
+  assertGemmaCapacity,
+  recoverThinkingCards,
+  retryCard,
+} from "./ledger/gemma-cards.js";
+import { sweepOrphanPhotos } from "./ledger/photos.js";
+import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
+import { photoRoutes } from "./photos/routes.js";
+import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
 import type { ModelClient } from "./model/client.js";
@@ -33,6 +42,8 @@ export interface CoreDeps {
   readonly flags: Flags;
   /** The household baseline behind "Not needed this season" (AC-016.5). */
   readonly household: Household;
+  /** The photo files in the data folder (REQ-005, REQ-015). */
+  readonly photos: PhotoStore;
   readonly onSchedulerError?: (error: unknown) => void;
   /** Called when a background Gemma step fails unexpectedly (not for ordinary Gemma failures). */
   readonly onBackgroundError?: (error: unknown) => void;
@@ -121,14 +132,22 @@ export function createCore(deps: CoreDeps): Core {
     rules: deps.rules,
     household: deps.household,
     flags: deps.flags,
+    photos: deps.photos,
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
+  };
+  // Photo-store warnings (a file that could not be removed, a checkpoint that could not finish)
+  // go to the structured log: messages only, never photo content.
+  deps.photos.warn = (message) => {
+    logEntry({ event: "photo_warning", message });
   };
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
+  recoverInspections(ledger);
+  sweepOrphanPhotos(ledger);
 
-  const plugin: FastifyPluginAsync = (app) => {
-    // Household data: never cached by the browser or a proxy.
+  const plugin: FastifyPluginAsync = async (app) => {
+    // Household data: never cached by the browser or a proxy (a route may set a stricter value).
     gemma.setLogger((entry) => {
       app.log.info(entry, "gemma job");
     });
@@ -136,7 +155,9 @@ export function createCore(deps: CoreDeps): Core {
       app.log.info(entry, "gemma card");
     };
     app.addHook("onSend", (_request, reply, payload) => {
-      reply.header("cache-control", "no-store");
+      if (!reply.hasHeader("cache-control")) {
+        reply.header("cache-control", "no-store");
+      }
       return Promise.resolve(payload);
     });
     app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply) => {
@@ -208,7 +229,19 @@ export function createCore(deps: CoreDeps): Core {
       const body = parse(settleBody, request.body);
       return settleByTap(ledger, id, body.answer);
     });
-    return Promise.resolve();
+
+    await app.register(
+      photoRoutes({
+        deps: ledger,
+        checkCapacity: () => {
+          assertGemmaCapacity(ledger);
+        },
+        afterStored: ({ cardId, photo }) => {
+          startInspection(ledger, cardId, photo.id);
+          return { photo, card: getCardView(ledger, cardId) };
+        },
+      }),
+    );
   };
 
   return {

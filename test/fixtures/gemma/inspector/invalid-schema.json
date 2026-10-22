@@ -1,0 +1,7 @@
+{
+  "description": "Valid JSON that fails the schema (ok without observations), twice.",
+  "steps": [
+    { "content": { "status": "ok", "observations": [] } },
+    { "content": { "status": "ok" } }
+  ]
+}
