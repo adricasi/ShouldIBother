@@ -1,12 +1,12 @@
 import { CHORES, isChoreType } from "../../domain/chores.js";
 import { MULTIPLIER, pointsFor } from "../../domain/points.js";
-import { judgeBet, JUDGE_PROMPT } from "../gemma/judge.js";
+import { judgeBet } from "../gemma/judge.js";
+import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
 import { markDueBets } from "./bets.js";
 
 import type { LedgerDeps } from "./deps.js";
-import { logDecision } from "./decisions.js";
 import type { BetRow, CardRow } from "./rows.js";
 
 /** The sum of every final settlement's points, from the stored rows (AC-009.4). */
@@ -66,26 +66,23 @@ export async function settleByTap(
     throw new HttpError(400, "Unknown answer");
   }
 
-  const judged = await judgeBet(deps.model, { chore, odds: bet.odds, answerId });
-  const decision = {
-    job: "judge",
-    cardId: bet.card_id,
-    betId: bet.id,
-    model: judged.model,
-    modelDigest: judged.modelDigest,
-    promptVersion: JUDGE_PROMPT.version,
-    inputSummary: `${card.chore_type} bet at ${bet.odds}%, answer ${answerId}`,
-    output: judged.raw,
-    retries: 0,
-    latencyMs: judged.latencyMs,
-    createdAt: deps.now(),
-  };
-  if (!judged.ok) {
-    logDecision(deps.db, {
-      ...decision,
-      valid: false,
-      error: `${judged.failure}: ${judged.error}`,
+  let judged;
+  try {
+    judged = await judgeBet(deps.gemma, {
+      chore,
+      odds: bet.odds,
+      answerId,
+      betId: bet.id,
+      cardId: bet.card_id,
     });
+  } catch (error) {
+    if (error instanceof JobQueueFullError) {
+      throw new HttpError(503, "Gemma is busy", "The bet stays open; try again in a minute.");
+    }
+    throw error;
+  }
+  if (!judged.ok) {
+    // The runner logged the failed decision (REQ-028).
     throw new HttpError(
       503,
       "Gemma could not judge this bet yet",
@@ -101,7 +98,6 @@ export async function settleByTap(
     evidence: "tap",
   });
   const commit = deps.db.transaction((): void => {
-    const decisionId = logDecision(deps.db, { ...decision, valid: true, error: undefined });
     // The status guard makes a second tap on the same bet fail instead of settling it twice.
     const moved = deps.db
       .prepare("UPDATE bets SET status = 'settled' WHERE id = ? AND status = 'due'")
@@ -115,7 +111,7 @@ export async function settleByTap(
            decision_id, points, settled_at, appeal_of, final)
          VALUES (?, 'tap', ?, ?, NULL, NULL, ?, ?, ?, NULL, 1)`,
       )
-      .run(bet.id, multiplier, judged.verdict, decisionId, points, deps.now());
+      .run(bet.id, multiplier, judged.verdict, judged.decisionId, points, deps.now());
   });
   commit();
 

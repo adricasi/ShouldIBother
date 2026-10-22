@@ -37,6 +37,17 @@ export const cardSchema = z.object({
   notice: z.string().nullable(),
   /** Null on every card that cannot be bet on. */
   quote: quoteSchema.nullable(),
+  /** Where the card stands with Gemma; null on a card that gets no Gemma quote (REQ-013). */
+  gemma: z
+    .object({
+      state: z.enum(["thinking", "answered", "question", "offline"]),
+      /** Gemma's yes/no question, answered with two taps (AC-003.3). */
+      question: z.string().nullable(),
+      /** Why Gemma has no answer, in plain words. */
+      note: z.string().nullable(),
+      can_retry: z.boolean(),
+    })
+    .nullable(),
 });
 
 export const betSchema = z.object({
@@ -62,6 +73,12 @@ export const todaySchema = z.object({
   now: z.string(),
   flags: flagsSchema,
   points: z.object({ total: z.number() }),
+  /** Gemma's status, refreshed at least every 60 s (AC-013.5). */
+  gemma: z.object({
+    status: z.enum(["online", "waking", "offline"]),
+    detail: z.string().nullable(),
+    checked_at: z.string(),
+  }),
   /** The forecast behind the odds: when it was fetched and how old that is (AC-014.3). */
   forecast: z
     .object({ fetched_at: z.string(), age_label: z.string(), stale: z.boolean() })
@@ -164,6 +181,21 @@ export const createQuickCard = (choreType: string): Promise<Card> =>
     method: "POST",
     body: { chore_type: choreType },
   });
+
+/** Typed capture: the listener turns a sentence into one card per chore (AC-002.1). */
+export const captureCards = (text: string): Promise<Card[]> =>
+  request("/api/cards", z.object({ cards: z.array(cardSchema) }), {
+    method: "POST",
+    body: { text },
+  }).then((result) => result.cards);
+
+/** Retry after "Gemma offline · rule odds" (AC-013.3). */
+export const retryCard = (cardId: number): Promise<Card> =>
+  request(`/api/cards/${cardId}/retry`, cardSchema, { method: "POST", body: {} });
+
+/** The tap on Gemma's yes/no question (AC-003.3). */
+export const answerCard = (cardId: number, yes: boolean): Promise<Card> =>
+  request(`/api/cards/${cardId}/answer`, cardSchema, { method: "POST", body: { yes } });
 
 export const fetchSlips = (): Promise<Slips> => request("/api/slips", slipsSchema);
 

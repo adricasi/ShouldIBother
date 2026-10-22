@@ -8,7 +8,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "vite build && tsx watch src/cli.ts start",
+    "dev": "vite build && SIB_FAKE_MODEL=1 tsx watch src/cli.ts start",
     "sib": "tsx src/cli.ts",
     "dev:web": "vite",
     "build:web": "vite build",

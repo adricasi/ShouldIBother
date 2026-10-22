@@ -103,7 +103,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: Open-Meteo client (forecast, past hours) with timeout, retry, 1 h cache, coordinates rounded to 2 decimals, call counter and the host allowlist; rule bands in `src/domain/rules` for plants, line-dry today, laundry tonight, AC and heater exactly as the design table (first match wins); drying index; "Line-dry today" offer window and "Not needed this season" for AC/heater from `config/household.json`; safety backstop; final thresholds in `config/rules.json`; "Do it now" alert card with no bet action; forecast age display; attribution in the app.
   - Done when: unit tests per rule band edge (both sides of every half-open bound) and backstop limit; integration tests for AC-012.1, AC-012.2, AC-014.1–AC-014.7 (a request to a non-allowlisted host is refused) and AC-016.4, AC-016.5 with a fake HTTP server (no network in tests); rule odds appear ≤ 1 s after capture (AC-004.1, timed in test).
 
-- [ ] T-006: Gemma jobs framework, listener and bookmaker
+- [x] T-006: Gemma jobs framework, listener and bookmaker
   - Who / when: Agent W1 · Thu AM (stacked on T-005); merged Thu PM
   - Requirements: REQ-002, REQ-003 (incl. AC-003.6), REQ-004 (AC-004.2, AC-004.3), REQ-013, REQ-028; NFR-004 (timeout), NFR-007; ADR-0005
   - Depends on: T-005

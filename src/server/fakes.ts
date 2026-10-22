@@ -39,8 +39,9 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
 };
 
 /**
- * The fake services CI and `SIB_FAKE_WEATHER=1` use: the model is fake until T-010 wires Ollama;
- * the live app uses the Open-Meteo client unless fake weather is asked for (no network needed).
+ * The fake services CI and `npm run dev` use. The fake model is chosen only with
+ * `SIB_FAKE_MODEL=1`; the live app uses the Open-Meteo client unless `SIB_FAKE_WEATHER=1` asks for
+ * fake weather (no network needed).
  */
 export function createFakeServices(now: () => number): {
   model: FakeModelClient;

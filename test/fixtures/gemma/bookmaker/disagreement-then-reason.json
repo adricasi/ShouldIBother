@@ -1,0 +1,44 @@
+{
+  "description": "The first answer is far from the rule band without an explanation; the retry adds one.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "Heavy rain is forecast overnight, so the pots will be watered.",
+        "settle_in_hours": 24
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "Heavy rain is forecast overnight, so the pots will be watered.",
+        "settle_in_hours": 24,
+        "disagreement_reason": "The rule only counts rain; the forecast shows a long soaking spell."
+      }
+    }
+  ]
+}

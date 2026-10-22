@@ -1,0 +1,21 @@
+{
+  "description": "Answers twice without calling get_forecast (first attempt and retry).",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

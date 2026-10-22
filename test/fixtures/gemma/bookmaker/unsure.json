@@ -1,0 +1,22 @@
+{
+  "description": "Calls get_forecast, then asks one yes/no question instead of giving a band.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "unsure",
+        "question": "Are the pots under a roof?"
+      }
+    }
+  ]
+}

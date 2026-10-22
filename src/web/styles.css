@@ -341,3 +341,34 @@ h3 {
   text-align: center;
   margin-top: var(--space-4);
 }
+
+.capture {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.capture textarea {
+  width: 100%;
+  min-height: var(--tap-min);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.gemma-status.offline {
+  color: var(--color-coral);
+  font-weight: 700;
+}
+
+.gemma-question,
+.gemma-offline {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}

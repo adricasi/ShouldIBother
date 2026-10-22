@@ -1,0 +1,25 @@
+{
+  "description": "A 130-character reason with a 60-character disagreement explanation: together they are over 140.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+        "settle_in_hours": 24,
+        "disagreement_reason": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+      }
+    }
+  ]
+}

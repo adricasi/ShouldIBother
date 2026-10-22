@@ -1,0 +1,11 @@
+{
+  "description": "The answer is JSON but the chore type is not one of the eight.",
+  "content": {
+    "chores": [
+      {
+        "label": "water",
+        "chore_type": "gardening"
+      }
+    ]
+  }
+}

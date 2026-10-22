@@ -38,6 +38,8 @@ export interface CoreHarnessOptions {
   weatherProfile?: FakeWeatherProfile;
   webRoot?: string;
   model?: FakeModelClient;
+  /** Timeouts and tool settings of the job runner. */
+  runner?: NonNullable<Parameters<typeof createCore>[0]["runner"]>;
   /** The household baseline; the committed example (no AC, no heater) when omitted. */
   household?: Household;
   /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
@@ -52,6 +54,8 @@ export interface CoreHarness {
   readonly core: Core;
   readonly model: FakeModelClient;
   readonly weather: FakeWeatherClient;
+  /** Waits until no Gemma job is queued or running. */
+  idle(): Promise<void>;
   /** Session cookie of a paired device; sessions live in the database, so it survives a restart. */
   cookie: string;
   request(options: InjectOptions & { url: string }): Promise<LightMyRequestResponse>;
@@ -71,6 +75,11 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
   migrate(db, MIGRATIONS);
   const store = new AuthStore(db, clock.now);
   const model = options.model ?? new FakeModelClient({ scenario: judgeScenarioFromAnswer });
+  if (options.model === undefined) {
+    // The bookmaker is offline unless a test brings it online: the cards of the older tests keep
+    // their rule odds, and no Gemma quote arrives between two of their calls.
+    model.setScenario("bookmaker", "offline");
+  }
   const weather = new FakeWeatherClient(clock.now, options.weatherProfile);
   const flags = parseFlags(options.flags ?? {});
   const core = createCore({
@@ -81,6 +90,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     rules: loadRules(),
     household: options.household ?? EXAMPLE_HOUSEHOLD,
     flags,
+    ...(options.runner === undefined ? {} : { runner: options.runner }),
   });
   const app = await buildApp({
     flags,
@@ -107,6 +117,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     model,
     weather,
     cookie: "",
+    idle: () => core.idle(),
     request: (request) =>
       app.inject({ ...request, headers: { host: LOCAL_HOST, ...request.headers } }),
     get: (url) => harness.request({ method: "GET", url, headers: { cookie: harness.cookie } }),

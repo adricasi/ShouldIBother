@@ -4,7 +4,7 @@ import { bandTable } from "../../domain/rules/index.js";
 import type { Db } from "../db.js";
 import { HttpError } from "../problem.js";
 
-import { latestQuote } from "./cards.js";
+import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 import { betView, type BetView } from "./views.js";
@@ -60,6 +60,24 @@ export function placeBet(
     throw new HttpError(409, "No rule odds on this card");
   }
 
+  // A bet on Gemma's quote records which model and prompt made it, in the INSERT: migration 0003
+  // makes both columns write-once (REQ-028).
+  const decision =
+    quote.source === "gemma" && quote.decision_id !== null
+      ? deps.db
+          .prepare<
+            [number],
+            { model: string; model_digest: string | null; prompt_version: string }
+          >("SELECT model, model_digest, prompt_version FROM gemma_decisions WHERE id = ?")
+          .get(quote.decision_id)
+      : undefined;
+  const modelVersion =
+    decision === undefined
+      ? null
+      : decision.model_digest === null
+        ? decision.model
+        : `${decision.model}@${decision.model_digest}`;
+
   const place = deps.db.transaction((): BetRow => {
     const existing = deps.db
       .prepare<[number], { n: number }>(
@@ -73,8 +91,8 @@ export function placeBet(
       deps.db
         .prepare(
           `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, gemma_band, rule_band,
-             placed_at, undo_until, settle_at, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             model_version, prompt_version, placed_at, undo_until, settle_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
         )
         .run(
           cardId,
@@ -85,6 +103,8 @@ export function placeBet(
           quote.reason,
           quote.source === "gemma" ? quote.band : null,
           ruleQuote.band,
+          modelVersion,
+          decision?.prompt_version ?? null,
           now,
           now + UNDO_WINDOW_MS,
           quote.settle_at,

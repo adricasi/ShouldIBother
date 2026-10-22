@@ -1,0 +1,35 @@
+{
+  "description": "Calls get_forecast with hours_ahead 99 (not a use of the tool, so the answer is not asked for); the retry calls it correctly and answers.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 99
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

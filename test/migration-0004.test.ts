@@ -22,7 +22,7 @@ describe("migration 0004: cards can carry a notice (NFR-003)", () => {
   it("keeps every existing card, quote and open bet", () => {
     const db = openDatabase(":memory:");
     seedLiveDatabase(db);
-    expect(migrate(db, MIGRATIONS)).toEqual([4]);
+    expect(migrate(db, MIGRATIONS.slice(0, 4))).toEqual([4]);
     expect(
       db.prepare("SELECT id, kind, alert_reason, notice FROM cards ORDER BY id").all(),
     ).toEqual([
