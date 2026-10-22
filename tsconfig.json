@@ -18,5 +18,5 @@
     "outDir": "dist"
   },
   "include": ["src", "test", "*.ts"],
-  "exclude": ["src/web", "dist"]
+  "exclude": ["src/web", "e2e", "dist"]
 }

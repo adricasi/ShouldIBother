@@ -8,6 +8,8 @@ import {
 } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
+import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { LoadingState } from "./ui/States.js";
 
 export interface ScoreScreenProps {
   /** Undefined until the first answer. */
@@ -215,19 +217,12 @@ export function ScoreScreen({ score, flags, notice }: ScoreScreenProps) {
           )}
         </header>
 
-        {notice === undefined ? null : (
-          <p
-            className={`notice ${notice.kind}`}
-            role={notice.kind === "error" ? "alert" : "status"}
-          >
-            {notice.text}
-          </p>
-        )}
+        <NoticeBanner notice={notice} />
 
         {score === undefined ? (
           // After a failed first load the alert above is the whole message.
           notice === undefined ? (
-            <p className="meta">Loading…</p>
+            <LoadingState />
           ) : null
         ) : (
           <>

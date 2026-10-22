@@ -40,6 +40,7 @@ npm test                                 # tests (npm test -- --coverage)
 npm run lint && npm run typecheck        # lint + types
 npm run format                           # format
 npm run build                            # compile to dist/
+npm run test:e2e                         # Playwright journey at phone width (builds the SPA first; fake model + weather)
 npm audit --audit-level=high             # dependency vulnerabilities
 ```
 

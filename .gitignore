@@ -62,3 +62,7 @@ config/server.json
 
 # --- backtest runs (progress, decisions and reports of `sib backtest`) ---
 backtest-runs/
+
+# Playwright output
+test-results/
+playwright-report/

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { IconName } from "./ui/icon-name.js";
+
 /**
  * A UI entry point (a tab, a button, a link) that belongs to a flagged feature (REQ-029,
  * AC-029.2): it is rendered only while the server reports the flag as on. `id` is the route of
@@ -9,6 +11,8 @@ export interface FlaggedEntry {
   readonly flag: string;
   readonly id: string;
   readonly label: string;
+  /** The tab's icon; a tab without one shows its label only. */
+  readonly icon?: IconName;
 }
 
 /**
@@ -16,7 +20,7 @@ export interface FlaggedEntry {
  * together with its screen; none of the features of the walking skeleton is flagged.
  */
 export const FLAGGED_ENTRIES: readonly FlaggedEntry[] = [
-  { flag: "score", id: "score", label: "Score" },
+  { flag: "score", id: "score", label: "Score", icon: "trophy" },
 ];
 
 /** The flags as `/api/today` reports them: every flag name with its boolean. */

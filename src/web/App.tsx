@@ -211,6 +211,10 @@ export function App() {
     });
   };
 
+  const reload = (): void => {
+    void act(() => Promise.resolve(undefined));
+  };
+
   if (showScore) {
     return <ScoreScreen score={score} flags={today?.flags ?? {}} notice={notice} />;
   }
@@ -226,6 +230,7 @@ export function App() {
         onSettlePhoto={onSettlePhoto}
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
+        onReload={reload}
       />
     );
   }
@@ -285,6 +290,7 @@ export function App() {
       onSettlePhoto={onSettlePhoto}
       onSettleAnswer={onSettleAnswer}
       onUndo={onUndo}
+      onReload={reload}
     />
   );
 }
