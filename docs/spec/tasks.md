@@ -81,7 +81,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `.nvmrc` = 24; `engines` `>=24 <25`; `.github/workflows/ci-node.yml` `node-version: 24`; new CI job for `training/` (ruff + pytest, no GPU, no network) with a placeholder test; dependencies (fastify, react, react-dom, vite, zod, better-sqlite3, sharp, pino) pinned in the lockfile; layout `src/server/`, `src/web/`, `src/domain/`, `src/cli.ts`, `prompts/`, `config/` (`flags.json`, `rules.json`, `household.json`, `models.json`), `test/fixtures/gemma/`; feature-flag loader; `data/` and the data folder git-ignored; scripts `dev`, `start`, `build`.
   - Done when: `npm ci && npm run lint && npm run typecheck && npm test && npm run build` pass on Node 24; CI green on the PR (Node and Python jobs); a test proves a flag that is off registers no route (AC-029.1, AC-029.2); `npm audit --audit-level=high` clean.
 
-- [ ] T-003: Pairing and session guard
+- [x] T-003: Pairing and session guard
   - Who / when: Agent W1 · Thu AM (stacked on T-002)
   - Requirements: REQ-001, NFR-001, NFR-007; ADR-0007
   - Depends on: T-002

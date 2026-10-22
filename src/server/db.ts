@@ -18,9 +18,10 @@ export interface Migration {
  */
 export function openDatabase(path: string): Db {
   const db = new Database(path);
+  // First, so the pragmas below wait for another process (the CLI) instead of failing.
+  db.pragma("busy_timeout = 5000");
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
   db.pragma("secure_delete = ON");
   return db;
 }
