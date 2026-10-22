@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 
 import { buildApp } from "../src/server/app.js";
@@ -8,12 +12,14 @@ import { createCore, type Core } from "../src/server/core.js";
 import { judgeScenarioFromAnswer } from "../src/server/fakes.js";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { parseFlags, type FlagName } from "../src/server/flags.js";
+import { PhotoStore } from "../src/server/photos/store.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 import { loadRules } from "../src/server/rules.js";
 import type { WeatherClient } from "../src/server/weather/client.js";
 import { FakeWeatherClient, type FakeWeatherProfile } from "../src/server/weather/fake.js";
 
+import { multipartBody } from "./support/photos.js";
 import {
   FAKE_INTERFACES,
   FakeClock,
@@ -38,6 +44,8 @@ export interface CoreHarnessOptions {
   weatherProfile?: FakeWeatherProfile;
   webRoot?: string;
   model?: FakeModelClient;
+  /** Folder for the photo files; a fresh temporary folder (removed on close) when omitted. */
+  photosDir?: string;
   /** The household baseline; the committed example (no AC, no heater) when omitted. */
   household?: Household;
   /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
@@ -50,6 +58,7 @@ export interface CoreHarness {
   readonly clock: FakeClock;
   readonly store: AuthStore;
   readonly core: Core;
+  readonly photos: PhotoStore;
   readonly model: FakeModelClient;
   readonly weather: FakeWeatherClient;
   /** Session cookie of a paired device; sessions live in the database, so it survives a restart. */
@@ -70,6 +79,9 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
   const db = openDatabase(options.dbPath ?? ":memory:");
   migrate(db, MIGRATIONS);
   const store = new AuthStore(db, clock.now);
+  const ownPhotosDir =
+    options.photosDir === undefined ? mkdtempSync(join(tmpdir(), "sib-photos-")) : undefined;
+  const photos = new PhotoStore(options.photosDir ?? ownPhotosDir!);
   const model = options.model ?? new FakeModelClient({ scenario: judgeScenarioFromAnswer });
   const weather = new FakeWeatherClient(clock.now, options.weatherProfile);
   const flags = parseFlags(options.flags ?? {});
@@ -81,6 +93,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     rules: loadRules(),
     household: options.household ?? EXAMPLE_HOUSEHOLD,
     flags,
+    photos,
   });
   const app = await buildApp({
     flags,
@@ -104,6 +117,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     clock,
     store,
     core,
+    photos,
     model,
     weather,
     cookie: "",
@@ -126,6 +140,9 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     close: async () => {
       await app.close();
       db.close();
+      if (ownPhotosDir !== undefined) {
+        rmSync(ownPhotosDir, { recursive: true, force: true });
+      }
     },
   };
   return harness;
@@ -137,4 +154,20 @@ export async function pair(harness: CoreHarness): Promise<void> {
   harness.cookie = cookieHeaderFrom(
     await harness.request({ method: "GET", url: `/pair?token=${token}` }),
   );
+}
+
+/** POSTs a photo to a card the way the app does (multipart, session cookie, same-origin Origin). */
+export async function uploadPhoto(
+  harness: CoreHarness,
+  cardId: number,
+  bytes: Buffer,
+  options: { fileName?: string; contentType?: string } = {},
+): Promise<LightMyRequestResponse> {
+  const body = multipartBody(bytes, options);
+  return await harness.request({
+    method: "POST",
+    url: `/api/cards/${cardId}/photo`,
+    payload: body.payload,
+    headers: { cookie: harness.cookie, origin: LOCAL_ORIGIN, ...body.headers },
+  });
 }

@@ -11,6 +11,7 @@ import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import type { LedgerDeps } from "./ledger/deps.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
+import { photoRoutes } from "./photos/routes.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
 import { FORECAST_TTL_MS } from "./weather/client.js";
@@ -78,10 +79,12 @@ function forecastStatus(deps: CoreDeps) {
 export function createCore(deps: CoreDeps): Core {
   const scheduler = createScheduler(deps, deps.onSchedulerError ?? (() => undefined));
 
-  const plugin: FastifyPluginAsync = (app) => {
-    // Household data: never cached by the browser or a proxy.
+  const plugin: FastifyPluginAsync = async (app) => {
+    // Household data: never cached by the browser or a proxy (a route may set a stricter value).
     app.addHook("onSend", (_request, reply, payload) => {
-      reply.header("cache-control", "no-store");
+      if (!reply.hasHeader("cache-control")) {
+        reply.header("cache-control", "no-store");
+      }
       return Promise.resolve(payload);
     });
     app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply) => {
@@ -132,7 +135,13 @@ export function createCore(deps: CoreDeps): Core {
       const body = parse(settleBody, request.body);
       return settleByTap(deps, id, body.answer);
     });
-    return Promise.resolve();
+
+    await app.register(
+      photoRoutes({
+        deps,
+        afterStored: ({ cardId, photo }) => ({ photo, card: getCardView(deps, cardId) }),
+      }),
+    );
   };
 
   return { plugin, scheduler };

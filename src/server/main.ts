@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { FastifyInstance } from "fastify";
@@ -10,6 +11,7 @@ import { createCore, type Core } from "./core.js";
 import { createFakeServices } from "./fakes.js";
 import { loadFlags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
+import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
 import { loadRules } from "./rules.js";
 import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
@@ -77,6 +79,7 @@ export async function startServer(
       rules: loadRules(),
       household,
       flags,
+      photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
       onSchedulerError: (error) => {
         console.error("Scheduler pass failed", error);
       },

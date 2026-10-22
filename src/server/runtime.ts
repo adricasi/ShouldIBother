@@ -14,6 +14,8 @@ import { pickLanAddress } from "./network.js";
 const portSchema = z.coerce.number().int().min(1).max(65535);
 
 export interface Runtime {
+  /** The household-private data folder: database, photos, logs. */
+  readonly dataDir: string;
   readonly db: Db;
   readonly store: AuthStore;
   readonly port: number;
@@ -35,9 +37,11 @@ export function loadRuntime(
   const port = env["SIB_PORT"] === undefined ? config.port : portSchema.parse(env["SIB_PORT"]);
   const interfaces = networkInterfaces();
   const lanAddress = pickLanAddress(interfaces, env["SIB_LAN_ADDRESS"]);
-  const db = openDatabase(join(resolveDataDir(env), DATABASE_FILE));
+  const dataDir = resolveDataDir(env);
+  const db = openDatabase(join(dataDir, DATABASE_FILE));
   migrate(db, MIGRATIONS);
   return {
+    dataDir,
     db,
     store: new AuthStore(db, Date.now),
     port,
