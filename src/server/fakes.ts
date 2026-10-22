@@ -11,6 +11,16 @@ const JUDGE_SCENARIO_BY_ANSWER: Readonly<Record<string, string>> = {
   moist: "ok",
   dry: "normal-loss",
   wilting: "harmful-loss",
+  line_dry: "ok",
+  line_damp: "small-loss",
+  line_wet: "normal-loss",
+  tonight_dry: "ok",
+  tonight_damp: "small-loss",
+  tonight_wet: "normal-loss",
+  ac_fine: "ok",
+  ac_warm: "small-loss",
+  heater_fine: "ok",
+  heater_cold: "small-loss",
 };
 
 export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
@@ -29,8 +39,8 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
 };
 
 /**
- * The services of the walking skeleton: the real Ollama and Open-Meteo clients arrive with T-010
- * and T-005, so until then `sib start` runs on the same fakes as CI.
+ * The fake services CI and `SIB_FAKE_WEATHER=1` use: the model is fake until T-010 wires Ollama;
+ * the live app uses the Open-Meteo client unless fake weather is asked for (no network needed).
  */
 export function createFakeServices(now: () => number): {
   model: FakeModelClient;

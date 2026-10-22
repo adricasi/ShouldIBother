@@ -56,7 +56,7 @@ function seed(db: Db): void {
 
 describe("migration 0003: locked bet columns and the state machine", () => {
   it("is number 3", () => {
-    expect(MIGRATIONS.map((migration) => migration.id)).toEqual([1, 2, 3]);
+    expect(MIGRATIONS.map((migration) => migration.id)).toEqual([1, 2, 3, 4]);
   });
 
   it("NFR-003: applies to a seeded database of 0002 and keeps every row", () => {
@@ -68,7 +68,7 @@ describe("migration 0003: locked bet columns and the state machine", () => {
     ).run();
     const before = db.prepare("SELECT * FROM bets ORDER BY id").all();
 
-    expect(migrate(db, MIGRATIONS)).toEqual([3]);
+    expect(migrate(db, MIGRATIONS)).toEqual([3, 4]);
 
     expect(db.prepare("SELECT * FROM bets ORDER BY id").all()).toEqual(before);
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 2 });

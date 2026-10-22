@@ -36,3 +36,8 @@ export interface WeatherClient {
 export class WeatherUnavailableError extends Error {
   override readonly name = "WeatherUnavailableError";
 }
+
+/** A forecast is reused for at most 1 h (AC-014.2). */
+export const FORECAST_TTL_MS = 60 * 60 * 1000;
+/** Without a forecast younger than 24 h the app sets no odds (AC-014.4, assumption A-10). */
+export const FORECAST_MAX_AGE_MS = 24 * 60 * 60 * 1000;

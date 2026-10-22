@@ -52,3 +52,15 @@ export function windowIsCovered(
     return previous === undefined || hour.startsAt === previous.startsAt + HOUR_MS;
   });
 }
+
+/** "Forecast from 3 h ago": how old the forecast behind the odds is (AC-014.3). */
+export function forecastAgeLabel(ageMs: number): string {
+  const minutes = Math.max(0, Math.floor(ageMs / 60_000));
+  if (minutes < 1) {
+    return "Forecast from just now";
+  }
+  if (minutes < 60) {
+    return `Forecast from ${minutes} min ago`;
+  }
+  return `Forecast from ${Math.floor(minutes / 60)} h ago`;
+}

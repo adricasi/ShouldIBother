@@ -5,13 +5,15 @@ import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
 import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./commands.js";
-import { CONFIG_DIR } from "./config.js";
+import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
 import { createFakeServices } from "./fakes.js";
 import { loadFlags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { loadRules } from "./rules.js";
 import { loadRuntime, type Runtime } from "./runtime.js";
+import type { WeatherClient } from "./weather/client.js";
+import { OpenMeteoWeatherClient } from "./weather/open-meteo-client.js";
 
 /**
  * Human-facing console output goes to stderr: stdout carries the JSON logs, so
@@ -50,18 +52,30 @@ export async function startServer(
   const configDir = options.configDir ?? CONFIG_DIR;
   const runtime = loadRuntime(env, configDir);
   let app: FastifyInstance;
+  let appRef: FastifyInstance | undefined;
   let core: Core;
   const webBuilt = existsSync(`${WEB_ROOT}index.html`);
   try {
     const flags = loadFlags(`${configDir}flags.json`);
     const now = Date.now;
-    const { model, weather } = createFakeServices(now);
+    const fakes = createFakeServices(now);
+    const household = loadHousehold();
+    const useFakeWeather = env["SIB_FAKE_WEATHER"] === "1";
+    const weather: WeatherClient = useFakeWeather
+      ? fakes.weather
+      : new OpenMeteoWeatherClient({
+          db: runtime.db,
+          now,
+          location: household.location ?? DEFAULT_LOCATION,
+          log: (entry) => appRef?.log.info(entry),
+        });
     core = createCore({
       db: runtime.db,
       now,
       weather,
-      model,
+      model: fakes.model,
       rules: loadRules(),
+      household,
       flags,
       onSchedulerError: (error) => {
         console.error("Scheduler pass failed", error);
@@ -74,6 +88,7 @@ export async function startServer(
       ...(webBuilt ? { webRoot: WEB_ROOT } : {}),
       auth: { store: runtime.store, allowlist: runtime.allowlist, print: output },
     });
+    appRef = app;
     app.addHook("onClose", () => {
       runtime.db.close();
     });
@@ -84,7 +99,9 @@ export async function startServer(
   }
   core.scheduler.start();
   output(
-    "Odds and verdicts come from the fake model and fake weather until the real clients land.",
+    env["SIB_FAKE_WEATHER"] === "1"
+      ? "Verdicts come from the fake model and the weather is fake (SIB_FAKE_WEATHER=1)."
+      : "Verdicts come from the fake model until the real Gemma client lands; the weather is Open-Meteo.",
   );
   if (!webBuilt) {
     output("The app screens are not built: run `npm run build` first (the API is up).");

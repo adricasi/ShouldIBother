@@ -1,5 +1,5 @@
 import { OUTCOME_CHORES, type OutcomeChore } from "./outcomes.js";
-import { madridParts, madridWallTime, nextMadridWallTime } from "./time.js";
+import { madridDateOf, madridParts, madridWallTime, nextMadridWallTime } from "./time.js";
 
 /**
  * Chore types: the listener's `chore_type` values that have a rule baseline and an outcome label
@@ -174,3 +174,26 @@ export function clampSettleAt(choreType: ChoreType, nowMs: number, proposedMs: n
 
 /** How long a bet can be undone (AC-006.4); T-008 builds the undo itself. */
 export const UNDO_WINDOW_MS = 5 * 60 * 1000;
+
+/** The words on cards that have no odds and no bet action. */
+export const NOTICES = {
+  noForecast: "No forecast, can't set odds",
+  notNeeded: "Not needed this season",
+  comingLater: "Coming later",
+} as const;
+
+/** "today at 07:00" or "tomorrow at 07:00": when an offer opens next, in Madrid time. */
+export function describeNextOffer(nowMs: number, nextAtMs: number): string {
+  const { hour, minute } = madridParts(nextAtMs);
+  const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const sameDay = madridDateOf(nowMs) === madridDateOf(nextAtMs);
+  return `${sameDay ? "today" : "tomorrow"} at ${time}`;
+}
+
+/** The card text for a chore that cannot be offered now (AC-016.4). */
+export function offerNotice(choreType: ChoreType, nowMs: number, nextAtMs: number): string {
+  const { title } = CHORES[choreType];
+  const from = String(LINE_DRY_OFFER.fromHour).padStart(2, "0");
+  const to = String(LINE_DRY_OFFER.toHour).padStart(2, "0");
+  return `${title} is offered from ${from}:00 to ${to}:00. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
+}

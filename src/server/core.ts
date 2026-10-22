@@ -2,8 +2,10 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { CHORE_TYPES } from "../domain/chores.js";
+import { ATTRIBUTION } from "../domain/open-meteo.js";
+import { forecastAgeLabel } from "../domain/weather.js";
 
-import { FLAG_NAMES, type Flags } from "./flags.js";
+import { FLAG_NAMES } from "./flags.js";
 import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import type { LedgerDeps } from "./ledger/deps.js";
@@ -11,10 +13,9 @@ import { pointsTotal, settleByTap } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
+import { FORECAST_TTL_MS } from "./weather/client.js";
 
 export interface CoreDeps extends LedgerDeps {
-  /** The flags, exposed to the SPA so it can hide entry points of features that are off. */
-  readonly flags: Flags;
   readonly onSchedulerError?: (error: unknown) => void;
 }
 
@@ -59,6 +60,21 @@ function sendProblem(reply: FastifyReply, error: HttpError): FastifyReply {
     });
 }
 
+/** How old the forecast behind the odds is, for Today (AC-014.3). Null before the first fetch. */
+function forecastStatus(deps: CoreDeps) {
+  const fetchedAt = deps.weather.latestForecastFetchedAt();
+  if (fetchedAt === undefined) {
+    return null;
+  }
+  const ageMs = Math.max(0, deps.now() - fetchedAt);
+  return {
+    fetched_at: new Date(fetchedAt).toISOString(),
+    age_label: forecastAgeLabel(ageMs),
+    // Older than the 1 h cache means Open-Meteo could not be reached for a fresh one.
+    stale: ageMs >= FORECAST_TTL_MS,
+  };
+}
+
 export function createCore(deps: CoreDeps): Core {
   const scheduler = createScheduler(deps, deps.onSchedulerError ?? (() => undefined));
 
@@ -87,6 +103,8 @@ export function createCore(deps: CoreDeps): Core {
         now: new Date(deps.now()).toISOString(),
         flags: Object.fromEntries(FLAG_NAMES.map((name) => [name, deps.flags[name]])),
         points: { total: pointsTotal(deps) },
+        forecast: forecastStatus(deps),
+        attribution: ATTRIBUTION,
         cards: listOpenCards(deps),
         open_bets: listBetsWithStatus(deps, "open"),
         due_bets: listBetsWithStatus(deps, "due"),

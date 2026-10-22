@@ -5,6 +5,8 @@ import type { Db } from "../db.js";
 
 import { WeatherCache, PersistentCallCounter } from "./cache.js";
 import {
+  FORECAST_MAX_AGE_MS,
+  FORECAST_TTL_MS,
   WeatherUnavailableError,
   type Forecast,
   type RecordedWeather,
@@ -20,10 +22,6 @@ import {
   recordedHours,
 } from "./parse.js";
 
-/** A forecast is reused for at most 1 h (AC-014.2). */
-export const FORECAST_TTL_MS = 60 * 60 * 1000;
-/** Without a forecast younger than 24 h the app sets no odds (AC-014.4, assumption A-10). */
-export const FORECAST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** A complete recorded window is reused for 1 h; an incomplete one is never cached. */
 export const RECORDED_TTL_MS = 60 * 60 * 1000;
 
