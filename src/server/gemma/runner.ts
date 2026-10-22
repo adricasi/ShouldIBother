@@ -278,6 +278,10 @@ export class JobRunner {
         );
         state.model = response.model;
         state.modelDigest = response.modelDigest;
+        if (this.now() > deadlineAt) {
+          // The answer came after the job's 45 s: the person already sees rule odds.
+          throw new Stop("deadline", "The 45 s job deadline passed");
+        }
         return response;
       } catch (error) {
         if (error instanceof ModelTimeoutError) {
