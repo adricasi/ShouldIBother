@@ -15,10 +15,12 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -33,20 +35,28 @@ jobs:
       - name: Tests
         run: npm test -- --coverage
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        # npm's bulk advisory endpoint is slow; the 300 s default fetch timeout is not enough.
+        run: npm audit --audit-level=high --fetch-timeout=600000
 
   # Fine-tune tooling (training/): lint and tests only, no GPU, no model, no network at test time.
   training:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      UV_PYTHON_DOWNLOADS: never
     defaults:
       run:
         working-directory: training
     steps:
-      - uses: actions/checkout@v7
-      # The runner's Python 3.12 is used (.python-version); uv is pinned like the lockfile.
-      - name: Install uv
-        run: pipx install uv==0.11.32
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # uv is downloaded and checksum-verified by setup-uv; Python comes from the runner
+      # (.python-version = 3.12) and is never downloaded.
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        with:
+          version: "0.11.32"
+          enable-cache: false
       - name: Install (from committed uv.lock)
         run: uv sync --frozen
       - name: Lint
