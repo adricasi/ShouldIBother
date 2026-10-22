@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { CHORES } from "../src/domain/chores.js";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
+import { judgeBet } from "../src/server/gemma/judge.js";
 import {
   JobRunner,
   JobToolError,
@@ -418,5 +420,37 @@ describe("Gemma job runner: the tool loop (AC-003.1, AC-003.6)", () => {
     const result = await runner.run(request({ tool: tool(true, executed) }));
     expect(result).toMatchObject({ ok: true, retries: 1, calls: 2, toolMode: "injected" });
     expect(executed).toHaveLength(1);
+  });
+});
+
+describe("the judge runs on the job runner (T-004's judge moved onto it)", () => {
+  it("retries once with the validation error and logs the decision with the bet", async () => {
+    const { runner, model } = setup((_request, n) =>
+      answer(
+        n === 1
+          ? '{"status":"ok","reason":"x"}'
+          : JSON.stringify({ status: "ok", verdict: "win", reason: "Still moist." }),
+      ),
+    );
+    db.exec(`INSERT INTO cards (id, input_text, chore_type, kind, created_at) VALUES (1, 'c', 'plants', 'weather', 1);
+      INSERT INTO bets (id, card_id, kind, band, odds, odds_source, reason, rule_band, placed_at, undo_until, settle_at)
+        VALUES (1, 1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3);`);
+    const result = await judgeBet(runner, {
+      chore: CHORES.plants,
+      odds: 50,
+      answerId: "moist",
+      betId: 1,
+      cardId: 1,
+    });
+    expect(result).toMatchObject({ ok: true, verdict: "win" });
+    expect(model.calls).toHaveLength(2);
+    expect(model.calls[1]?.messages.at(-1)?.content).toContain("verdict");
+    expect(decisions()[0]).toMatchObject({
+      job: "judge",
+      bet_id: 1,
+      card_id: 1,
+      retries: 1,
+      valid: 1,
+    });
   });
 });

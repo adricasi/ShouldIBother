@@ -25,6 +25,7 @@ const card: Card = {
   kind: "weather",
   alert_reason: null,
   notice: null,
+  gemma: { state: "thinking", question: null, note: null, can_retry: false },
   quote: {
     id: 1,
     source: "rule",
@@ -65,6 +66,7 @@ const emptyToday: Today = {
   now: "2026-10-22T08:00:00.000Z",
   flags: {},
   points: { total: 0 },
+  gemma: { status: "online" as const, detail: null, checked_at: "2026-10-22T08:00:00.000Z" },
   forecast: null,
   attribution: "Weather data by Open-Meteo.com",
   cards: [],
@@ -81,6 +83,9 @@ function screen(today: Today | undefined, overrides: Partial<TodayScreenProps> =
       results={{}}
       nowMs={Date.parse("2026-10-22T08:01:00.000Z")}
       onQuickCard={() => undefined}
+      onCapture={() => Promise.resolve(true)}
+      onRetry={() => undefined}
+      onAnswer={() => undefined}
       onBet={() => undefined}
       onDoIt={() => undefined}
       onUndo={() => undefined}
@@ -258,5 +263,108 @@ describe("T-005: chips, alerts, notices, forecast age and attribution on Today",
 
   it("AC-014.6: shows the Open-Meteo attribution", () => {
     expect(screen(emptyToday)).toContain("Weather data by Open-Meteo.com");
+  });
+});
+
+describe("T-006: Gemma on Today (REQ-002, REQ-003, REQ-013)", () => {
+  const gemmaCard = (
+    gemma: NonNullable<Card["gemma"]>,
+    source: "rule" | "gemma" = "rule",
+  ): Card => ({
+    ...card,
+    gemma,
+    quote: card.quote === null ? null : { ...card.quote, source },
+  });
+
+  it("AC-003.5: the odds tile and the slip name carry plain words with the percentage", () => {
+    const html = screen({ ...emptyToday, cards: [card] });
+    expect(html).toContain('aria-label="Likely · 70%"');
+    expect(html).toContain("Water plants, Likely · 70%");
+  });
+
+  it("AC-002.1: offers a text box limited to 500 characters", () => {
+    const html = screen(emptyToday);
+    expect(html).toContain("<textarea");
+    expect(html).toContain('maxLength="500"');
+    expect(html).toContain("Get odds");
+  });
+
+  it("AC-013.5: shows Gemma's status, with the fake model said out loud", () => {
+    const status = (gemma: Today["gemma"]): string => screen({ ...emptyToday, gemma });
+    const at = "2026-10-22T08:00:00.000Z";
+    expect(status({ status: "online", detail: null, checked_at: at })).toContain("Gemma is online");
+    expect(status({ status: "waking", detail: null, checked_at: at })).toContain("waking up");
+    expect(status({ status: "offline", detail: null, checked_at: at })).toContain(
+      "Gemma is offline, rule odds only",
+    );
+    expect(status({ status: "online", detail: "fake model", checked_at: at })).toContain(
+      "(fake model)",
+    );
+  });
+
+  it("AC-013.3: an offline card keeps its bet buttons and offers Retry with the reason", () => {
+    const html = screen({
+      ...emptyToday,
+      cards: [
+        gemmaCard({
+          state: "offline",
+          question: null,
+          note: "Gemma is not running.",
+          can_retry: true,
+        }),
+      ],
+    });
+    expect(html).toContain("Gemma is not running.");
+    expect(html).toContain("Retry Gemma");
+    expect(html).toContain("Bet: do nothing");
+  });
+
+  it("AC-003.3: a question is shown inside the card as two tap answers", () => {
+    const html = screen({
+      ...emptyToday,
+      cards: [
+        gemmaCard({
+          state: "question",
+          question: "Are the pots under a roof?",
+          note: null,
+          can_retry: false,
+        }),
+      ],
+    });
+    expect(html).toContain("Are the pots under a roof?");
+    expect(html).toMatch(/>Yes<\/button>/);
+    expect(html).toMatch(/>No<\/button>/);
+    expect(html).not.toContain("Retry Gemma");
+  });
+
+  it("a thinking or answered card shows no Retry", () => {
+    for (const state of ["thinking", "answered"] as const) {
+      const html = screen({
+        ...emptyToday,
+        cards: [gemmaCard({ state, question: null, note: null, can_retry: false }, "gemma")],
+      });
+      expect(html).not.toContain("Retry Gemma");
+    }
+  });
+
+  it("AC-002.2, AC-002.3: a card without odds says why and has no bet action", () => {
+    for (const notice of ["Not a weather chore", "Coming later"]) {
+      const html = screen({
+        ...emptyToday,
+        cards: [
+          {
+            ...card,
+            kind: notice === "Coming later" ? "coming_later" : "not_weather",
+            title: "pay the bill",
+            notice,
+            quote: null,
+            gemma: null,
+          },
+        ],
+      });
+      expect(html).toContain(notice);
+      expect(html).toContain("pay the bill");
+      expect(html).not.toContain("Bet: do nothing");
+    }
   });
 });

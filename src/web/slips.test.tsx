@@ -137,6 +137,7 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
     now: "2026-10-22T08:01:00.000Z",
     flags: {},
     points: { total: 0 },
+    gemma: { status: "online" as const, detail: null, checked_at: "2026-10-22T08:00:00.000Z" },
     forecast: null,
     attribution: "Weather data by Open-Meteo.com",
     cards: [],
@@ -153,6 +154,9 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
         results={{}}
         nowMs={NOW}
         onQuickCard={() => undefined}
+        onCapture={() => Promise.resolve(true)}
+        onRetry={() => undefined}
+        onAnswer={() => undefined}
         onBet={() => undefined}
         onDoIt={() => undefined}
         onSettle={() => undefined}
@@ -186,6 +190,7 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
               kind: "weather",
               alert_reason: null,
               notice: null,
+              gemma: null,
               quote: {
                 id: 1,
                 source: "rule",
@@ -206,6 +211,9 @@ describe("Undo and I'll do it on Today (AC-006.3 to AC-006.5)", () => {
         results={{}}
         nowMs={NOW}
         onQuickCard={() => undefined}
+        onCapture={() => Promise.resolve(true)}
+        onRetry={() => undefined}
+        onAnswer={() => undefined}
         onBet={() => undefined}
         onDoIt={() => undefined}
         onSettle={() => undefined}
