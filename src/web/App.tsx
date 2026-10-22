@@ -216,7 +216,16 @@ export function App() {
   };
 
   if (showScore) {
-    return <ScoreScreen score={score} flags={today?.flags ?? {}} notice={notice} />;
+    return (
+      <ScoreScreen
+        score={score}
+        flags={today?.flags ?? {}}
+        notice={notice}
+        onReload={() => {
+          void refreshScore(false);
+        }}
+      />
+    );
   }
   if (route === "slips") {
     return (

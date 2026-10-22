@@ -130,7 +130,7 @@ export function DueSlip({
       {settle === null ? null : <WeatherLine weather={settle.weather} />}
       {settle?.state === "answer_needed" ? (
         <>
-          <h4 className="question">How did it turn out?</h4>
+          <p className="question prompt">How did it turn out?</p>
           <div className="answers row">
             {bet.tap_answers.map((answer) => (
               <button

@@ -48,7 +48,7 @@ export function ErrorState({
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
-    <section className="error-state" aria-labelledby="error-state-title">
+    <section className="error-state" role="alert" aria-labelledby="error-state-title">
       <Icon name="alert" />
       <h2 id="error-state-title" className="section-title">
         {title}

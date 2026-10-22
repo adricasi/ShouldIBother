@@ -3,6 +3,7 @@ import { useId, type ChangeEvent } from "react";
 import type { Card } from "./api.js";
 import { Icon } from "./ui/Icon.js";
 import { OddsMeter } from "./ui/OddsMeter.js";
+import { PrivacyNote } from "./ui/PrivacyNote.js";
 
 export interface PhotoActions {
   readonly onPhoto: (cardId: number, file: File) => void;
@@ -14,10 +15,13 @@ export function PhotoPicker({
   label,
   busy,
   onPick,
+  showPrivacy = true,
 }: {
   label: string;
   busy: boolean;
   onPick: (file: File) => void;
+  /** The privacy line under the button; off where several buttons share one line below them. */
+  showPrivacy?: boolean;
 }) {
   const inputId = useId();
   const change = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -42,6 +46,7 @@ export function PhotoPicker({
         <Icon name="camera" />
         {label}
       </label>
+      {showPrivacy ? <PrivacyNote /> : null}
     </>
   );
 }
@@ -124,6 +129,7 @@ export function PhotoBlock({
         {photo.state === "inspecting" ? null : (
           <PhotoPicker
             label="Send another photo"
+            showPrivacy={false}
             busy={busy}
             onPick={(file) => {
               actions.onPhoto(card.id, file);
@@ -141,6 +147,7 @@ export function PhotoBlock({
           Delete photo
         </button>
       </div>
+      <PrivacyNote />
     </div>
   );
 }

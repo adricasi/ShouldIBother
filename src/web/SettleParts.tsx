@@ -112,7 +112,15 @@ export function ReceiptCard({
           <div>
             <dt>Weather</dt>
             <dd>
-              {receipt.weather.label}: {weatherChips(receipt.weather.digest).join(" · ")}
+              {receipt.weather.label}
+              <ul className="chips-static" aria-label="Recorded weather">
+                {weatherChipItems(receipt.weather.digest).map((chip) => (
+                  <li key={chip.text}>
+                    <Icon name={chip.icon} />
+                    {chip.text}
+                  </li>
+                ))}
+              </ul>
             </dd>
           </div>
         )}

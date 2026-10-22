@@ -9,13 +9,15 @@ import {
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
-import { LoadingState } from "./ui/States.js";
+import { ErrorState, LoadingState } from "./ui/States.js";
 
 export interface ScoreScreenProps {
   /** Undefined until the first answer. */
   readonly score: Score | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
   readonly notice: Notice | undefined;
+  /** Reads the score again after a failed first load (the error state's Try again). */
+  readonly onReload?: () => void;
 }
 
 /** Shown in place of the charts while nothing has settled (AC-020.4). */
@@ -203,7 +205,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
 }
 
 /** The Score screen (REQ-020): points, savings, how often the judge was overruled, calibration. */
-export function ScoreScreen({ score, flags, notice }: ScoreScreenProps) {
+export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps) {
   return (
     <>
       <main className="screen">
@@ -217,7 +219,13 @@ export function ScoreScreen({ score, flags, notice }: ScoreScreenProps) {
           )}
         </header>
 
-        <NoticeBanner notice={notice} />
+        {score === undefined && notice?.kind === "error" ? (
+          <ErrorState title="Can't load your score" busy={false} onRetry={onReload}>
+            {notice.text} Your bets are safe; this screen tries again every 30 seconds.
+          </ErrorState>
+        ) : (
+          <NoticeBanner notice={notice} />
+        )}
 
         {score === undefined ? (
           // After a failed first load the alert above is the whole message.

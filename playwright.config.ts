@@ -18,8 +18,6 @@ export default defineConfig({
     viewport: PHONE,
     hasTouch: true,
     isMobile: true,
-    // The app is served over plain HTTP on the LAN; nothing leaves the machine.
-    acceptDownloads: false,
     trace: "off",
   },
 });

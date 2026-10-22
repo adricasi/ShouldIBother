@@ -11,6 +11,7 @@ import { isStampAnimated } from "./stamp.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
 import { choreIconName, Icon } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 
 export interface QuickChip {
@@ -307,7 +308,7 @@ export function TodayScreen(props: TodayScreenProps) {
     ...(props.onSettleAnswer === undefined ? {} : { onAnswer: props.onSettleAnswer }),
   };
   return (
-    <>
+    <PrivacyProvider voice={today?.flags["voice"] === true}>
       <main className="screen">
         <header className="header">
           <div>
@@ -435,13 +436,9 @@ export function TodayScreen(props: TodayScreenProps) {
             </section>
           </>
         )}
-        <p className="meta privacy">
-          <Icon name="lock" />
-          Gemma runs on your computer at home. Your photos and voice never leave it.
-        </p>
         {today === undefined ? null : <p className="meta attribution">{today.attribution}</p>}
       </main>
       <Nav flags={today?.flags ?? {}} />
-    </>
+    </PrivacyProvider>
   );
 }

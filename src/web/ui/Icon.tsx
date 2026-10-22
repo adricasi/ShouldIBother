@@ -40,9 +40,9 @@ const GLYPHS = {
   wind: Wind,
 } as const satisfies Record<IconName, LucideIcon>;
 
-/** A decorative icon: 1.8 px round stroke, sized by `.icon` in styles.css, hidden from screen readers. */
 export type { IconName };
 
+/** A decorative icon: 1.8 px round stroke, sized by `.icon` in styles.css, hidden from screen readers. */
 export function Icon({ name }: { readonly name: IconName }) {
   const Glyph = GLYPHS[name];
   return <Glyph className="icon" strokeWidth={1.8} aria-hidden="true" focusable="false" />;

@@ -28,9 +28,7 @@ export function OddsMeter({
       <span className="odds-bar" aria-hidden="true">
         <span className="odds-bar-fill" style={{ width: `${after}%` }} />
       </span>
-      <p className="odds-change" aria-label={`Odds changed from ${before} to ${after} percent`}>
-        With the photo: {text}
-      </p>
+      <p className="odds-change">With the photo: {text}</p>
     </div>
   );
 }

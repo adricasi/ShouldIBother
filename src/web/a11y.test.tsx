@@ -4,7 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Bet, Card, Slips, Today } from "./api.js";
+import { Nav } from "./Nav.js";
 import { ROUTE_TITLES, type Route } from "./route.js";
+import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
 import { answerNeeded, emptyWeek, lossReceipt, winReceipt } from "./test-data.js";
 import { TodayScreen, type TodayScreenProps } from "./TodayScreen.js";
@@ -277,5 +279,71 @@ describe("NFR-009: core screens have no axe violations (jsdom)", () => {
       ],
     });
     expect(await violationsOf(html, "slips")).toEqual([]);
+  });
+});
+
+describe("T-018 fix round: states, privacy line and icons", () => {
+  const failed = { kind: "error" as const, text: "The laptop did not answer." };
+
+  it("the first-load error state is a live alert on Today, Slips and Score", () => {
+    const todayHtml = today(undefined, { notice: failed });
+    expect(todayHtml).toMatch(/<section class="error-state" role="alert"/);
+    expect(slips(undefined, { notice: failed })).toMatch(
+      /<section class="error-state" role="alert"/,
+    );
+    const scoreHtml = renderToStaticMarkup(
+      <ScoreScreen
+        score={undefined}
+        flags={{ score: true }}
+        notice={failed}
+        onReload={() => undefined}
+      />,
+    );
+    expect(scoreHtml).toMatch(/<section class="error-state" role="alert"/);
+    expect(scoreHtml).toContain("Try again");
+  });
+
+  it("names voice in the privacy line only while the voice flag is on, right under the photo button", () => {
+    const off = today({ ...emptyToday, cards: [card] });
+    expect(off).toContain("Gemma runs on your computer at home. Your photos never leave it.");
+    expect(off).not.toContain("and voice");
+    const on = today({ ...emptyToday, flags: { voice: true }, cards: [card] });
+    expect(on).toContain("Your photos and voice never leave it.");
+    // The line follows the photo controls of the card.
+    expect(off.indexOf("Delete photo")).toBeLessThan(off.indexOf("never leave it"));
+  });
+
+  it("shows the privacy line under the after-photo button on Slips, with the same voice rule", () => {
+    const html = slips({ ...emptySlips, settle_now: [dueBet] });
+    expect(html.indexOf("Add an after photo for full points")).toBeLessThan(
+      html.indexOf("Your photos never leave it."),
+    );
+    const withVoice = renderToStaticMarkup(
+      <SlipsScreen
+        slips={{ ...emptySlips, settle_now: [dueBet] }}
+        flags={{ voice: true }}
+        nowMs={NOW}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onSettlePhoto={() => undefined}
+        onUndo={() => undefined}
+      />,
+    );
+    expect(withVoice).toContain("Your photos and voice never leave it.");
+  });
+
+  it("the tab bar draws an icon on every tab, also with the score flag off", () => {
+    const off = renderToStaticMarkup(<Nav flags={{ score: false }} />);
+    expect(off.match(/<svg/g)).toHaveLength(2);
+    expect(off).not.toContain("Score");
+    const on = renderToStaticMarkup(<Nav flags={{ score: true }} />);
+    expect(on.match(/<svg/g)).toHaveLength(3);
+    expect(on).toContain("lucide-trophy");
+  });
+
+  it("lists the recorded weather on a receipt as a list of chips", () => {
+    const html = today(emptyToday, { results: { 8: winReceipt } });
+    expect(html).toMatch(/<dd>Modelled recent weather[^<]*<ul class="chips-static"/);
   });
 });

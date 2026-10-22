@@ -5,6 +5,7 @@ import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 
 export interface SlipsScreenProps {
@@ -33,7 +34,7 @@ export const SLIPS_EMPTY_TEXT = {
 export function SlipsScreen(props: SlipsScreenProps) {
   const { slips, nowMs, busy, notice } = props;
   return (
-    <>
+    <PrivacyProvider voice={props.flags["voice"] === true}>
       <main className="screen">
         <header className="header">
           <div>
@@ -127,6 +128,6 @@ export function SlipsScreen(props: SlipsScreenProps) {
         )}
       </main>
       <Nav flags={props.flags} current="slips" />
-    </>
+    </PrivacyProvider>
   );
 }

@@ -1,9 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
-
-type Session = Awaited<ReturnType<ReturnType<Page["context"]>["storageState"]>>;
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { axeViolations } from "./axe.js";
+import { focusRingProblems } from "./focus.js";
 import { TestServer } from "./server.js";
+
+type Session = Awaited<ReturnType<ReturnType<Page["context"]>["storageState"]>>;
 
 const server = new TestServer();
 /** The paired browser session, kept from the journey for the width checks (one token pairs 3 devices). */
@@ -19,9 +20,27 @@ test.afterAll(async () => {
   await server.dispose();
 });
 
-/** Saves a screenshot under test-results/ (git-ignored) so the screens can be compared by eye. */
-async function shot(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: `test-results/screens/${name}.png`, fullPage: true });
+/**
+ * Saves a viewport screenshot under test-results/ (git-ignored) so the screens can be compared by
+ * eye. The fixed tab bar would cut through a full-page capture, so `focus` is scrolled to the
+ * top of the viewport first.
+ */
+async function shot(page: Page, name: string, focus?: Locator): Promise<void> {
+  if (focus === undefined) {
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+  } else {
+    await focus.evaluate((element) => {
+      element.scrollIntoView({ block: "start" });
+      window.scrollBy(0, -16);
+    });
+  }
+  await page.screenshot({ path: `test-results/screens/${name}.png`, fullPage: false });
+}
+
+async function expectFocusRings(page: Page): Promise<void> {
+  expect(await focusRingProblems(page)).toEqual([]);
 }
 
 async function expectNoViolations(page: Page): Promise<void> {
@@ -71,9 +90,6 @@ test("capture, bet, settle at phone width", async ({ page }) => {
 
   // Today, empty: states, no chores yet.
   await expect(page.getByText("No chores yet")).toBeVisible();
-  await expect(
-    page.getByText("Gemma runs on your computer at home. Your photos and voice never leave it."),
-  ).toBeVisible();
   await shot(page, "01-today-empty");
   await expectNoViolations(page);
   await expectTouchTargets(page);
@@ -84,7 +100,13 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   const slip = page.getByRole("article", { name: /^Water plants, / });
   await expect(slip).toBeVisible();
   await expect(slip.getByText(/Lazy Bookie · Bet slip/)).toBeVisible();
-  await shot(page, "02-today-slip");
+  // The privacy line sits right under the photo button (voice is off, so it names photos only).
+  await expect(
+    slip.getByText("Gemma runs on your computer at home. Your photos never leave it."),
+  ).toBeVisible();
+  await expect(page.getByText(/and voice/)).toHaveCount(0);
+  await shot(page, "02-today-slip", slip);
+  await expectFocusRings(page);
   await expectNoViolations(page);
   await expectTouchTargets(page);
   await expectNoSideScroll(page);
@@ -114,8 +136,12 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   // Settle by one tap.
   const due = page.getByRole("article", { name: /ready to settle/ });
   await expect(due).toBeVisible({ timeout: 20_000 });
-  await expect(due.getByRole("heading", { level: 4, name: "How did it turn out?" })).toBeVisible();
-  await shot(page, "05-settle-due");
+  await expect(due.getByText("How did it turn out?")).toBeVisible();
+  await expect(
+    due.getByText("Gemma runs on your computer at home. Your photos never leave it."),
+  ).toBeVisible();
+  await shot(page, "05-settle-due", due);
+  await expectFocusRings(page);
   await expectNoViolations(page);
   await expectTouchTargets(page);
   await due.getByRole("button", { name: "Still moist, all fine" }).click();
@@ -124,7 +150,7 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   const receipt = page.getByRole("article", { name: /^Water plants, (You win|Loss)/ });
   await expect(receipt).toBeVisible();
   await expect(receipt.getByText(/^[+−]\d+$/).first()).toBeVisible();
-  await shot(page, "06-receipt");
+  await shot(page, "06-receipt", receipt);
   await expectNoViolations(page);
 
   // Slips now lists it as settled.
