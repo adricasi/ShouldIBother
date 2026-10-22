@@ -1,7 +1,7 @@
 # Requirements: Should I Bother?
 
 - Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
-- Last updated: 2026-10-21
+- Last updated: 2026-10-22
 
 IDs are permanent: never renumber or reuse. Deprecate with ~~strikethrough~~ and a note.
 Acceptance criteria use EARS style: `WHEN <trigger> [WHILE <state>] THE SYSTEM SHALL <response>`
@@ -13,7 +13,7 @@ Fixed values used below:
 - **Odds bands → odds**: very likely 85 · likely 70 · toss-up 50 · unlikely 35 · very unlikely 15 (%, chance that doing nothing works).
 - **Payout on a do-nothing win**: (100 − odds) × evidence multiplier, rounded to the nearest integer (halves up). Multiplier: after photo ×1.0, one tap ×0.5, auto-settle ×0.5.
 - **Other outcomes**: small loss −25 · normal loss −50 · harmful loss −150 · cash-out −10 · "I'll do it" and the weather would not have helped +5 · "I'll do it" and the weather would have done it −10 · advice followed +5.
-- **Gemma timeouts**: 30 s per model call; 45 s deadline per Gemma job end to end, measured from when the job is queued (so it includes waiting for the GPU) and covering all calls, tool calls and the retry; for a photo, inspector + bookmaker together. Gemma jobs run one at a time.
+- **Gemma timeouts**: 30 s per model call; 45 s deadline per Gemma job end to end, measured from when the job is queued (so it includes waiting for the GPU) and covering all calls, tool calls and the retry; for a photo, inspector + bookmaker together. Gemma jobs run one at a time through one queue that holds at most 8 jobs (queued or running); a ninth is refused as "busy" (AC-013.6).
 - **Retry budget**: each Gemma job makes at most 4 model calls: up to 2 for the first attempt (a `get_forecast` tool call and the answer) and up to 2 for its single retry. Every "retry once" below uses this budget.
 - **Time zone**: all times, windows, settle bounds and the Monday–Sunday week are Europe/Madrid.
 
@@ -26,13 +26,13 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-001.1: WHEN the server starts or the user runs `sib pair` THE SYSTEM SHALL generate a new pairing token of at least 128 bits from a cryptographically secure random source, valid for 10 minutes, print a pairing URL and QR code to the laptop console, and leave existing sessions valid.
   - AC-001.2: WHEN a device opens the pairing URL with a valid, unexpired token THE SYSTEM SHALL set an HttpOnly, SameSite=Strict session cookie and redirect to a URL that does not contain the token; one token may pair at most 3 devices within its 10 minutes, and each new pairing prints a console line with the time, client address and user agent.
-  - AC-001.3: IF a request to any route other than `/pair` (pages, API, photo files) lacks a valid session THEN THE SYSTEM SHALL respond 401 and return no app data.
+  - AC-001.3: IF a request to any route other than `/pair` (pages, API, photo files) lacks a valid session THEN THE SYSTEM SHALL respond 401 and return no app data; `/healthz` is such a route and needs a session too.
   - AC-001.4: IF a POST, PUT or DELETE request carries no Origin header, or one that is not an app origin (an allowlisted host over http, or an entry of `config.publicOrigins` such as a Tailscale Serve https origin) THEN THE SYSTEM SHALL reject it with 403.
   - AC-001.5: IF more than 10 unauthenticated requests that fail the pairing or session check arrive from one client address within 1 minute THEN THE SYSTEM SHALL reject further unauthenticated requests from that address for 1 minute; requests with a valid session are never rejected by this limit.
   - AC-001.6: WHEN the user runs "Forget devices" (in the app or `sib forget-devices`) THE SYSTEM SHALL invalidate all existing sessions and any unexpired pairing token.
   - AC-001.7: THE SYSTEM SHALL never write the pairing token or session identifiers to logs, including the `/pair` query string in request logs.
   - AC-001.8: IF a session is older than 30 days or a pairing token is older than 10 minutes THEN THE SYSTEM SHALL treat it as invalid.
-  - AC-001.9: IF a request's Host header (with port) is not in the allowlist built at start-up (localhost, 127.0.0.1, the active interfaces' addresses, `config.allowedHosts` and the hosts of `config.publicOrigins`) THEN THE SYSTEM SHALL respond 421 and return no app data.
+  - AC-001.9: IF a request's Host header (with port) is not in the allowlist built at start-up (localhost, 127.0.0.1, the active interfaces' addresses, `config.allowedHosts` and the hosts of `config.publicOrigins`) THEN THE SYSTEM SHALL respond 421 and return no app data. `config.publicOrigins`, `config.allowedHosts` and the port are read from `config/server.json`, which is git-ignored because it names the machine; the committed `config/server.example.json` is the fallback.
   - AC-001.10: WHEN a device pairs through an https entry of `config.publicOrigins` THE SYSTEM SHALL also set the Secure attribute on the session cookie.
 
 ### REQ-002: Capture chores as cards
@@ -53,10 +53,10 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-003.1: WHEN a weather chore card is created THE SYSTEM SHALL ask the Gemma bookmaker for an odds band, a one-line reason and a settle time, with the forecast obtained through a weather tool call made by Gemma (function calling).
   - AC-003.2: WHEN the bookmaker returns a schema-valid answer THE SYSTEM SHALL show the band name, the mapped odds, the reason, the settle time, the payout for each outcome and the time, water and electricity at stake, labelled "Gemma's odds".
-  - AC-003.3: WHEN the bookmaker answers "unsure" with a yes/no question THE SYSTEM SHALL show the question inside the card as two tap answers and re-ask the bookmaker with the answer.
+  - AC-003.3: WHEN the bookmaker answers "unsure" with a yes/no question THE SYSTEM SHALL show the question inside the card as two tap answers and re-ask the bookmaker with the answer. A card asks at most 2 questions (at most 3 answers are ever stored); if the questions are spent without a usable answer, the rule odds stay.
   - AC-003.4: IF the bookmaker's answer fails schema validation after one retry THEN THE SYSTEM SHALL keep the rule odds on the card (REQ-013) and log the failure.
   - AC-003.5: THE SYSTEM SHALL show plain words next to every odds percentage (e.g. "Likely · 70%").
-  - AC-003.6: IF the bookmaker answers without calling the `get_forecast` tool THEN THE SYSTEM SHALL retry once and, if the tool is still not called, keep the labelled rule odds (REQ-013) and record the miss for the tool-call miss rate.
+  - AC-003.6: IF the bookmaker answers without calling the `get_forecast` tool THEN THE SYSTEM SHALL retry once and, if the tool is still not called, keep the labelled rule odds (REQ-013) and record the miss for the tool-call miss rate. The decision's `tool_mode` is `called` only after a valid call to `get_forecast` (right tool, valid arguments) that ran.
 
 ### REQ-004: Rule baseline alongside Gemma
 - Story: As the builder, I want a deterministic rule model scored on every bet, so that Gemma has an honest baseline to beat.
@@ -73,22 +73,22 @@ Fixed values used below:
 - Goals: G-2, G-5
 - Acceptance criteria:
   - AC-005.1: WHEN the user adds a photo to a card THE SYSTEM SHALL strip all EXIF and location metadata and resize it to at most 1024 px on the longest side before storing it or sending it to Gemma.
-  - AC-005.2: WHEN a photo is stored THE SYSTEM SHALL ask the Gemma inspector for its observations (item type, soil dryness or dampness, wilting, cover from rain) and re-run the bookmaker with them.
+  - AC-005.2: WHEN a photo is stored THE SYSTEM SHALL ask the Gemma inspector for its observations (item type, soil dryness or dampness, wilting, cover from rain) and re-run the bookmaker with them. A new before photo replaces the card's earlier one together with its quotes and Gemma decisions, so the odds before the photo are always the odds without any photo.
   - AC-005.3: WHEN the bookmaker returns odds after a photo THE SYSTEM SHALL show a "What Gemma saw" list and the odds before → after (e.g. "35% → 50%").
-  - AC-005.4: IF the inspector answers "unsure" (e.g. too dark) THEN THE SYSTEM SHALL keep the odds without the photo and show Gemma's yes/no question.
+  - AC-005.4: IF the inspector answers "unsure" (e.g. too dark) THEN THE SYSTEM SHALL keep the odds without the photo and show Gemma's yes/no question as text only, with no tap answers; it does not count toward the card's 2 questions (AC-003.3).
   - AC-005.5: WHEN a bet is placed with a photo THE SYSTEM SHALL store the odds band with and without the photo, for the photo ablation.
-  - AC-005.6: IF an uploaded file is not an image format the system can decode (e.g. HEIC without decoder support) THEN THE SYSTEM SHALL respond 415 with a message telling the user how to send a supported photo, and keep the card unchanged.
+  - AC-005.6: IF an uploaded file is not a JPEG, PNG, WebP or HEIF image (decided by its first bytes, not its name or declared type; every other decoder is disabled) or the system cannot decode it (e.g. HEIC without decoder support) THEN THE SYSTEM SHALL respond 415 with a message telling the user how to send a supported photo, and keep the card unchanged. Only one photo is processed at a time: a second upload during that responds 409 and changes nothing.
 
 ### REQ-006: Bet, do it, or undo
 - Story: As a household member, I want to bet on doing nothing or say I'll do the chore, so that each decision is recorded and later scored.
 - Priority: Must
 - Goals: G-3
 - Acceptance criteria:
-  - AC-006.1: WHEN the user taps "Bet: do nothing" THE SYSTEM SHALL create a bet with the odds, band, odds source, reason and settle time shown at that moment, and lock them.
-  - AC-006.2: WHEN the forecast or Gemma's answer changes after a bet is placed THE SYSTEM SHALL NOT change that bet's odds, band or payouts.
-  - AC-006.3: WHEN the user taps "I'll do it" THE SYSTEM SHALL record a do-it decision with the same odds and settle time, to be scored at settlement (REQ-009).
-  - AC-006.4: WHEN the user taps Undo within 5 minutes of placing a bet or do-it decision THE SYSTEM SHALL delete it with no points [ASSUMPTION A-9].
-  - AC-006.5: IF the user tries to undo more than 5 minutes after placing THEN THE SYSTEM SHALL not offer Undo; the bet is locked (cash-out applies only when REQ-022 is enabled).
+  - AC-006.1: WHEN the user taps "Bet: do nothing" THE SYSTEM SHALL create a bet from the quote the user was looking at (the request names the card, that quote and the kind) with that quote's odds, band, odds source, reason and settle time, and lock them; IF that quote is no longer the card's latest quote, or its settle time has passed, THEN THE SYSTEM SHALL respond 409 and create no bet.
+  - AC-006.2: WHEN the forecast or Gemma's answer changes after a bet is placed THE SYSTEM SHALL NOT change that bet's odds, band or payouts; a Gemma answer that arrives after a bet was placed on the card is discarded (the card is marked `superseded`, and Retry works again if the bet is undone).
+  - AC-006.3: WHEN the user taps "I'll do it" THE SYSTEM SHALL record a do-it decision from the quote the user saw (same request as AC-006.1) with the same odds and settle time, to be scored at settlement (REQ-009).
+  - AC-006.4: WHEN the user taps Undo within 5 minutes of placing a bet or do-it decision (up to and including the fifth minute: the boundary instant still counts) THE SYSTEM SHALL mark it undone, with no points and no savings, and free the card for a new bet [ASSUMPTION A-9].
+  - AC-006.5: IF the user tries to undo more than 5 minutes after placing, or once the bet is no longer open, THEN THE SYSTEM SHALL not offer Undo and respond 409 to the request; the bet is locked (cash-out applies only when REQ-022 is enabled).
 
 ### REQ-007: Slips with countdown
 - Story: As a household member, I want to see my open bets and when they settle, so that I know what is waiting and what to settle now.
@@ -108,10 +108,10 @@ Fixed values used below:
   - AC-008.2: WHEN the user submits an after photo THE SYSTEM SHALL strip and resize it (AC-005.1) and send the before photo (if any), the after photo and the recorded weather to the Gemma judge.
   - AC-008.3: WHEN the user answers with one tap ("Yes, dry" / "Damp" / "Wet", or the chore's equivalent) THE SYSTEM SHALL send the answer and the recorded weather to the Gemma judge.
   - AC-008.4: WHEN the judge returns a verdict THE SYSTEM SHALL show it as win, small loss, normal loss or harmful loss with a one-line reason and its evidence ("Gemma's read"), apply the points (REQ-009) and mark the bet settled.
-  - AC-008.5: WHEN the judge returns "unsure" THE SYSTEM SHALL ask the user its yes/no question and re-judge with the answer.
-  - AC-008.6: WHEN a do-nothing bet is settled as a win and the recorded weather does not meet the chore's outcome label (design.md, Outcome labels) THE SYSTEM SHALL mark it a lucky win (computed by code, not by Gemma), pay it as a win, count it as a success in calibration like every other win, and report the lucky-win share separately.
-  - AC-008.7: IF a bet has no user answer 24 h after its settle time THEN THE SYSTEM SHALL have the judge settle it from the recorded weather alone, at the ×0.5 multiplier.
-  - AC-008.8: IF Gemma is unavailable when a bet needs a verdict THEN THE SYSTEM SHALL keep the bet in "Settle when Gemma is back" and never settle it with the rule model; when Gemma returns it SHALL judge it (×0.5 if the 24 h limit passed).
+  - AC-008.5: WHEN the judge returns "unsure" THE SYSTEM SHALL ask the user its yes/no question and re-judge with the answer; the judge asks at most 2 questions per bet and must decide after that.
+  - AC-008.6: WHEN a do-nothing bet is settled as a win and the recorded weather does not meet the chore's outcome label (design.md, Outcome labels) THE SYSTEM SHALL mark it a lucky win (computed by code, not by Gemma), pay it as a win, count it as a success in calibration like every other win, and report the lucky-win share separately. The label is applied to the chore's full fixed outcome window on the day the bet was placed (hours before the bet was placed come from the recorded weather too), cut only at the end where the hours are not recorded yet.
+  - AC-008.7: IF a bet has no user answer 24 h after its settle time THEN THE SYSTEM SHALL have the judge settle it from the recorded weather alone, at the ×0.5 multiplier. An answer sent 24 h or more after the settle time is refused with 409 and changes nothing; a judge question still open at that point is cleared, and the judge decides without asking.
+  - AC-008.8: IF Gemma is unavailable when a bet needs a verdict THEN THE SYSTEM SHALL keep the bet in "Settle when Gemma is back" and never settle it with the rule model; when Gemma returns it SHALL judge it, retrying a failed bet every 2 minutes. A verdict committed at or after the settle time + 24 h pays a win at ×0.5 whatever the evidence; the settlement keeps the evidence type and is flagged `multiplier_capped`.
   - AC-008.9: WHEN a do-it decision reaches its settle time THE SYSTEM SHALL have the judge decide from the recorded weather whether the weather would have done the chore.
 
 ### REQ-009: Points
@@ -141,15 +141,15 @@ Fixed values used below:
   - AC-011.2: THE SYSTEM SHALL count no savings for losses, do-it decisions or undone bets.
   - AC-011.3: THE SYSTEM SHALL report net time back as time saved minus 30 s per bet or do-it decision placed and not undone, and show both parts (e.g. "2 h 10 saved, minus 6 min spent on 12 bets").
   - AC-011.4: THE SYSTEM SHALL count time only for skipped steps; electricity-only savings (e.g. line instead of dryer) add 0 minutes.
-  - AC-011.5: THE SYSTEM SHALL show the assumption behind each savings figure where it is displayed (e.g. "vs a heat-pump dryer, ~2 kWh").
-  - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday, Europe/Madrid): net time back, water in litres and electricity in kWh.
+  - AC-011.5: THE SYSTEM SHALL show the assumption behind each savings figure where it is displayed (e.g. "vs a heat-pump dryer, ~2 kWh"); a figure without a cited source is labelled "typical estimate" (e.g. the condenser dryer).
+  - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday, Europe/Madrid): net time back, water in litres and electricity in kWh. A bet counts, whole (its 30 s included), in the week of its settle time, so a bet placed on Sunday night and settled on Monday counts in Monday's week.
 
 ### REQ-012: Safety is never a bet
 - Story: As a household member, I want risky weather to tell me to act, so that the game never puts plants or people at risk.
 - Priority: Must (fixed backstop, AC-012.1–012.2) · Should (Gemma safety guard, AC-012.3–012.4; tier 3)
 - Goals: G-2, G-3
 - Acceptance criteria:
-  - AC-012.1: IF the forecast for a card's window crosses a fixed heat, frost or storm limit (values in design.md, Q-5) THEN THE SYSTEM SHALL show a "Do it now" alert with the reason and no bet action, whatever Gemma's answer.
+  - AC-012.1: IF the forecast for a card's window crosses a fixed heat, frost or storm limit (values in design.md, Q-5) THEN THE SYSTEM SHALL show a "Do it now" alert with the reason and no bet action, whatever Gemma's answer. The check also covers the window of the settle time Gemma chose: if heat, frost or storm shows up there, the card becomes the alert instead of getting Gemma's odds.
   - AC-012.2: IF a request to place a bet arrives for a card in alert state THEN THE SYSTEM SHALL reject it.
   - AC-012.3: WHEN a card is created THE SYSTEM SHALL ask the Gemma safety guard whether the chore touches safety (heat, frost, storm, vulnerable people) and, if it says yes, show a "Do it now" alert with its reason and no bet action.
   - AC-012.4: IF the safety guard is unavailable THEN THE SYSTEM SHALL still apply the fixed backstop (AC-012.1).
@@ -161,9 +161,10 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-013.1: WHEN a weather chore card is created THE SYSTEM SHALL show the rule band at once, labelled "Gemma is thinking · rule odds".
   - AC-013.2: WHEN Gemma's answer arrives before a bet is placed THE SYSTEM SHALL replace the rule band, reason and settle time with Gemma's and label the card "Gemma's odds".
-  - AC-013.3: IF the Gemma job does not finish within its 45 s deadline or Gemma is not running THEN THE SYSTEM SHALL label the card "Gemma offline · rule odds", offer Retry, and still allow betting.
+  - AC-013.3: IF the Gemma job does not finish within its 45 s deadline or Gemma is not running THEN THE SYSTEM SHALL label the card "Gemma offline · rule odds", offer Retry, and still allow betting; a model runtime that is not running (Ollama down) shows the same label.
   - AC-013.4: WHEN a bet is placed on rule odds THE SYSTEM SHALL store odds_source = rule; such bets count for points, savings and the rule's calibration, and are excluded from Gemma's calibration and the base-vs-fine-tuned comparison.
   - AC-013.5: WHILE the app is open THE SYSTEM SHALL show Gemma's status (online / offline) on Today, refreshed at least every 60 s.
+  - AC-013.6: IF 8 Gemma jobs are already queued or running THEN THE SYSTEM SHALL refuse listener capture, Retry, an answer to Gemma's question, a settle answer and a photo upload with 503 "Gemma is busy" before any state changes; a quick-chip card is still created with its rule odds and reads "Gemma offline · rule odds" with the note that Gemma is busy, and a bet waiting for a verdict stays in "Settle when Gemma is back".
 
 ### REQ-014: Weather data
 - Story: As a household member, I want the odds and settlements based on real forecasts and recorded weather for my neighbourhood, so that the bets are about my weather.
@@ -173,7 +174,7 @@ Fixed values used below:
   - AC-014.1: WHEN the weather tool is called THE SYSTEM SHALL request the Open-Meteo forecast for the household's configured coordinates, rounded to 2 decimal places.
   - AC-014.2: WHEN a forecast is fetched THE SYSTEM SHALL cache it with its fetch time and reuse it for at most 1 h.
   - AC-014.3: IF Open-Meteo is unreachable THEN THE SYSTEM SHALL use the latest cached forecast and show its age (e.g. "Forecast from 3 h ago").
-  - AC-014.4: IF no forecast younger than 24 h is available THEN THE SYSTEM SHALL show "No forecast, can't set odds" on new cards and not allow betting [ASSUMPTION A-10].
+  - AC-014.4: IF no forecast younger than 24 h is available THEN THE SYSTEM SHALL still create the card, showing "No forecast, can't set odds" with no odds and no bet action (the request succeeds with 201; the card has the kind `coming_later` and a notice, ADR-0009) [ASSUMPTION A-10].
   - AC-014.5: IF recorded weather for a bet's window is not yet available THEN THE SYSTEM SHALL keep the bet waiting and retry at least every 30 min.
   - AC-014.6: THE SYSTEM SHALL show the Open-Meteo attribution (CC BY 4.0) in the app and the README.
   - AC-014.7: THE SYSTEM SHALL send outbound requests only to the Open-Meteo hosts in the weather client's allowlist (forecast, Previous Runs, Historical Forecast and archive APIs) and refuse any other host.
@@ -184,9 +185,9 @@ Fixed values used below:
 - Goals: G-5, G-4
 - Acceptance criteria:
   - AC-015.1: THE SYSTEM SHALL store the database and photos in a data folder outside the source tree that is listed in `.gitignore`.
-  - AC-015.2: WHEN the user deletes a photo or a bet in the app THE SYSTEM SHALL remove the photo file(s) and every record derived from them from disk: for a photo, its `photos` row, the `quotes` made with it and the inspector's and judge's `gemma_decisions` rows that used it (input_summary and output); for a bet, also its `bets`, `settlements`, quotes and decisions (SQLite `secure_delete` on, WAL checkpointed so deleted rows are overwritten), and recompute totals.
-  - AC-015.3: WHEN the user runs `sib delete-photos` THE SYSTEM SHALL remove all photos, and with `--all-data` also the database, logs and weather cache, after a confirmation prompt.
-  - AC-015.4: WHEN the user runs `sib export <dir>` THE SYSTEM SHALL write a JSON file of all bets, decisions, verdicts and totals plus the photo files to a chosen folder.
+  - AC-015.2: WHEN the user deletes a photo or a bet in the app THE SYSTEM SHALL remove the photo file(s) and every record derived from them from disk: for a photo, its `photos` row, the `quotes` made with it and the inspector's and judge's `gemma_decisions` rows that used it (input_summary and output); for a bet, also its `bets`, `settlements`, quotes and decisions (SQLite `secure_delete` on, WAL checkpointed so deleted rows are overwritten), and recompute totals. Deleting a bet's data deletes its whole card (the chore text is household data too) with all the card's bets, including its other undone bets, quotes, photos and decisions; the one exception is an undone bet on a card that has a newer active bet, where only that bet's own rows and photos go and the card stays.
+  - AC-015.3: WHEN the user runs `sib delete-photos` THE SYSTEM SHALL remove all photos, and with `--all-data` also the database (which holds the weather cache), after a confirmation prompt. The command refuses to run while the app is running (it needs exclusive use of the database) and deletes only the files the app owns in the data folder: `sib.db`, its `-wal` and `-shm` files and the photo files. Logs go to the terminal, so no log files exist to delete.
+  - AC-015.4: WHEN the user runs `sib export <dir>` THE SYSTEM SHALL write a JSON file of all bets, decisions, verdicts and totals plus the photo files to a chosen folder. The command refuses to run while the app is running, and refuses a folder that is a symlink or is not empty (a new folder is created owner-only).
 
 ### REQ-016: Chores in this version
 - Story: As a household member, I want bets for the chores I actually do this week, so that the live week produces real bets.
@@ -194,8 +195,8 @@ Fixed values used below:
 - Goals: G-3
 - Acceptance criteria:
   - AC-016.1: THE SYSTEM SHALL support do-nothing bets for "water balcony plants" and "line-dry today (skip the dryer)", with catalogue savings and settle-time rules.
-  - AC-016.4: WHEN the user creates a laundry card between 07:00 and 15:00 THE SYSTEM SHALL offer "Line-dry today (skip the dryer)", a bet that wins if the load is dry by its settle time (same day 18:00–21:00) and loses if it is still damp or rain wet it; its savings are the dryer's kWh from the household baseline and 0 minutes (AC-011.4). Outside that window the card says when it can be offered.
-  - AC-016.5: IF the household baseline says the AC (or heater) is not used this season THEN THE SYSTEM SHALL show that chore as "Not needed this season" with no odds and no bet action.
+  - AC-016.4: WHEN the user creates a laundry card from 07:00 up to but not including 15:00 THE SYSTEM SHALL offer "Line-dry today (skip the dryer)", a bet that wins if the load is dry by its settle time (same day 18:00–21:00) and loses if it is still damp or rain wet it; its savings are the dryer's kWh from the household baseline and 0 minutes (AC-011.4). Outside that window the card says when it can be offered, with no odds and no bet action.
+  - AC-016.5: IF the household baseline says the AC (or heater) is not used this season THEN THE SYSTEM SHALL show that chore as "Not needed this season" with no odds and no bet action (the baseline is `airConditioning` and `heaterThisSeason` in `config/household.json`; this check comes first). The one `heater` flag gates both seasonal chores: while it is off, a chore the household does use reads "Coming later".
   - AC-016.2: WHEN the user creates a "Leave it out tonight" card between 1 h before and 2 h after sunset THE SYSTEM SHALL offer a "Leave it out tonight" bet (outside that window the card says when it can be offered) that wins if the laundry is dry in the morning and loses if dew or rain dampened it.
   - AC-016.3: THE SYSTEM SHALL support a "skip the heater" bet settled by a one-tap comfort answer.
 
@@ -330,7 +331,7 @@ Fixed values used below:
 | NFR-007 | Observability | Local structured JSON logs; every Gemma call logs job, model version, prompt version, latency, schema-valid flag and retries; never tokens, session IDs or photo bytes. Gemma status visible in the UI (AC-013.5). | Log inspection test |
 | NFR-008 | Compliance / licensing | Repo MIT; README lists third-party licences (Gemma 4 Apache 2.0, Open-Meteo CC BY 4.0 non-commercial, fonts SIL OFL, Lucide ISC). Points only: no stakes, purchases or value. Challenge rules (repo window, public, tags) met. | Release checklist before publishing |
 | NFR-009 | Accessibility | WCAG 2.2 AA on all mobile screens: text contrast ≥ 4.5:1 (use `ink-3-text`, `amber-text` tokens), touch targets ≥ 44 × 44 px, win/lose never by colour alone, odds always with words, `prefers-reduced-motion` respected. | `ux-reviewer` pass; automated contrast check on tokens |
-| NFR-010 | Testability | Every Gemma job runs against a fake returning recorded JSON fixtures; CI runs with no GPU, no model and no network. Points, rule baseline, settlement and savings logic have unit tests covering every AC above. | CI green without GPU or network |
+| NFR-010 | Testability | Every Gemma job runs against a fake returning recorded JSON fixtures; CI runs with no GPU, no model and no network. The fake model runs only when `SIB_FAKE_MODEL=1` is set, and `sib start` refuses to start without a configured Gemma tag, so fixtures never pose as Gemma; `SIB_FAKE_WEATHER=1` swaps in fake weather for development. Points, rule baseline, settlement and savings logic have unit tests covering every AC above. | CI green without GPU or network |
 | NFR-011 | Portability / setup | Supported: Windows 11 + WSL2 (Ubuntu), NVIDIA GPU ≥ 8 GB VRAM, ≥ 16 GB RAM [ASSUMPTION A-11], Node.js 24 (pinned); phone: current iOS Safari or Android Chrome. Model pinned by tag and digest. From a clean clone, setup (excluding model download) ≤ 30 min following the README. | Fresh-clone run-through before publishing |
 | NFR-012 | Reproducibility | Backtest and fine-tune evaluation are reproducible: pinned model digests, fixed seeds, fixed date split, weather data snapshot saved with attribution; re-running gives the same reported numbers. | Re-run from the snapshot matches the report |
 
