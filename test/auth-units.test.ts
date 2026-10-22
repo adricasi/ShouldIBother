@@ -133,7 +133,7 @@ function runtimeFor(databasePath: string, clock: FakeClock): Runtime {
     store: new AuthStore(db, clock.now),
     port: PORT,
     lanAddress: LAN_ADDRESS,
-    config: { publicOrigins: [], allowedHosts: [] },
+    config: { port: PORT, publicOrigins: [], allowedHosts: [] },
     allowlist: buildAllowlist({
       port: PORT,
       interfaces: FAKE_INTERFACES,

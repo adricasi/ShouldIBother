@@ -5,6 +5,9 @@ import type { FastifyInstance } from "fastify";
 
 type InterfaceMap = ReturnType<typeof networkInterfaces>;
 
+/** Container and virtual-bridge interfaces never carry the phone-facing address. */
+const VIRTUAL_INTERFACE = /^(docker|br-|veth)/;
+
 /** Rank of an RFC 1918 address: the home LAN is almost always 192.168/16, then 10/8, then 172.16/12. */
 function privateRank(address: string): number | undefined {
   const [a = 0, b = 0] = address.split(".").map(Number);
@@ -16,20 +19,26 @@ function privateRank(address: string): number | undefined {
 
 /**
  * The address the phone reaches the laptop on (design.md, Network exposure): the first private
- * IPv4 address of an active, non-loopback interface, or the `SIB_LAN_ADDRESS` override.
+ * IPv4 address of an active, non-loopback, non-virtual interface, or the `SIB_LAN_ADDRESS`
+ * override (which must itself be private or loopback).
  * Public and tailnet (100.64/10) addresses are never chosen: the app listens on the LAN, and
  * Tailscale Serve reaches it through loopback. Returns undefined when no LAN address exists
  * (the server then listens on loopback only).
  */
 export function pickLanAddress(interfaces: InterfaceMap, override?: string): string | undefined {
   if (override !== undefined && override !== "") {
-    if (!isIPv4(override) || override === "0.0.0.0" || override === "255.255.255.255") {
-      throw new Error(`SIB_LAN_ADDRESS must be one specific IPv4 address, got ${override}`);
+    const allowed =
+      isIPv4(override) && (privateRank(override) !== undefined || override.startsWith("127."));
+    if (!allowed) {
+      throw new Error(
+        `SIB_LAN_ADDRESS must be a private LAN address (192.168/16, 10/8, 172.16/12) or loopback, got ${override}`,
+      );
     }
     return override;
   }
-  const candidates = Object.values(interfaces)
-    .flatMap((addresses) => addresses ?? [])
+  const candidates = Object.entries(interfaces)
+    .filter(([name]) => !VIRTUAL_INTERFACE.test(name))
+    .flatMap(([, addresses]) => addresses ?? [])
     .filter((entry) => entry.family === "IPv4" && !entry.internal)
     .map((entry) => ({ address: entry.address, rank: privateRank(entry.address) }))
     .filter((entry): entry is { address: string; rank: number } => entry.rank !== undefined)
@@ -71,6 +80,10 @@ export async function listenLoopbackAndLan(
       lanServer.once("error", reject);
       lanServer.listen({ host: lanAddress, port: lanPort }, () => {
         lanServer.off("error", reject);
+        // Accept errors (e.g. EMFILE) after start-up are logged; they must not crash the server.
+        lanServer.on("error", (error) => {
+          app.log.error({ err: error }, "LAN listener error");
+        });
         resolve();
       });
     }).catch(async (error: unknown) => {

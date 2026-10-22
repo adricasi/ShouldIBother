@@ -12,14 +12,17 @@ declare module "fastify" {
   }
 }
 
+/** Cookie name over http. Over an https public origin the `__Host-` form is used (see below). */
 export const SESSION_COOKIE = "sib_session";
+/** `__Host-` makes browsers insist on Secure, Path=/ and no Domain, so a sibling cannot shadow it. */
+export const SECURE_SESSION_COOKIE = `__Host-${SESSION_COOKIE}`;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 /** Cookies with the same name from other apps on this host are tried one by one, up to this many. */
 const MAX_COOKIE_CANDIDATES = 4;
 
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "content-security-policy":
-    "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'",
+    "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
@@ -29,7 +32,6 @@ export interface GuardDeps {
   readonly store: AuthStore;
   readonly limiter: FailureLimiter;
   readonly allowlist: Allowlist;
-  readonly now: () => number;
   /** Console output for pairing lines (never the logger: AC-001.7). */
   readonly print: (line: string) => void;
 }
@@ -51,7 +53,7 @@ export function readCookies(header: string | undefined, name: string): string[] 
 
 function sessionCookie(value: string, maxAgeSeconds: number, secure: boolean): string {
   return [
-    `${SESSION_COOKIE}=${value}`,
+    `${secure ? SECURE_SESSION_COOKIE : SESSION_COOKIE}=${value}`,
     `Max-Age=${maxAgeSeconds}`,
     "Path=/",
     "HttpOnly",
@@ -108,10 +110,14 @@ const PAIR_HINT = "Open the pairing link printed on the laptop, or run `sib pair
  * A request with a valid session skips the limiter entirely.
  */
 export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
-  const { store, limiter, allowlist, now, print } = deps;
+  const { store, limiter, allowlist, print } = deps;
+  const now = store.now;
 
   const hasValidSession = (request: FastifyRequest): boolean =>
-    readCookies(request.headers.cookie, SESSION_COOKIE)
+    [
+      ...readCookies(request.headers.cookie, SECURE_SESSION_COOKIE),
+      ...readCookies(request.headers.cookie, SESSION_COOKIE),
+    ]
       .slice(0, MAX_COOKIE_CANDIDATES)
       .some((candidate) => store.isValidSession(candidate));
 
@@ -134,7 +140,9 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
       const client = request.ip;
       if (limiter.isBlocked(client)) {
         request.log.warn({ clientAddress: client }, "unauthenticated client is rate limited");
-        return problem(reply, 429, "Too Many Requests", undefined, { "retry-after": "60" });
+        return problem(reply, 429, "Too Many Requests", undefined, {
+          "retry-after": String(limiter.retryAfterSeconds(client)),
+        });
       }
       if (request.routeOptions.config?.public !== true) {
         limiter.recordFailure(client);
@@ -151,7 +159,8 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
   });
 
   // The pairing exchange (AC-001.2). Every failure looks the same: 401 and a counted failure.
-  app.get("/pair", { config: { public: true } }, (request, reply) => {
+  // No HEAD twin: a HEAD request must not use up a device slot or set a cookie.
+  app.get("/pair", { config: { public: true }, exposeHeadRoute: false }, (request, reply) => {
     const { token } = request.query as { token?: unknown };
     const session = typeof token === "string" ? store.pair(token) : null;
     if (session === null) {

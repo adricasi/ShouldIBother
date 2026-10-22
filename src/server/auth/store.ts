@@ -41,7 +41,8 @@ export class AuthStore {
 
   constructor(
     private readonly db: Db,
-    private readonly now: () => number,
+    /** The one clock of the access control; the app takes it from here. */
+    readonly now: () => number,
   ) {
     this.activeTokens = db.prepare<[number], HashRow>(
       "SELECT id, token_hash AS hash FROM pairing WHERE revoked_at IS NULL AND expires_at > ?",

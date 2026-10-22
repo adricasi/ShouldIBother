@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
-/** Default app port (design.md, A-13). Overridden with SIB_PORT. */
+/** Default app port (design.md, A-13). `port` in config/server.json, then SIB_PORT, override it. */
 export const DEFAULT_PORT = 8787;
 
 export const CONFIG_DIR = fileURLToPath(new URL("../../config/", import.meta.url));
@@ -70,6 +70,8 @@ const hostSchema = z.string().regex(/^[A-Za-z0-9.\-:[\]]+$/, "expected host or h
 
 const serverConfigSchema = z
   .object({
+    /** Port of the app; `SIB_PORT` overrides it. Server and `sib pair` read the same value. */
+    port: z.number().int().min(1).max(65535).default(DEFAULT_PORT),
     /** HTTPS (or other) origins that reach this app, e.g. a Tailscale Serve URL. */
     publicOrigins: z.array(originSchema).default([]),
     /** Extra Host values to accept, e.g. the Windows LAN IP behind a netsh portproxy. */

@@ -8,6 +8,7 @@ export function formatMadridTime(epochMs: number): string {
 }
 
 export interface PairingTarget {
+  readonly kind: "laptop" | "phone" | "public";
   readonly label: string;
   /** Origin without a trailing slash, e.g. `http://192.168.1.20:8787`. */
   readonly origin: string;
@@ -23,13 +24,17 @@ export function pairingTargets(options: {
   readonly publicOrigins: readonly string[];
 }): PairingTarget[] {
   const targets: PairingTarget[] = [
-    { label: "Laptop", origin: `http://127.0.0.1:${options.port}` },
+    { kind: "laptop", label: "Laptop", origin: `http://127.0.0.1:${options.port}` },
   ];
   if (options.lanAddress !== undefined) {
-    targets.push({ label: "Phone", origin: `http://${options.lanAddress}:${options.port}` });
+    targets.push({
+      kind: "phone",
+      label: "Phone",
+      origin: `http://${options.lanAddress}:${options.port}`,
+    });
   }
   for (const origin of options.publicOrigins) {
-    targets.push({ label: "Tailscale/HTTPS", origin });
+    targets.push({ kind: "public", label: "Tailscale/HTTPS", origin });
   }
   return targets;
 }
@@ -44,10 +49,11 @@ export function formatPairingBanner(options: {
   readonly targets: readonly PairingTarget[];
 }): string {
   const urls = options.targets.map((target) => ({
+    kind: target.kind,
     label: target.label,
     url: `${target.origin}/pair?token=${options.token}`,
   }));
-  const scanTarget = urls.find((entry) => entry.label !== "Laptop") ?? urls[0];
+  const scanTarget = urls.find((entry) => entry.kind !== "laptop") ?? urls[0];
   const lines = [
     "",
     `Pair a device: valid ${PAIRING_TTL_MS / 60_000} minutes (until ${formatMadridTime(options.expiresAt)} Madrid time), up to ${MAX_DEVICES_PER_TOKEN} devices.`,

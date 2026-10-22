@@ -7,9 +7,18 @@ const USAGE = "Usage: sib start | pair | forget-devices";
 async function main(args: readonly string[]): Promise<number> {
   const [command] = args;
   switch (command) {
-    case "start":
-      await startServer();
+    case "start": {
+      const server = await startServer();
+      for (const signal of ["SIGINT", "SIGTERM"] as const) {
+        process.once(signal, () => {
+          server.close().catch((error: unknown) => {
+            console.error("Shutdown failed:", error);
+            process.exitCode = 1;
+          });
+        });
+      }
       return 0;
+    }
     case "pair":
       pairCommand(loadRuntime());
       return 0;

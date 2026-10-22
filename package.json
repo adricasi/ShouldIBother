@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/cli.ts start",
+    "sib": "tsx src/cli.ts",
     "dev:web": "vite",
     "start": "node dist/cli.js start",
     "build": "tsc -p tsconfig.build.json && vite build",

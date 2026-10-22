@@ -2,12 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { FeaturePlugins } from "../src/server/app.js";
 import { FLAG_NAMES, loadFlags, parseFlags } from "../src/server/flags.js";
 
-import { createHarness, type Harness } from "./helpers.js";
+import { closeAllHarnesses, createHarness, type Harness } from "./helpers.js";
 
 describe("feature flags", () => {
   it("AC-029.1: config/flags.json lists every flag", () => {
@@ -47,6 +47,8 @@ describe("loadFlags", () => {
 });
 
 describe("flagged routes", () => {
+  afterEach(closeAllHarnesses);
+
   const featurePlugins: FeaturePlugins = {
     score: (app) => {
       app.get("/api/score", () => ({ points: 0 }));
