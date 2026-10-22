@@ -1,0 +1,36 @@
+{
+  "description": "Calls get_forecast three times in one response; the third call is refused by the app.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        },
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        },
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

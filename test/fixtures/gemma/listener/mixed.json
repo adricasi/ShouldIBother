@@ -1,0 +1,23 @@
+{
+  "description": "Four chores: plants (weather), a bill (not weather), laundry planning (later) and the AC (later).",
+  "content": {
+    "chores": [
+      {
+        "label": "water the plants",
+        "chore_type": "plants"
+      },
+      {
+        "label": "pay the electricity bill",
+        "chore_type": "not_weather"
+      },
+      {
+        "label": "plan the laundry days",
+        "chore_type": "laundry_plan"
+      },
+      {
+        "label": "use the AC",
+        "chore_type": "ac"
+      }
+    ]
+  }
+}

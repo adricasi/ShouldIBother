@@ -1,0 +1,26 @@
+{
+  "description": "Like ok, with a model digest, for the decision log.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": "",
+      "modelDigest": "sha256:synthetic0001"
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      },
+      "modelDigest": "sha256:synthetic0001"
+    }
+  ]
+}

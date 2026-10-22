@@ -1,0 +1,43 @@
+{
+  "description": "Calls get_forecast, then answers with a band that is not one of the five, twice.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "certain",
+        "reason": "Sure thing.",
+        "settle_in_hours": 24
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "certain",
+        "reason": "Sure thing.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

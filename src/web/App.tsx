@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  answerCard,
+  captureCards,
   createQuickCard,
   fetchSlips,
   fetchToday,
   placeBet,
+  retryCard,
   settleBet,
   undoBet,
   type BetKind,
@@ -22,6 +25,8 @@ import { TodayScreen } from "./TodayScreen.js";
 
 /** Countdowns are re-rendered this often between the 30 s polls. */
 const CLOCK_TICK_MS = 15_000;
+/** While Gemma is thinking about a card, Today is read this often so its odds appear promptly. */
+const THINKING_POLL_MS = 3_000;
 
 function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => routeOf(window.location.hash));
@@ -96,6 +101,21 @@ export function App() {
     [refresh],
   );
 
+  // A card Gemma is still working on is polled faster than the 30 s default (design.md, Interfaces).
+  const gemmaIsThinking = today?.cards.some((card) => card.gemma?.state === "thinking") ?? false;
+  useEffect(() => {
+    if (!gemmaIsThinking) {
+      return undefined;
+    }
+    return startPolling(
+      () => {
+        void refresh(true);
+      },
+      document,
+      THINKING_POLL_MS,
+    );
+  }, [gemmaIsThinking, refresh]);
+
   /** Runs one action, then reloads so the screens show what the server now holds. */
   const act = useCallback(
     async (action: () => Promise<Notice | undefined>) => {
@@ -164,6 +184,27 @@ export function App() {
       onQuickCard={(choreType) => {
         void act(async () => {
           await createQuickCard(choreType);
+          return undefined;
+        });
+      }}
+      onCapture={async (text) => {
+        let made = false;
+        await act(async () => {
+          await captureCards(text);
+          made = true;
+          return undefined;
+        });
+        return made;
+      }}
+      onRetry={(cardId) => {
+        void act(async () => {
+          await retryCard(cardId);
+          return undefined;
+        });
+      }}
+      onAnswer={(cardId, yes) => {
+        void act(async () => {
+          await answerCard(cardId, yes);
           return undefined;
         });
       }}

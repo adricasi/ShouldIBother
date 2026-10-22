@@ -1,10 +1,12 @@
 import { oddsOfBand } from "../../domain/bands.js";
-import { CHORES, NOTICES, offerNotice, type ChoreType } from "../../domain/chores.js";
+import { CHORES, NOTICES, isChoreType, offerNotice, type ChoreType } from "../../domain/chores.js";
 import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
 import type { LedgerDeps } from "./deps.js";
+import { launchBookmaker } from "./gemma-cards.js";
+import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
 
@@ -19,20 +21,17 @@ const MAX_TODAY_CARDS = 20;
 /** Tapping a chip again within this time shows the card that is already there (no stacking). */
 const QUIET_CARD_REUSE_MS = 30 * 60 * 1000;
 
-export function latestQuote(deps: LedgerDeps, cardId: number): QuoteRow | undefined {
-  return deps.db
-    .prepare<[number], QuoteRow>("SELECT * FROM quotes WHERE card_id = ? ORDER BY id DESC LIMIT 1")
-    .get(cardId);
-}
-
 /** Cards without odds (alerts, notices) leave Today after this long; they are not bets in waiting. */
 const QUIET_CARD_TTL_MS = 12 * 60 * 60 * 1000;
 
 function insertCard(
   deps: LedgerDeps,
   fields: {
-    readonly choreType: ChoreType;
+    /** A chore type of this version, or the listener's type for a card that has no odds. */
+    readonly choreType: string;
     readonly kind: CardRow["kind"];
+    /** What the person wrote about the chore (the listener's label); the chore's title if absent. */
+    readonly label?: string;
     readonly alertReason?: string;
     readonly notice?: string;
   },
@@ -41,15 +40,18 @@ function insertCard(
   const id = Number(
     deps.db
       .prepare(
-        `INSERT INTO cards (input_text, chore_type, kind, alert_reason, notice, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cards (input_text, chore_type, kind, alert_reason, notice, gemma_state, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        CHORES[fields.choreType].title,
+        fields.label ?? (isChoreType(fields.choreType) ? CHORES[fields.choreType].title : ""),
         fields.choreType,
         fields.kind,
         fields.alertReason ?? null,
         fields.notice ?? null,
+        // Only a bettable weather card is quoted by Gemma; alerts and notices never are, so the
+        // fixed backstop always wins (AC-012.1).
+        fields.kind === "weather" ? "thinking" : null,
         now,
       ).lastInsertRowid,
   );
@@ -82,10 +84,34 @@ function recentQuietCard(
  * "No forecast, can't set odds", "Not needed this season", "Coming later", "offered from 07:00"),
  * not on the kind, which only says "no odds, no bet action".
  */
-function noOddsCard(deps: LedgerDeps, choreType: ChoreType, notice: string): CardView {
+function noOddsCard(
+  deps: LedgerDeps,
+  choreType: ChoreType,
+  notice: string,
+  label?: string,
+): CardView {
   const card =
     recentQuietCard(deps, choreType, "coming_later", notice) ??
-    insertCard(deps, { choreType, kind: "coming_later", notice });
+    insertCard(deps, {
+      choreType,
+      kind: "coming_later",
+      notice,
+      ...(label === undefined ? {} : { label }),
+    });
+  return cardView(card, undefined, bandTable(deps.rules));
+}
+
+/**
+ * A card from the listener that has no odds and no bet action: "Not a weather chore" (AC-002.2)
+ * or "Coming later" for a chore outside this version's list (AC-002.3).
+ */
+export function createUnbettableCard(
+  deps: LedgerDeps,
+  kind: "not_weather" | "coming_later",
+  listenerType: string,
+  label: string,
+): CardView {
+  const card = insertCard(deps, { choreType: listenerType, kind, label });
   return cardView(card, undefined, bandTable(deps.rules));
 }
 
@@ -128,20 +154,24 @@ function isNotNeeded(deps: LedgerDeps, choreType: ChoreType): boolean {
  * 6. Otherwise the rule band is quoted at once (AC-004.1, AC-013.1): the card and quote are
  *    written together.
  */
-export async function createChoreCard(deps: LedgerDeps, choreType: ChoreType): Promise<CardView> {
+export async function createChoreCard(
+  deps: LedgerDeps,
+  choreType: ChoreType,
+  label?: string,
+): Promise<CardView> {
   const now = deps.now();
   const chore = CHORES[choreType];
   const table = bandTable(deps.rules);
 
   if (isNotNeeded(deps, choreType)) {
-    return noOddsCard(deps, choreType, NOTICES.notNeeded);
+    return noOddsCard(deps, choreType, NOTICES.notNeeded, label);
   }
   if (!isOfferedYet(deps, choreType)) {
-    return noOddsCard(deps, choreType, NOTICES.comingLater);
+    return noOddsCard(deps, choreType, NOTICES.comingLater, label);
   }
   const offer = chore.offer?.(now);
   if (offer !== undefined && !offer.offered) {
-    return noOddsCard(deps, choreType, offerNotice(choreType, now, offer.nextAtMs));
+    return noOddsCard(deps, choreType, offerNotice(choreType, now, offer.nextAtMs), label);
   }
 
   let forecast;
@@ -153,7 +183,7 @@ export async function createChoreCard(deps: LedgerDeps, choreType: ChoreType): P
     });
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
-      return noOddsCard(deps, choreType, NOTICES.noForecast);
+      return noOddsCard(deps, choreType, NOTICES.noForecast, label);
     }
     throw error;
   }
@@ -163,16 +193,25 @@ export async function createChoreCard(deps: LedgerDeps, choreType: ChoreType): P
   if (alert !== null) {
     const card =
       recentQuietCard(deps, choreType, "alert", alert.reason) ??
-      insertCard(deps, { choreType, kind: "alert", alertReason: alert.reason });
+      insertCard(deps, {
+        choreType,
+        kind: "alert",
+        alertReason: alert.reason,
+        ...(label === undefined ? {} : { label }),
+      });
     return cardView(card, undefined, table);
   }
   const rule = ruleQuote(choreType, forecast.hours, window.fromMs, window.toMs, deps.rules);
   if (rule === null) {
-    return noOddsCard(deps, choreType, NOTICES.noForecast);
+    return noOddsCard(deps, choreType, NOTICES.noForecast, label);
   }
 
   const insert = deps.db.transaction((): { card: CardRow; quote: QuoteRow } => {
-    const card = insertCard(deps, { choreType, kind: "weather" });
+    const card = insertCard(deps, {
+      choreType,
+      kind: "weather",
+      ...(label === undefined ? {} : { label }),
+    });
     const quoteId = Number(
       deps.db
         .prepare(
@@ -194,11 +233,15 @@ export async function createChoreCard(deps: LedgerDeps, choreType: ChoreType): P
     };
   });
   const { card, quote } = insert();
+  // Gemma quotes in the background; the person sees the rule odds at once (AC-013.1).
+  launchBookmaker(deps, card.id);
   return cardView(card, quote, table);
 }
 
-/** A quick chip's card (AC-002.5). */
-export const createQuickCard = createChoreCard;
+/** A quick chip's card (AC-002.5): no listener involved. */
+export function createQuickCard(deps: LedgerDeps, choreType: ChoreType): Promise<CardView> {
+  return createChoreCard(deps, choreType);
+}
 
 export function getCardView(deps: LedgerDeps, cardId: number): CardView {
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId);
@@ -221,7 +264,7 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
     .prepare<[number], CardRow>(
       `SELECT c.* FROM cards c
        WHERE NOT EXISTS (SELECT 1 FROM bets b WHERE b.card_id = c.id AND b.status != 'undone')
-         AND c.kind IN ('weather', 'alert', 'coming_later')
+         AND c.kind IN ('weather', 'alert', 'coming_later', 'not_weather')
        ORDER BY c.id DESC LIMIT ?`,
     )
     .all(MAX_TODAY_CARDS);

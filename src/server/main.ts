@@ -9,6 +9,8 @@ import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./comm
 import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
 import { createFakeServices } from "./fakes.js";
+import { loadModelsConfig } from "./model/config.js";
+import { selectModel } from "./model/select.js";
 import { loadFlags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
@@ -56,12 +58,16 @@ export async function startServer(
   let app: FastifyInstance;
   let appRef: FastifyInstance | undefined;
   let core: Core;
+  let modelNotice: string;
   const webBuilt = existsSync(`${WEB_ROOT}index.html`);
   try {
     const flags = loadFlags(`${configDir}flags.json`);
     const now = Date.now;
     const fakes = createFakeServices(now);
     const household = loadHousehold();
+    const modelsConfig = loadModelsConfig(`${configDir}models.json`);
+    const selection = await selectModel(modelsConfig, { fake: () => fakes.model });
+    modelNotice = selection.notice;
     const useFakeWeather = env["SIB_FAKE_WEATHER"] === "1";
     const weather: WeatherClient = useFakeWeather
       ? fakes.weather
@@ -75,15 +81,27 @@ export async function startServer(
       db: runtime.db,
       now,
       weather,
-      model: fakes.model,
+      model: selection.model,
       rules: loadRules(),
       household,
       flags,
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
+      runner: { toolUse: modelsConfig.gemma.toolUse, answerMode: modelsConfig.gemma.answerMode },
       onSchedulerError: (error) => {
         console.error("Scheduler pass failed", error);
       },
+      onBackgroundError: (error) => {
+        console.error("A Gemma step failed unexpectedly", error);
+      },
     });
+    if (selection.warmUp !== undefined) {
+      // Warm-up call at start: the model loads while the person scans the QR code.
+      void selection.warmUp().then((health) => {
+        output(
+          `Gemma warm-up: ${health.state}${health.detail === undefined ? "" : ` (${health.detail})`}`,
+        );
+      });
+    }
     app = await buildApp({
       flags,
       logger: true,
@@ -101,10 +119,11 @@ export async function startServer(
     throw error;
   }
   core.scheduler.start();
+  output(modelNotice);
   output(
     env["SIB_FAKE_WEATHER"] === "1"
-      ? "Verdicts come from the fake model and the weather is fake (SIB_FAKE_WEATHER=1)."
-      : "Verdicts come from the fake model until the real Gemma client lands; the weather is Open-Meteo.",
+      ? "The weather is fake (SIB_FAKE_WEATHER=1)."
+      : "The weather is Open-Meteo.",
   );
   if (!webBuilt) {
     output("The app screens are not built: run `npm run build` first (the API is up).");

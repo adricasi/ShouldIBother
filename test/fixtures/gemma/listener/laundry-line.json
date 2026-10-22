@@ -1,0 +1,11 @@
+{
+  "description": "Hanging laundry out to dry today.",
+  "content": {
+    "chores": [
+      {
+        "label": "hang the laundry out",
+        "chore_type": "laundry_line"
+      }
+    ]
+  }
+}

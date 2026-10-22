@@ -1,0 +1,12 @@
+{
+  "description": "One weather chore: watering the plants.",
+  "content": {
+    "chores": [
+      {
+        "label": "water the plants",
+        "chore_type": "plants",
+        "item": "tomatoes"
+      }
+    ]
+  }
+}

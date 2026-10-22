@@ -10,6 +10,8 @@ import {
   type ChatRequest,
   type ChatResponse,
   type ModelClient,
+  type ModelHealth,
+  type ModelState,
 } from "./client.js";
 
 /** Where the synthetic fixtures live: `<job>/<scenario>.json` (design.md, Testing strategy). */
@@ -26,6 +28,7 @@ const toolCallsSchema = z.array(
 const stepSchema = z
   .object({
     model: z.string().default("fake-gemma"),
+    modelDigest: z.string().optional(),
     toolCalls: toolCallsSchema.default([]),
     /** The answer: an object is sent as JSON, a string as written (for invalid-JSON fixtures). */
     content: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
@@ -47,6 +50,7 @@ const fixtureSchema = z
     description: z.string(),
     steps: z.array(stepSchema).min(1).optional(),
     model: z.string().optional(),
+    modelDigest: stepSchema.shape.modelDigest,
     toolCalls: toolCallsSchema.optional(),
     content: stepSchema.shape.content,
     error: stepSchema.shape.error,
@@ -56,6 +60,7 @@ const fixtureSchema = z
     (fixture) =>
       fixture.steps === undefined ||
       (fixture.model === undefined &&
+        fixture.modelDigest === undefined &&
         fixture.toolCalls === undefined &&
         fixture.content === undefined &&
         fixture.error === undefined),
@@ -80,8 +85,9 @@ export class FakeModelClient implements ModelClient {
   private readonly fixturesDir: string;
   private readonly defaultScenario: ScenarioSelector;
   private readonly overrides = new Map<string, string>();
-  /** Calls consumed so far per `job/scenario`, for scripted fixtures. */
+  /** Calls consumed so far per `job/scenario#run`, for scripted fixtures. */
   private readonly consumed = new Map<string, number>();
+  private healthState: ModelState = "online";
 
   constructor(options: FakeModelOptions = {}) {
     this.fixturesDir = options.fixturesDir ?? FIXTURES_DIR;
@@ -91,7 +97,20 @@ export class FakeModelClient implements ModelClient {
   /** Makes every later call of `job` use `scenario` until changed. */
   setScenario(job: string, scenario: string): void {
     this.overrides.set(job, scenario);
-    this.consumed.delete(`${job}/${scenario}`);
+    for (const key of [...this.consumed.keys()]) {
+      if (key.startsWith(`${job}/${scenario}#`)) {
+        this.consumed.delete(key);
+      }
+    }
+  }
+
+  /** What `health()` reports, so tests can switch Gemma offline without touching the fixtures. */
+  setHealth(state: ModelState): void {
+    this.healthState = state;
+  }
+
+  health(): Promise<ModelHealth> {
+    return Promise.resolve({ state: this.healthState, detail: "fake model" });
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
@@ -111,12 +130,14 @@ export class FakeModelClient implements ModelClient {
     }
     const fixture = fixtureSchema.parse(JSON.parse(text));
     const key = `${request.job}/${scenario}`;
-    const index = this.consumed.get(key) ?? 0;
-    this.consumed.set(key, index + 1);
+    const runKey = `${key}#${request.run ?? 0}`;
+    const index = this.consumed.get(runKey) ?? 0;
+    this.consumed.set(runKey, index + 1);
     let step: Step;
     if (fixture.steps === undefined) {
       step = stepSchema.parse({
         ...(fixture.model === undefined ? {} : { model: fixture.model }),
+        ...(fixture.modelDigest === undefined ? {} : { modelDigest: fixture.modelDigest }),
         ...(fixture.toolCalls === undefined ? {} : { toolCalls: fixture.toolCalls }),
         ...(fixture.content === undefined ? {} : { content: fixture.content }),
         ...(fixture.error === undefined ? {} : { error: fixture.error }),
@@ -138,6 +159,11 @@ export class FakeModelClient implements ModelClient {
     }
     const content =
       typeof step.content === "string" ? step.content : JSON.stringify(step.content ?? {});
-    return { content, toolCalls: step.toolCalls, model: step.model };
+    return {
+      content,
+      toolCalls: step.toolCalls,
+      model: step.model,
+      ...(step.modelDigest === undefined ? {} : { modelDigest: step.modelDigest }),
+    };
   }
 }

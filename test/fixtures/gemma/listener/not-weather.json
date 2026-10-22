@@ -1,0 +1,11 @@
+{
+  "description": "A chore with no weather link.",
+  "content": {
+    "chores": [
+      {
+        "label": "pay the electricity bill",
+        "chore_type": "not_weather"
+      }
+    ]
+  }
+}

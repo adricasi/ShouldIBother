@@ -25,6 +25,7 @@ async function setup(): Promise<CoreHarness> {
 async function newCard(): Promise<number> {
   const response = await harness.post("/api/cards/quick", { chore_type: "plants" });
   expect(response.statusCode).toBe(201);
+  await harness.idle();
   return response.json<{ id: number }>().id;
 }
 

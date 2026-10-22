@@ -1,6 +1,8 @@
+import { useState, type FormEvent } from "react";
+
 import type { Card, Settled, Today } from "./api.js";
 import { DueSlip, VERDICT_TITLES, WaitingLine } from "./BetParts.js";
-import { formatLongDate, formatPoints, formatSettleTime } from "./format.js";
+import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 
@@ -9,7 +11,7 @@ export interface QuickChip {
   readonly label: string;
 }
 
-/** The chips for the Must chores; the listener (T-006) covers everything else. */
+/** The chips for the Must chores; the typed sentence (the listener) covers everything else. */
 export const QUICK_CHIPS: readonly QuickChip[] = [
   { choreType: "plants", label: "Water plants" },
   { choreType: "laundry_line", label: "Line-dry today" },
@@ -22,6 +24,10 @@ export interface TodayScreenProps {
   /** Settle results of this session, by bet id; shown where the bet was. */
   readonly results: Readonly<Record<number, Settled>>;
   readonly onQuickCard: (choreType: string) => void;
+  /** Typed capture; true when the cards were made, so the box can be cleared (AC-002.4). */
+  readonly onCapture: (text: string) => Promise<boolean>;
+  readonly onRetry: (cardId: number) => void;
+  readonly onAnswer: (cardId: number, yes: boolean) => void;
   /** The server's clock estimated now, for the Undo countdown. */
   readonly nowMs: number;
   readonly onBet: (cardId: number, quoteId: number) => void;
@@ -32,11 +38,135 @@ export interface TodayScreenProps {
 
 function OddsTile({ odds, bandName }: { odds: number; bandName: string }) {
   return (
-    <div className="odds-tile">
+    // Plain words next to every percentage (AC-003.5): "Likely · 70%".
+    <div className="odds-tile" role="img" aria-label={formatOdds(bandName, odds)}>
       <span className="odds-figure">{odds}%</span>
       <span className="odds-band">{bandName}</span>
     </div>
   );
+}
+
+/** The longest sentence the listener reads (AC-002.1). */
+const MAX_CAPTURE_CHARS = 500;
+
+function CaptureForm({
+  busy,
+  onCapture,
+}: {
+  busy: boolean;
+  onCapture: (text: string) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    const sentence = text.trim();
+    if (sentence === "") {
+      return;
+    }
+    // The text stays in the box unless the cards were made, so a failed read can be rephrased.
+    void onCapture(sentence).then((made) => {
+      if (made) {
+        setText("");
+      }
+    });
+  };
+  return (
+    <form className="capture" onSubmit={submit}>
+      <label htmlFor="capture-text" className="meta">
+        Or type your chores in one sentence
+      </label>
+      <textarea
+        id="capture-text"
+        value={text}
+        maxLength={MAX_CAPTURE_CHARS}
+        rows={2}
+        onChange={(event) => {
+          setText(event.target.value);
+        }}
+      />
+      <button type="submit" className="button secondary" disabled={busy || text.trim() === ""}>
+        Get odds
+      </button>
+    </form>
+  );
+}
+
+const GEMMA_STATUS_TEXT = {
+  online: "Gemma is online",
+  waking: "Gemma is waking up",
+  offline: "Gemma is offline, rule odds only",
+} as const;
+
+/** Gemma's status on Today (AC-013.5). */
+function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
+  return (
+    <p className={`meta gemma-status ${gemma.status}`} role="status">
+      {GEMMA_STATUS_TEXT[gemma.status]}
+      {gemma.detail === "fake model" ? " (fake model)" : ""}
+    </p>
+  );
+}
+
+/** What Gemma is doing about a card: thinking, a question to answer, or offline with Retry. */
+function GemmaBlock({
+  card,
+  busy,
+  onRetry,
+  onAnswer,
+}: {
+  card: Card;
+  busy: boolean;
+  onRetry: (cardId: number) => void;
+  onAnswer: (cardId: number, yes: boolean) => void;
+}) {
+  const gemma = card.gemma;
+  if (gemma === null) {
+    return null;
+  }
+  if (gemma.state === "question" && gemma.question !== null) {
+    // AC-003.3: the question inside the card, as two tap answers.
+    return (
+      <div className="gemma-question">
+        <p className="question">{gemma.question}</p>
+        <div className="answers">
+          {[true, false].map((yes) => (
+            <button
+              key={String(yes)}
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={() => {
+                onAnswer(card.id, yes);
+              }}
+            >
+              {yes ? "Yes" : "No"}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (gemma.state === "offline") {
+    // AC-013.3: rule odds stay, betting is still allowed, Retry asks Gemma again.
+    return (
+      <div className="gemma-offline">
+        {gemma.note === null ? null : <p className="meta">{gemma.note}</p>}
+        {gemma.can_retry ? (
+          <button
+            type="button"
+            className="button secondary compact"
+            disabled={busy}
+            onClick={() => {
+              onRetry(card.id);
+            }}
+          >
+            Retry Gemma
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return null;
 }
 
 function CardSlip({
@@ -44,11 +174,15 @@ function CardSlip({
   busy,
   onBet,
   onDoIt,
+  onRetry,
+  onAnswer,
 }: {
   card: Card;
   busy: boolean;
   onBet: (cardId: number, quoteId: number) => void;
   onDoIt: (cardId: number, quoteId: number) => void;
+  onRetry: (cardId: number) => void;
+  onAnswer: (cardId: number, yes: boolean) => void;
 }) {
   const { quote } = card;
   if (card.kind === "alert") {
@@ -75,7 +209,7 @@ function CardSlip({
   return (
     <article
       className="slip"
-      aria-label={`${card.title}, ${quote.band_name}, ${quote.odds} percent`}
+      aria-label={`${card.title}, ${formatOdds(quote.band_name, quote.odds)}`}
     >
       <p className="eyebrow">Lazy Bookie · Bet slip</p>
       <div className="slip-head">
@@ -84,6 +218,7 @@ function CardSlip({
       </div>
       <p className="label-tag">{quote.label}</p>
       <p>{quote.reason}</p>
+      <GemmaBlock card={card} busy={busy} onRetry={onRetry} onAnswer={onAnswer} />
       <p className="meta">Settles {formatSettleTime(quote.settle_at)}</p>
       <p className="payouts">
         <span className="win">Win {formatPoints(quote.payouts.win_with_tap)}</span>
@@ -155,6 +290,8 @@ export function TodayScreen(props: TodayScreenProps) {
           )}
         </header>
 
+        {today === undefined ? null : <GemmaStatus gemma={today.gemma} />}
+
         {today?.forecast == null ? null : (
           <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
             {today.forecast.age_label}
@@ -190,6 +327,7 @@ export function TodayScreen(props: TodayScreenProps) {
               </button>
             ))}
           </div>
+          <CaptureForm busy={busy} onCapture={props.onCapture} />
         </section>
 
         {today === undefined ? (
@@ -210,6 +348,8 @@ export function TodayScreen(props: TodayScreenProps) {
                     busy={busy}
                     onBet={props.onBet}
                     onDoIt={props.onDoIt}
+                    onRetry={props.onRetry}
+                    onAnswer={props.onAnswer}
                   />
                 ))
               )}

@@ -52,6 +52,7 @@ async function plantPhotoWithDerivatives(tag: string): Promise<Planted> {
   const card = (await harness.post("/api/cards/quick", { chore_type: "plants" })).json<{
     id: number;
   }>();
+  await harness.idle();
   const upload = await uploadPhoto(harness, card.id, await syntheticPhoto());
   const photoId = upload.json<{ photo: { id: string } }>().photo.id;
   const markers = [`INSPECTOR-INPUT-${tag}`, `INSPECTOR-OUTPUT-${tag}`, `QUOTE-REASON-${tag}`];
@@ -119,7 +120,7 @@ describe("delete a photo (AC-015.2)", () => {
     }
     expect(existsSync(join(harness.photos.dir, `${kept.photoId}.jpg`))).toBe(true);
     expect(count("photos")).toBe(1);
-    expect(count("gemma_decisions")).toBe(2);
+    expect(count("gemma_decisions WHERE photo_id IS NOT NULL")).toBe(2);
   });
 
   it("AC-015.2: the card falls back to the odds it had without the photo", async () => {

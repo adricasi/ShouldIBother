@@ -1,0 +1,24 @@
+{
+  "description": "Calls get_forecast, then asks to settle after 2 h; the app clamps it to the chore's earliest bound.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Nothing is coming; checking soon is enough.",
+        "settle_in_hours": 2
+      }
+    }
+  ]
+}
