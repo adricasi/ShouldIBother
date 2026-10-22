@@ -4,10 +4,11 @@ import { z } from "zod";
 import { CHORE_TYPES } from "../domain/chores.js";
 
 import { FLAG_NAMES, type Flags } from "./flags.js";
-import { listBetsWithStatus, markDueBets, placeDoNothingBet } from "./ledger/bets.js";
+import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import type { LedgerDeps } from "./ledger/deps.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
+import { getSlips } from "./ledger/slips.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
 
@@ -28,7 +29,7 @@ const placeBetBody = z
   .object({
     card_id: z.number().int().positive(),
     quote_id: z.number().int().positive(),
-    kind: z.literal("do_nothing"),
+    kind: z.enum(["do_nothing", "do_it"]),
   })
   .strict();
 const settleBody = z.object({ answer: z.string().min(1).max(40) }).strict();
@@ -101,8 +102,12 @@ export function createCore(deps: CoreDeps): Core {
 
     app.post("/api/bets", (request, reply) => {
       const body = parse(placeBetBody, request.body);
-      return reply.code(201).send(placeDoNothingBet(deps, body.card_id, body.quote_id));
+      return reply.code(201).send(placeBet(deps, body.card_id, body.quote_id, body.kind));
     });
+
+    app.delete("/api/bets/:id", (request) => undoBet(deps, parse(idParams, request.params).id));
+
+    app.get("/api/slips", () => getSlips(deps));
 
     app.post("/api/bets/:id/settle", async (request) => {
       const { id } = parse(idParams, request.params);

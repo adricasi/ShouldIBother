@@ -39,3 +39,26 @@ export function formatPoints(points: number): string {
 export function formatOdds(bandName: string, odds: number): string {
   return `${bandName.charAt(0).toUpperCase()}${bandName.slice(1)} · ${odds}%`;
 }
+
+const MINUTE_MS = 60_000;
+
+/** "4 h 12 min", "35 min", "less than a minute": the countdown to a settle time (AC-007.1). */
+export function formatTimeLeft(milliseconds: number): string {
+  if (milliseconds <= 0) {
+    return "now";
+  }
+  if (milliseconds < MINUTE_MS) {
+    return "less than a minute";
+  }
+  const minutes = Math.ceil(milliseconds / MINUTE_MS);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    return `${days} d ${hours % 24} h`;
+  }
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}

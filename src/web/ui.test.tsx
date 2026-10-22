@@ -13,6 +13,8 @@ const payouts = {
   small_loss: -25,
   normal_loss: -50,
   harmful_loss: -150,
+  do_it_if_not_needed: 5,
+  do_it_if_needed: -10,
 };
 
 const card: Card = {
@@ -38,11 +40,15 @@ const bet: Bet = {
   id: 7,
   card_id: 1,
   title: "Water plants",
+  kind: "do_nothing",
   band: 3,
   band_name: "likely",
   odds: 70,
   odds_source: "rule",
   reason: "Rule: 3 mm of rain expected.",
+  placed_at: "2026-10-22T08:00:00.000Z",
+  undo_until: "2026-10-22T08:05:00.000Z",
+  undoable: true,
   settle_at: "2026-10-23T06:00:00.000Z",
   status: "open",
   payouts,
@@ -68,8 +74,11 @@ function screen(today: Today | undefined, overrides: Partial<TodayScreenProps> =
       busy={false}
       notice={undefined}
       results={{}}
+      nowMs={Date.parse("2026-10-22T08:01:00.000Z")}
       onQuickCard={() => undefined}
       onBet={() => undefined}
+      onDoIt={() => undefined}
+      onUndo={() => undefined}
       onSettle={() => undefined}
       {...overrides}
     />,
@@ -134,6 +143,7 @@ describe("Today screen", () => {
       due_bets: [{ ...bet, id: 8, status: "due" }],
     });
     expect(html).toContain("Likely · 70% · settles");
+    expect(html).toContain("Undo (4 min left)");
     expect(html).toContain("Still moist, all fine");
     expect(html).toContain("Soil is dry");
   });

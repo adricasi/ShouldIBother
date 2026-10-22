@@ -298,3 +298,36 @@ h3 {
   color: var(--color-sun);
   font-weight: 600;
 }
+
+.button.compact {
+  width: auto;
+  min-width: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  white-space: nowrap;
+}
+
+.waiting li {
+  align-items: center;
+}
+
+.line-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.line-title {
+  font-weight: 700;
+}
+
+.countdown {
+  font-family: var(--font-mono);
+}
+
+.line-points {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}

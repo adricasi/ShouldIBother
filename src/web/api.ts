@@ -8,6 +8,8 @@ const payoutsSchema = z.object({
   small_loss: z.number(),
   normal_loss: z.number(),
   harmful_loss: z.number(),
+  do_it_if_not_needed: z.number(),
+  do_it_if_needed: z.number(),
 });
 
 const quoteSchema = z.object({
@@ -35,11 +37,15 @@ export const betSchema = z.object({
   id: z.number(),
   card_id: z.number(),
   title: z.string(),
+  kind: z.enum(["do_nothing", "do_it"]),
   band: z.number(),
   band_name: z.string(),
   odds: z.number(),
   odds_source: z.enum(["rule", "gemma"]),
   reason: z.string(),
+  placed_at: z.string(),
+  undo_until: z.string(),
+  undoable: z.boolean(),
   settle_at: z.string(),
   status: z.string(),
   payouts: payoutsSchema,
@@ -55,6 +61,22 @@ export const todaySchema = z.object({
   due_bets: z.array(betSchema),
 });
 
+export const slipsSchema = z.object({
+  now: z.string(),
+  settle_now: z.array(betSchema),
+  waiting: z.array(betSchema.extend({ time_left_ms: z.number() })),
+  settled: z.array(
+    betSchema.extend({
+      result: z.object({
+        verdict: z.string(),
+        points: z.number(),
+        evidence: z.string(),
+        settled_at: z.string(),
+      }),
+    }),
+  ),
+});
+
 export const settledSchema = z.object({
   bet_id: z.number(),
   verdict: z.string(),
@@ -68,6 +90,8 @@ export const settledSchema = z.object({
 export type Card = z.infer<typeof cardSchema>;
 export type Bet = z.infer<typeof betSchema>;
 export type Today = z.infer<typeof todaySchema>;
+export type Slips = z.infer<typeof slipsSchema>;
+export type BetKind = Bet["kind"];
 export type Settled = z.infer<typeof settledSchema>;
 
 /** A failed request: the server's RFC 9457 title and detail, or a plain network message. */
@@ -86,7 +110,7 @@ const problemSchema = z.object({ title: z.string(), detail: z.string().optional(
 async function request<T>(
   path: string,
   schema: z.ZodType<T>,
-  init?: { method: "POST"; body: unknown },
+  init?: { method: "POST"; body: unknown } | { method: "DELETE" },
 ): Promise<T> {
   let response: Response;
   try {
@@ -94,11 +118,13 @@ async function request<T>(
       credentials: "same-origin",
       ...(init === undefined
         ? {}
-        : {
-            method: init.method,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(init.body),
-          }),
+        : init.method === "DELETE"
+          ? { method: "DELETE" }
+          : {
+              method: init.method,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(init.body),
+            }),
     });
   } catch {
     throw new ApiError(0, "Can't reach the laptop. Check the Wi-Fi and try again.");
@@ -127,12 +153,21 @@ export const createQuickCard = (choreType: string): Promise<Card> =>
     body: { chore_type: choreType },
   });
 
+export const fetchSlips = (): Promise<Slips> => request("/api/slips", slipsSchema);
+
 /** `quoteId` is the quote the user is looking at; the server refuses if the card moved on. */
-export const placeBet = (cardId: number, quoteId: number): Promise<Bet> =>
+export const placeBet = (
+  cardId: number,
+  quoteId: number,
+  kind: BetKind = "do_nothing",
+): Promise<Bet> =>
   request("/api/bets", betSchema, {
     method: "POST",
-    body: { card_id: cardId, quote_id: quoteId, kind: "do_nothing" },
+    body: { card_id: cardId, quote_id: quoteId, kind },
   });
+
+export const undoBet = (betId: number): Promise<Bet> =>
+  request(`/api/bets/${betId}`, betSchema, { method: "DELETE" });
 
 export const settleBet = (betId: number, answer: string): Promise<Settled> =>
   request(`/api/bets/${betId}/settle`, settledSchema, { method: "POST", body: { answer } });
