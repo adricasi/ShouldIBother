@@ -87,7 +87,7 @@ function percent(odds: number): string {
  * before photo.
  */
 export function cardPhotoView(db: Pick<Db, "prepare">, card: CardRow, table: BandTable) {
-  const photo = currentPhoto(db, card.id);
+  const photo = card.kind === "weather" ? currentPhoto(db, card.id) : undefined;
   if (photo === undefined) {
     return null;
   }

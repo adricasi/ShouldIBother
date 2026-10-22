@@ -46,13 +46,12 @@ export type StoredPhoto = StagedPhoto;
 export class PhotoStore {
   private uploading = false;
 
-  constructor(
-    readonly dir: string,
-    /** Where a problem that does not stop the request goes (never photo content). */
-    readonly warn: (message: string) => void = (message) => {
-      console.error(message);
-    },
-  ) {
+  /** Where a problem that does not stop the request goes (never photo content). */
+  warn: (message: string) => void = (message) => {
+    console.error(message);
+  };
+
+  constructor(readonly dir: string) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if ((statSync(dir).mode & 0o077) !== 0) {
       chmodSync(dir, 0o700);

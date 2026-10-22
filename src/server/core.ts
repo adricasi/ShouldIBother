@@ -15,7 +15,12 @@ import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bet
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
-import { answerCard, recoverThinkingCards, retryCard } from "./ledger/gemma-cards.js";
+import {
+  answerCard,
+  assertGemmaCapacity,
+  recoverThinkingCards,
+  retryCard,
+} from "./ledger/gemma-cards.js";
 import { sweepOrphanPhotos } from "./ledger/photos.js";
 import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
@@ -115,7 +120,11 @@ export function createCore(deps: CoreDeps): Core {
     now: deps.now,
     ...deps.runner,
   });
+  let logEntry: LedgerDeps["log"] = () => undefined;
   const ledger: LedgerDeps = {
+    log: (entry) => {
+      logEntry(entry);
+    },
     db: deps.db,
     now: deps.now,
     weather: deps.weather,
@@ -125,6 +134,11 @@ export function createCore(deps: CoreDeps): Core {
     flags: deps.flags,
     photos: deps.photos,
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
+  };
+  // Photo-store warnings (a file that could not be removed, a checkpoint that could not finish)
+  // go to the structured log: messages only, never photo content.
+  deps.photos.warn = (message) => {
+    logEntry({ event: "photo_warning", message });
   };
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
@@ -137,6 +151,9 @@ export function createCore(deps: CoreDeps): Core {
     gemma.setLogger((entry) => {
       app.log.info(entry, "gemma job");
     });
+    logEntry = (entry) => {
+      app.log.info(entry, "gemma card");
+    };
     app.addHook("onSend", (_request, reply, payload) => {
       if (!reply.hasHeader("cache-control")) {
         reply.header("cache-control", "no-store");
@@ -216,6 +233,9 @@ export function createCore(deps: CoreDeps): Core {
     await app.register(
       photoRoutes({
         deps: ledger,
+        checkCapacity: () => {
+          assertGemmaCapacity(ledger);
+        },
         afterStored: ({ cardId, photo }) => {
           startInspection(ledger, cardId, photo.id);
           return { photo, card: getCardView(ledger, cardId) };

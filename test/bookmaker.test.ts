@@ -15,6 +15,8 @@ import {
 import { HoldableModel, type BetJson, type CardJson } from "./gemma-support.js";
 import { T0 } from "./helpers.js";
 
+const MINUTE = 60_000;
+
 const HOUR = 3_600_000;
 
 let harness: CoreHarness | undefined;
@@ -589,5 +591,174 @@ describe("AC-013.5: Gemma's status on Today", () => {
     const { h, model } = await setup();
     model.health = () => Promise.reject(new Error("boom"));
     expect(await status(h)).toMatchObject({ status: "offline" });
+  });
+});
+
+describe("review fixes: queue, questions, anchoring, safety and superseded cards", () => {
+  it("a full queue answers 503 busy on the listener and Retry, while a quick card keeps its rule odds and Retry", async () => {
+    const { h, model } = await setup({ runner: { maxQueued: 2 } });
+    model.hold();
+    await quickCard(h);
+    await quickCard(h);
+    const third = await quickCard(h);
+    expect(third.quote?.source).toBe("rule");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((await card(h, third.id)).gemma).toMatchObject({
+      state: "offline",
+      note: "Gemma is busy with other requests.",
+      can_retry: true,
+    });
+
+    const typed = await h.post("/api/cards", { text: "water the plants" });
+    expect(typed.statusCode).toBe(503);
+    expect(typed.headers["content-type"]).toContain("application/problem+json");
+    expect(typed.json<{ title: string }>().title).toBe("Gemma is busy");
+    expect((await h.post(`/api/cards/${third.id}/retry`, {})).statusCode).toBe(503);
+
+    model.release();
+    await h.idle();
+    expect((await h.post(`/api/cards/${third.id}/retry`, {})).statusCode).toBe(200);
+    await h.idle();
+    expect((await card(h, third.id)).quote?.source).toBe("gemma");
+  });
+
+  it("a sentence with more than 5 chores is invalid: at most 5 cards and bookmaker runs per capture", async () => {
+    const { h, model } = await setup();
+    model.setScenario("listener", "too-many");
+    const response = await h.post("/api/cards", { text: "lots of plants" });
+    expect(response.statusCode).toBe(422);
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 0 });
+  });
+
+  it("a card asks at most 2 questions, then the rule odds stay (unsure answers)", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "unsure");
+    let current = await settledCard(h);
+    expect(current.gemma?.state).toBe("question");
+    for (let asked = 1; asked <= 2; asked += 1) {
+      await h.post(`/api/cards/${current.id}/answer`, { yes: asked === 1 });
+      await h.idle();
+      current = await card(h, current.id);
+      expect(current.gemma?.state).toBe(asked < 2 ? "question" : "offline");
+    }
+    expect(current.gemma).toMatchObject({
+      state: "offline",
+      note: "Gemma could not settle on odds, even with your answers.",
+      can_retry: true,
+    });
+    expect(current.quote?.source).toBe("rule");
+    const stored = h.db.prepare<[], { a: string }>("SELECT gemma_answers AS a FROM cards").get();
+    expect(JSON.parse(stored?.a ?? "[]")).toHaveLength(2);
+  });
+
+  it("a card asks at most 2 questions, then the rule odds stay (far from the rule with a question)", async () => {
+    const { h, model } = await setup({ weatherProfile: FAKE_WEATHER_PROFILES.hot });
+    model.setScenario("bookmaker", "disagreement-with-question");
+    let current = await settledCard(h);
+    for (let n = 0; n < 2; n += 1) {
+      expect(current.gemma?.state).toBe("question");
+      await h.post(`/api/cards/${current.id}/answer`, { yes: true });
+      await h.idle();
+      current = await card(h, current.id);
+    }
+    expect(current.gemma).toMatchObject({ state: "offline", can_retry: true });
+    expect(current.quote?.source).toBe("rule");
+  });
+
+  it("stored answers are capped at 3: a fourth is refused", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "unsure");
+    const asking = await settledCard(h);
+    const three = JSON.stringify([1, 2, 3].map((n) => ({ question: `q${n}`, yes: true })));
+    h.db.prepare("UPDATE cards SET gemma_answers = ?").run(three);
+    expect((await h.post(`/api/cards/${asking.id}/answer`, { yes: true })).statusCode).toBe(409);
+  });
+
+  it("a plants card retried after midnight keeps the bounds of its own day (next day 08:00 to 12:00)", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "offline");
+    const offline = await settledCard(h);
+    // 00:30 the next night in Madrid: 14.5 h after the card was made at 10:00.
+    h.clock.advance(14.5 * HOUR);
+    model.setScenario("bookmaker", "ok");
+    await h.post(`/api/cards/${offline.id}/retry`, {});
+    await h.idle();
+    const after = await card(h, offline.id);
+    // "ok" asks for 24 h from now; the day-of-creation bound (12:00 on the 23rd) wins.
+    expect(after.quote).toMatchObject({
+      source: "gemma",
+      settle_at: new Date(T0 + 26 * HOUR).toISOString(),
+    });
+    const user =
+      model.calls.filter((call) => call.job === "bookmaker").at(-2)?.messages[1]?.content ?? "";
+    expect(user).toContain('"settle_in_hours_between":[7.5,11.5]');
+  });
+
+  it("AC-012.1: a heat, frost or storm limit inside the window Gemma settled on turns the card into an alert", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "ok-unlikely");
+    const real = h.weather.getForecast.bind(h.weather);
+    // Safe until 23 h from now; 40 °C in the hour before Gemma's 24 h settle time.
+    h.weather.getForecast = async (request) => {
+      const forecast = await real(request);
+      return {
+        ...forecast,
+        hours: forecast.hours.map((hour) =>
+          hour.startsAt >= T0 + 23 * HOUR ? { ...hour, temperatureC: 40 } : hour,
+        ),
+      };
+    };
+    const created = await quickCard(h);
+    expect(created.kind).toBe("weather");
+    await h.idle();
+    const after = await card(h, created.id);
+    expect(after).toMatchObject({ kind: "alert", quote: null, gemma: null });
+    expect(after.alert_reason).toEqual(expect.any(String));
+    expect(quotes(h).filter((row) => row.source === "gemma")).toEqual([]);
+    const bet = await h.post("/api/bets", {
+      card_id: created.id,
+      quote_id: created.quote?.id,
+      kind: "do_nothing",
+    });
+    expect(bet.statusCode).toBe(409);
+    const today = (await h.get("/api/today")).json<{ cards: CardJson[] }>();
+    expect(today.cards[0]).toMatchObject({ kind: "alert", quote: null });
+  });
+
+  it("a card answered while a bet existed is retryable once that bet is undone", async () => {
+    const { h, model } = await setup();
+    model.hold();
+    const created = await quickCard(h);
+    const bet = (
+      await h.post("/api/bets", {
+        card_id: created.id,
+        quote_id: created.quote?.id,
+        kind: "do_nothing",
+      })
+    ).json<BetJson>();
+    model.release();
+    await h.idle();
+    expect((await card(h, created.id)).gemma).toMatchObject({
+      state: "offline",
+      note: "Your bet was placed before Gemma answered.",
+    });
+    expect((await h.post(`/api/cards/${created.id}/retry`, {})).statusCode).toBe(409);
+
+    h.clock.advance(MINUTE);
+    expect((await h.delete(`/api/bets/${bet.id}`)).statusCode).toBe(200);
+    const today = (await h.get("/api/today")).json<{ cards: CardJson[] }>();
+    expect(today.cards[0]?.gemma).toMatchObject({ state: "offline", can_retry: true });
+    expect((await h.post(`/api/cards/${created.id}/retry`, {})).statusCode).toBe(200);
+    await h.idle();
+    expect((await card(h, created.id)).quote?.source).toBe("gemma");
+  });
+
+  it("the displayed reason is at most 140 characters, cut with an ellipsis", async () => {
+    const { h, model } = await setup({ weatherProfile: FAKE_WEATHER_PROFILES.hot });
+    model.setScenario("bookmaker", "disagreement-long");
+    const after = await settledCard(h);
+    expect(after.quote?.reason).toHaveLength(140);
+    expect(after.quote?.reason.endsWith("…")).toBe(true);
+    expect(after.quote?.reason.startsWith("R".repeat(130))).toBe(true);
   });
 });

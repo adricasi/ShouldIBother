@@ -1,0 +1,31 @@
+{
+  "description": "Six chores in one sentence: more than the listener may return.",
+  "content": {
+    "chores": [
+      {
+        "label": "chore 0",
+        "chore_type": "plants"
+      },
+      {
+        "label": "chore 1",
+        "chore_type": "plants"
+      },
+      {
+        "label": "chore 2",
+        "chore_type": "plants"
+      },
+      {
+        "label": "chore 3",
+        "chore_type": "plants"
+      },
+      {
+        "label": "chore 4",
+        "chore_type": "plants"
+      },
+      {
+        "label": "chore 5",
+        "chore_type": "plants"
+      }
+    ]
+  }
+}

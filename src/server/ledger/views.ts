@@ -66,8 +66,11 @@ export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   tool_missed: "Gemma answered without looking at the forecast.",
   tool_error: "The forecast was not available to Gemma.",
   weather: "The forecast was not available.",
+  internal: "Something went wrong inside the app.",
+  busy: "Gemma is busy with other requests.",
+  superseded: "Your bet was placed before Gemma answered.",
+  unresolved: "Gemma could not settle on odds, even with your answers.",
   restart: "The app restarted while Gemma was thinking.",
-  internal: "Something went wrong on the laptop while Gemma was working.",
 };
 
 export function quoteView(quote: QuoteRow, table: BandTable, state: GemmaState) {

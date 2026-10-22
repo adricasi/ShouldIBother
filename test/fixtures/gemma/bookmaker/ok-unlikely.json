@@ -1,0 +1,24 @@
+{
+  "description": "Calls get_forecast, then says unlikely (one band from a very-unlikely rule) with a settle time 24 h away.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "unlikely",
+        "reason": "It looks dry; the pots will probably need water.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

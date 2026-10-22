@@ -33,6 +33,8 @@ function parseBetId(params: unknown): number {
 
 export interface PhotoRouteOptions {
   readonly deps: Pick<LedgerDeps, "db" | "now" | "photos">;
+  /** Throws 503 when Gemma's queue is full; called before the photo is read or any state changes. */
+  readonly checkCapacity: () => void;
   /** Runs after the row exists and returns the body of the 201 response (the inspector hooks in here). */
   readonly afterStored: (input: { cardId: number; photo: ReturnType<typeof photoView> }) => unknown;
 }
@@ -56,6 +58,7 @@ export function photoRoutes(options: PhotoRouteOptions): FastifyPluginAsync {
       if (!request.isMultipart()) {
         throw unsupportedPhoto();
       }
+      options.checkCapacity();
       let bytes: Buffer;
       try {
         const file = await request.file();

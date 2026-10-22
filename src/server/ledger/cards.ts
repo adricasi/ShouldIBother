@@ -253,8 +253,14 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
   if (card.kind === "weather" && quote === undefined) {
     throw new HttpError(404, "Card not found");
   }
+  // An alert has no odds, even if it began as a weather card (its old rule quote stays stored).
   const table = bandTable(deps.rules);
-  return cardView(card, quote, table, cardPhotoView(deps.db, card, table));
+  return cardView(
+    card,
+    card.kind === "weather" ? quote : undefined,
+    table,
+    cardPhotoView(deps.db, card, table),
+  );
 }
 
 /**

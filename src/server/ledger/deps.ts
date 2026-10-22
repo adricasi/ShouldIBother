@@ -47,4 +47,6 @@ export interface LedgerDeps {
   /** The photo files in the data folder (REQ-005, REQ-015). */
   readonly photos: PhotoStore;
   readonly background: BackgroundTasks;
+  /** Structured log line for a notable event (ids and numbers only, never household text). */
+  readonly log: (entry: Readonly<Record<string, unknown>>) => void;
 }

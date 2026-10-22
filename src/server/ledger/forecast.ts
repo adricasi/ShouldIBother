@@ -17,6 +17,9 @@ export function forecastFrom(
   return hours.filter((hour) => hour.startsAt + HOUR_MS > nowMs).slice(0, hoursAhead);
 }
 
+/** Stored answers per card are capped here, whatever the caller does. */
+export const MAX_STORED_ANSWERS = 3;
+
 /** The yes/no taps stored on a card (`cards.gemma_answers`); anything malformed reads as none. */
 export function parseAnswers(text: string): QuestionAnswer[] {
   try {
@@ -24,7 +27,7 @@ export function parseAnswers(text: string): QuestionAnswer[] {
     if (!Array.isArray(value)) {
       return [];
     }
-    return value.flatMap((entry: unknown) => {
+    return value.slice(0, MAX_STORED_ANSWERS).flatMap((entry: unknown) => {
       const item = entry as { question?: unknown; yes?: unknown } | null;
       return typeof item?.question === "string" && typeof item.yes === "boolean"
         ? [{ question: item.question, yes: item.yes }]
