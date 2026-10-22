@@ -53,6 +53,7 @@ describe("NFR-009: token contrast (text pairs the stylesheet uses)", () => {
     ["ink", "coral-soft"],
     ["ink", "amber-soft"],
     ["ink", "leaf-soft"],
+    ["ink-2", "leaf-soft"], // the rank hero (REQ-025): ink-3-text is only 4.39:1 here
   ];
 
   it.each(TEXT_PAIRS)("%s on %s is at least 4.5:1", (foreground, background) => {

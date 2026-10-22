@@ -8,6 +8,7 @@ import {
 } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
+import { Achievements, RankHero } from "./RankParts.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { ErrorState, LoadingState } from "./ui/States.js";
 
@@ -234,9 +235,13 @@ export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps
           ) : null
         ) : (
           <>
+            {score.rank === undefined ? null : (
+              <RankHero rank={score.rank} total={score.points.total} />
+            )}
             <SavingsTiles savings={score.savings} />
             <JudgeLine judge={score.judge} />
             <Calibration calibration={score.calibration} />
+            {score.achievements === undefined ? null : <Achievements items={score.achievements} />}
           </>
         )}
       </main>

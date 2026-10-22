@@ -11,6 +11,7 @@ import { cardSunset } from "./0008-card-sunset.js";
 import { laundryPlan } from "./0010-laundry-plan.js";
 import { rescue } from "./0011-rescue.js";
 import { appeals } from "./0012-appeals.js";
+import { achievements } from "./0014-achievements.js";
 
 /**
  * Every migration in order. A new migration is one file plus one line here; numbers are
@@ -28,4 +29,5 @@ export const MIGRATIONS: readonly Migration[] = [
   laundryPlan,
   rescue,
   appeals,
+  achievements,
 ];

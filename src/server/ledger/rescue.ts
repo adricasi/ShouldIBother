@@ -7,6 +7,7 @@ import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 import { HttpError } from "../problem.js";
 
+import { unlockAfterCommit } from "./achievements.js";
 import { ruleWindowAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import { cashOutReceiptOf, type Receipt } from "./receipt.js";
@@ -242,7 +243,7 @@ export function canCashOut(bet: BetRow, nowMs: number): boolean {
  * written in the same transaction; the odds and payouts locked on the bet are not touched.
  */
 export function cashOutBet(
-  deps: Pick<LedgerDeps, "db" | "rules" | "now">,
+  deps: Pick<LedgerDeps, "db" | "rules" | "now" | "flags"> & Partial<Pick<LedgerDeps, "log">>,
   betId: number,
 ): { state: "cashed_out"; receipt: Receipt } {
   const now = deps.now();
@@ -294,6 +295,7 @@ export function cashOutBet(
     };
   });
   const { bet, row } = cash.immediate();
+  unlockAfterCommit(deps);
   const card = deps.db
     .prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?")
     .get(bet.card_id)!;
