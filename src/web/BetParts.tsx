@@ -1,15 +1,7 @@
-import type { Bet } from "./api.js";
+import type { Bet, Receipt } from "./api.js";
+import { PhotoPicker } from "./PhotoParts.js";
+import { ReceiptCard, WeatherLine } from "./SettleParts.js";
 import { formatOdds, formatPoints, formatSettleTime, formatTimeLeft } from "./format.js";
-
-/** Titles of the judge's verdicts, for a settled bet (AC-007.1) and the settle receipt. */
-export const VERDICT_TITLES: Readonly<Record<string, string>> = {
-  win: "You win",
-  small_loss: "Small loss",
-  normal_loss: "Loss",
-  harmful_loss: "Harmful loss",
-  weather_would_not: "Weather would not have helped",
-  weather_would_have: "Weather would have done it",
-};
 
 /** Plain words for the steps of the state machine after the settle time (AC-008.8). */
 const WAITING_STATUS_TEXT: Readonly<Record<string, string>> = {
@@ -93,29 +85,37 @@ export function WaitingLine({
   );
 }
 
+export interface SettleActions {
+  readonly onSettle: (betId: number, answerId: string) => void;
+  /** Settle with an after photo (full points); absent where photos cannot be sent. */
+  readonly onPhoto?: (betId: number, file: File) => void;
+  /** Answer the judge's yes/no question (AC-008.5). */
+  readonly onAnswer?: (betId: number, yes: boolean) => void;
+}
+
 /**
- * A bet whose settle time has come. A bet on doing nothing asks for the one-tap answer; a do-it
- * decision has no question, the judge decides from the recorded weather (AC-008.9, T-009).
+ * A bet whose settle time has come (REQ-008): the recorded weather, then either the one-tap
+ * answers and the after photo, the judge's question as two taps, or the words for what the bet
+ * waits for (the weather, Gemma, or its 24 h limit). A do-it decision has no question: the judge
+ * decides from the recorded weather (AC-008.9).
  */
 export function DueSlip({
   bet,
   busy,
   onSettle,
-}: {
-  bet: Bet;
-  busy: boolean;
-  onSettle: (betId: number, answerId: string) => void;
-}) {
-  const waitingText = statusText(bet.status);
-  const asksForAnswer =
-    bet.kind === "do_nothing" && (bet.status === "open" || bet.status === "due");
+  onPhoto,
+  onAnswer,
+}: { bet: Bet; busy: boolean } & SettleActions) {
+  const settle = bet.settle;
+  const fallbackNote = statusText(bet.status) ?? "Waiting to be settled.";
   return (
     <article className="slip due" aria-label={`${bet.title}, ready to settle`}>
       <p className="eyebrow">
         Settle now · {betKindLabel(bet)} at {formatOdds(bet.band_name, bet.odds)}
       </p>
       <h3>{bet.title}</h3>
-      {asksForAnswer ? (
+      {settle === null ? null : <WeatherLine weather={settle.weather} />}
+      {settle?.state === "answer_needed" ? (
         <>
           <p className="question">How did it turn out?</p>
           <div className="answers">
@@ -133,14 +133,45 @@ export function DueSlip({
               </button>
             ))}
           </div>
-          <p className="meta">One tap pays half of a win; losses cost the same either way.</p>
+          {onPhoto === undefined ? null : (
+            <PhotoPicker
+              label="Add an after photo for full points"
+              busy={busy}
+              onPick={(file) => {
+                onPhoto(bet.id, file);
+              }}
+            />
+          )}
+          <p className="meta">
+            A photo pays a win in full, one tap pays half; losses cost the same either way. No
+            answer by {formatSettleTime(settle.answer_until)}: Gemma settles it from the weather
+            record at half points.
+          </p>
+          {settle.note === null ? null : <p className="meta">{settle.note}</p>}
         </>
+      ) : settle?.state === "question" && settle.question !== null ? (
+        <div className="gemma-question">
+          <p className="eyebrow">Gemma has a question</p>
+          <p className="question">{settle.question}</p>
+          <div className="answers">
+            {[true, false].map((yes) => (
+              <button
+                key={String(yes)}
+                type="button"
+                className="button secondary"
+                disabled={busy || onAnswer === undefined}
+                onClick={() => {
+                  onAnswer?.(bet.id, yes);
+                }}
+              >
+                {yes ? "Yes" : "No"}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : (
-        <p className="meta">
-          {waitingText ??
-            (bet.kind === "do_it"
-              ? "You said you would do it. Gemma checks the recorded weather to score it."
-              : "Waiting to be settled.")}
+        <p className="meta" role="status">
+          {settle?.note ?? fallbackNote}
         </p>
       )}
     </article>
@@ -150,18 +181,21 @@ export function DueSlip({
 export function SettledLine({
   bet,
 }: {
-  bet: Bet & { result: { verdict: string; points: number; evidence: string } };
+  bet: Bet & { result: { verdict: string; points: number; evidence: string }; receipt: Receipt };
 }) {
   return (
-    <li>
+    <li className="settled-line">
       <div className="line-main">
         <span className="line-title">
           {bet.title} · {betKindLabel(bet)}
         </span>
         <span className="meta">
-          {formatOdds(bet.band_name, bet.odds)} ·{" "}
-          {VERDICT_TITLES[bet.result.verdict] ?? bet.result.verdict}
+          {formatOdds(bet.band_name, bet.odds)} · {bet.receipt.verdict_title}
         </span>
+        <details className="receipt-details">
+          <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
+          <ReceiptCard receipt={bet.receipt} />
+        </details>
       </div>
       <span className="line-points">{formatPoints(bet.result.points)}</span>
     </li>

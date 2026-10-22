@@ -9,11 +9,14 @@ import {
   fetchToday,
   placeBet,
   retryCard,
+  answerBetQuestion,
   settleBet,
+  settleBetWithPhoto,
   undoBet,
   uploadPhoto,
   type BetKind,
-  type Settled,
+  type Receipt,
+  type SettleResult,
   type Slips,
   type Today,
 } from "./api.js";
@@ -75,7 +78,7 @@ export function App() {
   const [today, setToday] = useState<Today | undefined>(undefined);
   const [slips, setSlips] = useState<Slips | undefined>(undefined);
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
-  const [results, setResults] = useState<Record<number, Settled>>({});
+  const [results, setResults] = useState<Record<number, Receipt>>({});
   const [busy, setBusy] = useState(false);
   const todayNow = useServerNow(today?.now);
   const slipsNow = useServerNow(slips?.now);
@@ -151,12 +154,28 @@ export function App() {
     });
   };
 
-  const onSettle = (betId: number, answerId: string): void => {
-    void act(async () => {
-      const settled = await settleBet(betId, answerId);
-      setResults((previous) => ({ ...previous, [betId]: settled }));
+  /** A verdict shows its receipt; a question or a saved answer waiting says so. */
+  const afterSettle = (betId: number, result: SettleResult): Notice | undefined => {
+    if (result.state === "settled") {
+      setResults((previous) => ({ ...previous, [betId]: result.receipt }));
       return undefined;
-    });
+    }
+    if (result.state === "question") {
+      return { kind: "info", text: "Gemma has a question. Answer it on the bet to settle." };
+    }
+    return { kind: "info", text: result.note };
+  };
+
+  const onSettle = (betId: number, answerId: string): void => {
+    void act(async () => afterSettle(betId, await settleBet(betId, answerId)));
+  };
+
+  const onSettlePhoto = (betId: number, file: File): void => {
+    void act(async () => afterSettle(betId, await settleBetWithPhoto(betId, file)));
+  };
+
+  const onSettleAnswer = (betId: number, yes: boolean): void => {
+    void act(async () => afterSettle(betId, await answerBetQuestion(betId, yes)));
   };
 
   const onUndo = (betId: number): void => {
@@ -175,6 +194,8 @@ export function App() {
         busy={busy}
         notice={notice}
         onSettle={onSettle}
+        onSettlePhoto={onSettlePhoto}
+        onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
       />
     );
@@ -232,6 +253,8 @@ export function App() {
         place(cardId, quoteId, "do_it");
       }}
       onSettle={onSettle}
+      onSettlePhoto={onSettlePhoto}
+      onSettleAnswer={onSettleAnswer}
       onUndo={onUndo}
     />
   );

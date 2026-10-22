@@ -124,7 +124,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: owns REQ-006 and REQ-007 in full: place bet locks quote fields; "I'll do it" decision; undo ≤ 5 min (409 after); bet state machine; Slips with Settle now (settle_at ≤ now at read time) / Waiting / Settled, countdowns, empty states; 30 s polling while visible.
   - Done when: tests for AC-006.1–AC-006.5 (incl. forecast change after placing leaves the bet unchanged), AC-007.1–AC-007.3 with a fake clock; locked columns cannot be updated (test).
 
-- [ ] T-009: Settlement with the judge, points, receipt and savings
+- [x] T-009: Settlement with the judge, points, receipt and savings
   - Who / when: Agent W1 · Thu night (stacked on T-007); merged Fri PM
   - Requirements: REQ-008, REQ-009, REQ-010, REQ-011, REQ-015 (AC-015.3, AC-015.4), REQ-016 (settle rules for plants and line-dry today), REQ-028 (AC-028.1)
   - Depends on: T-006, T-007, T-008

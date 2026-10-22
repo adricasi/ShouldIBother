@@ -12,6 +12,25 @@ const payoutsSchema = z.object({
   do_it_if_needed: z.number(),
 });
 
+/** Savings totals with both parts of net time and the assumption behind each figure (REQ-011). */
+export const savingsTotalsSchema = z.object({
+  bets: z.number(),
+  wins: z.number(),
+  time_saved_s: z.number(),
+  app_time_s: z.number(),
+  net_time_s: z.number(),
+  water_l: z.number(),
+  electricity_kwh: z.number(),
+  assumptions: z.array(
+    z.object({
+      chore_type: z.string(),
+      assumption: z.string(),
+      basis: z.string(),
+      wins: z.number(),
+    }),
+  ),
+});
+
 const quoteSchema = z.object({
   id: z.number(),
   source: z.enum(["rule", "gemma"]),
@@ -74,6 +93,69 @@ export const cardSchema = z.object({
   photo: photoSchema.nullish(),
 });
 
+const nullableNumber = z.number().nullable();
+
+/** The recorded weather of a bet's window, in a few numbers (AC-008.1). */
+export const weatherSchema = z.object({
+  label: z.string(),
+  digest: z.object({
+    hours: z.number(),
+    rain_mm: nullableNumber,
+    wet_hours: nullableNumber,
+    temp_min_c: nullableNumber,
+    temp_max_c: nullableNumber,
+    wind_max_kmh: nullableNumber,
+    sunshine_h: nullableNumber,
+  }),
+  from: z.string(),
+  to: z.string(),
+});
+
+/** Where a bet whose settle time has come stands (REQ-008); null before the settle time. */
+export const settleSchema = z.object({
+  state: z.enum(["answer_needed", "question", "waiting_weather", "waiting_gemma"]),
+  note: z.string().nullable(),
+  /** The judge's yes/no question (AC-008.5). */
+  question: z.string().nullable(),
+  answered_with: z.enum(["tap", "photo"]).nullable(),
+  /** After this the judge settles the bet from the weather record alone (AC-008.7). */
+  answer_until: z.string(),
+  weather: weatherSchema.nullable(),
+});
+
+/** The PAID OUT receipt of a win, or the plain result of a loss or a do-it decision (REQ-010). */
+export const receiptSchema = z.object({
+  bet_id: z.number(),
+  title: z.string(),
+  kind: z.enum(["do_nothing", "do_it"]),
+  outcome: z.enum(["paid_out", "loss", "do_it"]),
+  verdict: z.string(),
+  verdict_title: z.string(),
+  stamp: z.string().nullable(),
+  odds: z.number(),
+  band_name: z.string(),
+  points: z.number(),
+  total_points: z.number(),
+  multiplier: z.number(),
+  evidence: z.object({ kind: z.enum(["photo", "tap", "auto"]), text: z.string() }),
+  answer: z.string().nullable(),
+  weather: weatherSchema.omit({ from: true, to: true }).nullable(),
+  /** "Gemma's read" (AC-028.1). */
+  gemma_read: z.object({ reason: z.string(), evidence: z.array(z.string()) }).nullable(),
+  lucky_win: z.boolean().nullable(),
+  message: z.string().nullable(),
+  saved: z
+    .object({
+      time_min: z.number(),
+      water_l: z.number(),
+      electricity_kwh: z.number(),
+      assumption: z.string(),
+      basis: z.string(),
+    })
+    .nullable(),
+  settled_at: z.string(),
+});
+
 export const betSchema = z.object({
   id: z.number(),
   card_id: z.number(),
@@ -91,12 +173,15 @@ export const betSchema = z.object({
   status: z.string(),
   payouts: payoutsSchema,
   tap_answers: z.array(z.object({ id: z.string(), label: z.string() })),
+  settle: settleSchema.nullable(),
 });
 
 export const todaySchema = z.object({
   now: z.string(),
   flags: flagsSchema,
   points: z.object({ total: z.number() }),
+  /** This week's savings, Monday to Sunday in Madrid time (AC-011.6). */
+  week: z.object({ from: z.string(), to: z.string(), totals: savingsTotalsSchema }),
   /** Gemma's status, refreshed at least every 60 s (AC-013.5). */
   gemma: z.object({
     status: z.enum(["online", "waking", "offline"]),
@@ -126,19 +211,18 @@ export const slipsSchema = z.object({
         evidence: z.string(),
         settled_at: z.string(),
       }),
+      receipt: receiptSchema,
     }),
   ),
 });
 
-export const settledSchema = z.object({
-  bet_id: z.number(),
-  verdict: z.string(),
-  reason: z.string(),
-  evidence: z.array(z.string()),
-  multiplier: z.number(),
-  points: z.number(),
-  total_points: z.number(),
-});
+/** What a settle request returns: a verdict, the judge's question, or a saved answer waiting. */
+export const settleResultSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("settled"), receipt: receiptSchema }),
+  z.object({ state: z.literal("question"), question: z.string() }),
+  z.object({ state: z.literal("awaiting_weather"), note: z.string() }),
+  z.object({ state: z.literal("awaiting_gemma"), note: z.string() }),
+]);
 
 export type Card = z.infer<typeof cardSchema>;
 export type CardPhoto = z.infer<typeof photoSchema>;
@@ -146,7 +230,11 @@ export type Bet = z.infer<typeof betSchema>;
 export type Today = z.infer<typeof todaySchema>;
 export type Slips = z.infer<typeof slipsSchema>;
 export type BetKind = Bet["kind"];
-export type Settled = z.infer<typeof settledSchema>;
+export type Receipt = z.infer<typeof receiptSchema>;
+export type SettleResult = z.infer<typeof settleResultSchema>;
+export type SavingsTotals = z.infer<typeof savingsTotalsSchema>;
+export type BetSettle = z.infer<typeof settleSchema>;
+export type RecordedWeather = z.infer<typeof weatherSchema>;
 
 /** A failed request: the server's RFC 9457 title and detail, or a plain network message. */
 export class ApiError extends Error {
@@ -259,5 +347,17 @@ export const placeBet = (
 export const undoBet = (betId: number): Promise<Bet> =>
   request(`/api/bets/${betId}`, betSchema, { method: "DELETE" });
 
-export const settleBet = (betId: number, answer: string): Promise<Settled> =>
-  request(`/api/bets/${betId}/settle`, settledSchema, { method: "POST", body: { answer } });
+/** One tap (AC-008.3). */
+export const settleBet = (betId: number, answer: string): Promise<SettleResult> =>
+  request(`/api/bets/${betId}/settle`, settleResultSchema, { method: "POST", body: { answer } });
+
+/** An after photo, paid in full (AC-008.2). */
+export const settleBetWithPhoto = (betId: number, file: File): Promise<SettleResult> => {
+  const form = new FormData();
+  form.append("photo", file);
+  return request(`/api/bets/${betId}/settle`, settleResultSchema, { method: "POST", form });
+};
+
+/** The tap on the judge's yes/no question (AC-008.5). */
+export const answerBetQuestion = (betId: number, yes: boolean): Promise<SettleResult> =>
+  request(`/api/bets/${betId}/answer`, settleResultSchema, { method: "POST", body: { yes } });

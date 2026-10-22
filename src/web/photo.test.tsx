@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { Card, CardPhoto, Today } from "./api.js";
+import { emptyWeek } from "./test-data.js";
 import { TodayScreen } from "./TodayScreen.js";
 
 const payouts = {
@@ -65,6 +66,7 @@ const today = (cards: Card[]): Today => ({
   points: { total: 0 },
   gemma: { status: "online", detail: null, checked_at: "2026-10-22T08:00:00.000Z" },
   forecast: null,
+  week: emptyWeek,
   attribution: "Weather data by Open-Meteo.com",
   cards,
   open_bets: [],
