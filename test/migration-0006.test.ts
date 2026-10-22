@@ -33,7 +33,12 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
     const cardsBefore = db.prepare("SELECT * FROM cards ORDER BY id").all();
     expect(migrate(db, MIGRATIONS)).toEqual(expect.arrayContaining([6]));
     expect(db.prepare("SELECT * FROM cards ORDER BY id").all()).toEqual(
-      cardsBefore.map((card) => ({ ...(card as object), photo_state: null, photo_failure: null })),
+      cardsBefore.map((card) => ({
+        ...(card as object),
+        photo_state: null,
+        photo_failure: null,
+        sunset_at: null,
+      })),
     );
     expect(db.prepare("SELECT * FROM bets").all()).toEqual(betsBefore);
     expect(db.prepare("SELECT COUNT(*) AS n FROM quotes").get()).toEqual({ n: 2 });

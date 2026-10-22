@@ -1,5 +1,5 @@
 import { windowHourStarts, type HourlyWeather } from "../../domain/outcomes.js";
-import { HOUR_MS, madridParts } from "../../domain/time.js";
+import { HOUR_MS, madridDateOf, madridParts, madridWallTimeToEpochMs } from "../../domain/time.js";
 import type { ForecastHour } from "../../domain/weather.js";
 
 import type { Forecast, RecordedWeather, WeatherClient } from "./client.js";
@@ -60,10 +60,24 @@ export const FAKE_WEATHER_PROFILES = {
 
 export type FakeWeatherProfileName = keyof typeof FAKE_WEATHER_PROFILES;
 
-/** Daylight in the synthetic day: 07:00 to 20:00 Madrid time (the app never reads this as a sunset). */
+/** The synthetic day is light from 07:00 until this hour, Madrid time: the fake sunset. */
+export const FAKE_SUNSET_HOUR = 20;
+
 function isDaylight(startsAt: number): boolean {
   const { hour } = madridParts(startsAt);
-  return hour >= 7 && hour < 20;
+  return hour >= 7 && hour < FAKE_SUNSET_HOUR;
+}
+
+/** The fake sunset (20:00 Madrid time) of every Madrid date the given hours touch. */
+export function fakeSunsets(
+  hours: readonly { readonly startsAt: number }[],
+): Record<string, number> {
+  const sunsets: Record<string, number> = {};
+  for (const { startsAt } of hours) {
+    const date = madridDateOf(startsAt);
+    sunsets[date] ??= madridWallTimeToEpochMs(date, `${String(FAKE_SUNSET_HOUR)}:00`);
+  }
+  return sunsets;
 }
 
 /** A fake hour has every value, unlike a real answer that may leave some out. */
@@ -133,6 +147,8 @@ export class FakeWeatherClient implements WeatherClient {
   failWith: Error | undefined;
   /** False: recorded weather is not there yet, so a settlement keeps waiting (AC-014.5). */
   recordedAvailable = true;
+  /** False: the forecast carries no sunset, so laundry tonight cannot be priced. */
+  sunsets = true;
   private lastFetchedAt: number | undefined;
 
   constructor(
@@ -154,9 +170,11 @@ export class FakeWeatherClient implements WeatherClient {
       return Promise.reject(new WeatherUnavailableError(this.failWith.message));
     }
     this.lastFetchedAt = this.now();
+    const hours = fakeForecastHours(this.profile, request.fromMs, request.hours, request.pastHours);
     return Promise.resolve({
       fetchedAt: this.lastFetchedAt,
-      hours: fakeForecastHours(this.profile, request.fromMs, request.hours, request.pastHours),
+      hours,
+      sunsetMsByDate: this.sunsets ? fakeSunsets(hours) : {},
     });
   }
 

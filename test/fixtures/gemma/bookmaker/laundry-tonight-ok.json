@@ -1,0 +1,17 @@
+{
+  "description": "Hand-written synthetic bookmaker answer for leave-it-out-tonight: calls get_forecast, says likely, settles early next morning.",
+  "steps": [
+    {
+      "toolCalls": [{ "name": "get_forecast", "arguments": { "hours_ahead": 16 } }],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "likely",
+        "reason": "No rain overnight and a light breeze, so the washing should be dry by morning.",
+        "settle_in_hours": 11
+      }
+    }
+  ]
+}

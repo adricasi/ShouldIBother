@@ -74,6 +74,7 @@ describe("AC-014.1: the forecast is requested for the configured coordinates, ro
     expect(server.hostsSeen).toEqual([OPEN_METEO_HOSTS.forecast]);
     // Nothing else about the household is in the request.
     expect([...url.searchParams.keys()].sort()).toEqual([
+      "daily",
       "forecast_days",
       "hourly",
       "latitude",

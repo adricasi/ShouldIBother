@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-import { HOUR_MS } from "../../domain/time.js";
+import { HOUR_MS, madridDateOf } from "../../domain/time.js";
 import { SUM_VARIABLE_NAMES, SUM_VARIABLE_STAMP, type HourStamp } from "../../domain/open-meteo.js";
 import type { HourlyWeather } from "../../domain/outcomes.js";
 import type { ForecastHour } from "../../domain/weather.js";
 
-import { HOURLY_VARIABLES, type HourlyField } from "./open-meteo.js";
+import { DAILY_VARIABLES, HOURLY_VARIABLES, type HourlyField } from "./open-meteo.js";
 
 const column = z.array(z.number().nullable());
 
@@ -128,3 +128,58 @@ export const REQUIRED_FOR_SETTLEMENT = [
   "windSpeedKmh",
   "sunshineSeconds",
 ] as const satisfies readonly (keyof HourlyWeather)[];
+
+const dailySchema = z.object({
+  daily: z
+    .object({
+      time: z.array(z.number().int()),
+      [DAILY_VARIABLES.sunset]: z.array(z.number().nullable()).optional(),
+    })
+    .optional(),
+});
+
+/**
+ * The sunset of each Madrid date as epoch milliseconds (laundry tonight's window starts there).
+ * Taken from the daily `sunset` column when the answer has one; for a date it lacks, the end of
+ * that date's last daylight hour (`is_day`), at most an hour late. A date whose daylight is not
+ * fully in the answer (the first or last day of a range) gets none. Never throws: a missing
+ * sunset only means laundry tonight cannot be offered.
+ */
+export function parseSunsets(
+  body: unknown,
+  hours: readonly ForecastHour[],
+): Record<string, number> {
+  const sunsets: Record<string, number> = {};
+  const parsed = dailySchema.safeParse(body);
+  const daily = parsed.success ? parsed.data.daily : undefined;
+  const column = daily?.[DAILY_VARIABLES.sunset];
+  if (daily !== undefined && column !== undefined && column.length === daily.time.length) {
+    daily.time.forEach((daySeconds, index) => {
+      const sunsetSeconds = column[index];
+      if (sunsetSeconds !== null && sunsetSeconds !== undefined) {
+        sunsets[madridDateOf(daySeconds * 1000)] = sunsetSeconds * 1000;
+      }
+    });
+  }
+  const lastDaylight = new Map<string, number>();
+  const darkAfter = new Set<string>();
+  for (const hour of hours) {
+    const date = madridDateOf(hour.startsAt);
+    if (hour.isDay === true) {
+      lastDaylight.set(date, Math.max(lastDaylight.get(date) ?? 0, hour.startsAt));
+    }
+  }
+  for (const hour of hours) {
+    const date = madridDateOf(hour.startsAt);
+    const last = lastDaylight.get(date);
+    if (hour.isDay === false && last !== undefined && hour.startsAt > last) {
+      darkAfter.add(date);
+    }
+  }
+  for (const [date, startsAt] of lastDaylight) {
+    if (sunsets[date] === undefined && darkAfter.has(date)) {
+      sunsets[date] = startsAt + HOUR_MS;
+    }
+  }
+  return sunsets;
+}

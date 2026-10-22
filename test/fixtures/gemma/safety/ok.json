@@ -1,0 +1,4 @@
+{
+  "description": "Hand-written synthetic safety answer: an ordinary chore in ordinary weather, no alert.",
+  "content": { "status": "ok", "alert": false }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "First answer fails the schema (ok without a verdict), the retry is a valid alert.",
+  "steps": [
+    { "content": { "status": "ok" } },
+    {
+      "content": {
+        "status": "ok",
+        "alert": true,
+        "reason": "Gusts of 60 km/h tonight and the pots stand on the ledge: bring them in."
+      }
+    }
+  ]
+}

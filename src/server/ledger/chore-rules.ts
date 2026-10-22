@@ -7,14 +7,16 @@ import type { ForecastHour } from "../../domain/weather.js";
  * The window the rule band is computed over when Gemma settles at `settleAtMs`. `nowMs` is the
  * card's creation time (the anchor), not the time of a later retry. Only the plants
  * window follows the settle time (design.md: "now to settle"); the other chores' windows are fixed
- * by the table (line-dry ends at 18:00, whatever the settle time within its bounds).
+ * by the table (line-dry ends at 18:00, whatever the settle time within its bounds). Laundry
+ * tonight starts at the sunset stored on its card (`sunsetMs`).
  */
 export function ruleWindowAt(
   chore: ChoreType,
   nowMs: number,
   settleAtMs: number,
+  sunsetMs?: number,
 ): { fromMs: number; toMs: number } {
-  const window = CHORES[chore].ruleWindow(nowMs);
+  const window = CHORES[chore].ruleWindow(nowMs, sunsetMs);
   return chore === "plants" ? { fromMs: window.fromMs, toMs: settleAtMs } : window;
 }
 
@@ -25,8 +27,9 @@ export function ruleQuoteAt(
   nowMs: number,
   settleAtMs: number,
   config: RulesConfig,
+  sunsetMs?: number,
 ): (RuleQuote & { windowEndMs: number }) | null {
-  const window = ruleWindowAt(chore, nowMs, settleAtMs);
+  const window = ruleWindowAt(chore, nowMs, settleAtMs, sunsetMs);
   const quote = ruleQuote(chore, forecast, window.fromMs, window.toMs, config);
   return quote === null ? null : { ...quote, windowEndMs: window.toMs };
 }
@@ -39,8 +42,9 @@ export function ruleBandOrFallback(
   settleAtMs: number,
   config: RulesConfig,
   fallback: Band,
+  sunsetMs?: number,
 ): Band {
-  return ruleQuoteAt(chore, forecast, nowMs, settleAtMs, config)?.band ?? fallback;
+  return ruleQuoteAt(chore, forecast, nowMs, settleAtMs, config, sunsetMs)?.band ?? fallback;
 }
 
 export function settleBoundsOf(chore: ChoreType, nowMs: number): SettleBounds {

@@ -1,5 +1,10 @@
 import { CHORES, isChoreType, type ChoreSpec, type ChoreType } from "../../domain/chores.js";
-import { cutWindowOf, labelWindowOf, luckyWinOf } from "../../domain/lucky-win.js";
+import {
+  MissingSunsetError,
+  cutWindowOf,
+  labelWindowOf,
+  luckyWinOf,
+} from "../../domain/lucky-win.js";
 import { ANSWER_WINDOW_MS, GEMMA_RETRY_MS, MAX_QUESTIONS } from "../../domain/settlement.js";
 import { MULTIPLIER, pointsFor, type Evidence } from "../../domain/points.js";
 import {
@@ -444,15 +449,29 @@ export class Settler {
   /**
    * The lucky flag of a won bet (AC-008.6): the chore's outcome label on its full fixed window,
    * with the hours before the bet was placed read from the recorded weather too. Where those
-   * cannot be fetched, the label is applied to the window the settle snapshot covers.
+   * cannot be fetched, the label is applied to the window the settle snapshot covers. Laundry
+   * tonight's window starts at the sunset stored on its card; without one the flag is unknown.
    */
   private async luckyFor(
     choreType: ChoreType,
     bet: BetRow,
+    card: CardRow,
     snapshot: WeatherSnapshot,
   ): Promise<boolean | null> {
-    const times = { placedAt: bet.placed_at, settleAt: bet.settle_at };
-    const window = labelWindowOf(choreType, times, this.deps.now());
+    const times = {
+      placedAt: bet.placed_at,
+      settleAt: bet.settle_at,
+      sunsetAt: card.sunset_at,
+    };
+    let window;
+    try {
+      window = labelWindowOf(choreType, times, this.deps.now());
+    } catch (error) {
+      if (error instanceof MissingSunsetError) {
+        return null;
+      }
+      throw error;
+    }
     if (window.endMs > window.startMs) {
       try {
         const recorded = await this.deps.weather.getRecorded({
@@ -556,7 +575,7 @@ export class Settler {
     const multiplier = bet.kind === "do_it" ? 1 : MULTIPLIER[capped ? "auto" : settleEvidence];
     const lucky =
       bet.kind === "do_nothing" && result.verdict === "win"
-        ? await this.luckyFor(choreType, bet, snapshot)
+        ? await this.luckyFor(choreType, bet, card, snapshot)
         : null;
     const commit = db.transaction((): SettlementRow => {
       // The status guard makes a second settlement of the same bet fail instead of paying twice.
