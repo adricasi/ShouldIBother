@@ -1,0 +1,7 @@
+{
+  "description": "Hand-written synthetic safety answer: the guard cannot tell whether anyone depends on the chore.",
+  "content": {
+    "status": "unsure",
+    "question": "Does anyone vulnerable depend on this chore?"
+  }
+}

@@ -4,6 +4,7 @@ import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
 const BEFORE = MIGRATIONS.filter((migration) => migration.id < 7);
+const THROUGH_7 = MIGRATIONS.filter((migration) => migration.id <= 7);
 
 /**
  * A database as the live week leaves it at migration 0006: open and due bets (one with no
@@ -36,7 +37,7 @@ describe("migration 0007: what a bet knows while it settles (NFR-003)", () => {
     seedLiveDatabase(db);
     const betsBefore = db.prepare("SELECT * FROM bets ORDER BY id").all();
     const cardsBefore = db.prepare("SELECT * FROM cards ORDER BY id").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([7]);
+    expect(migrate(db, THROUGH_7)).toEqual([7]);
     expect(db.prepare("SELECT * FROM bets ORDER BY id").all()).toEqual(betsBefore);
     expect(db.prepare("SELECT * FROM cards ORDER BY id").all()).toEqual(cardsBefore);
     expect(db.prepare("SELECT COUNT(*) AS n FROM quotes").get()).toEqual({ n: 2 });
@@ -44,7 +45,7 @@ describe("migration 0007: what a bet knows while it settles (NFR-003)", () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM settle_progress").get()).toEqual({ n: 0 });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
     expect(db.pragma("foreign_key_check")).toEqual([]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, THROUGH_7)).toEqual([]);
     db.close();
   });
 

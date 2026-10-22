@@ -160,7 +160,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Done when: training finishes and the merged GGUF loads in Ollama and answers the bookmaker schema on 20 hold-out prompts with ≥ 19/20 valid JSON; model tag and digest in `config/models.json`; CI Python job green. If training fails by Fri 12:00, the flag stays off and the post reports it.
 
 ## Milestone 3: Tier 3–4 (Fri)
-- [ ] T-013: Gemma safety guard and "Leave it out tonight"
+- [x] T-013: Gemma safety guard and "Leave it out tonight"
   - Who / when: Agent W1 · Fri AM (stacked on T-009); merged Fri PM
   - Requirements: REQ-012 (AC-012.3, AC-012.4), REQ-016 (AC-016.2)
   - Depends on: T-005, T-006, T-009
@@ -181,7 +181,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: `sib backtest` over the snapshot: strategies rule, fixed routine, Gemma E2B, E4B base, E4B fine-tuned (via `ModelClient`; T-014 uses it on the hold-out); per-day decisions at each chore's fixed decision time from day-1-lead forecasts only; outcomes from the outcome labels (T-011); fixed routine calibration reported as n/a; headline numbers on Sep–Oct, Apr–Aug labelled in-sample for the fine-tuned model and the rule thresholds; report (skips, chores avoided, time/water/kWh, plant-risk days, calibration with N per band, Brier, tool-call miss rate) as Markdown + JSON; resumable, progress output, `--pause-at 07:00`; prints an estimate (calls × measured latency) per model before starting.
   - Done when: runs end to end on the fake model in CI on a 2-week slice; a lookahead test fails if any decision uses data from a model run that started after the decision time; the in-sample/hold-out split is visible in the report; output format reviewed.
 
-- [ ] T-016: Score screen
+- [x] T-016: Score screen
   - Who / when: Agent W1 · Fri AM (stacked on T-013); merged Fri PM
   - Requirements: REQ-020, REQ-011 (Score tiles); NFR-009
   - Depends on: T-009

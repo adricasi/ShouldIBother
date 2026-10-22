@@ -1,12 +1,21 @@
 import { oddsOfBand } from "../../domain/bands.js";
-import { CHORES, NOTICES, isChoreType, offerNotice, type ChoreType } from "../../domain/chores.js";
+import {
+  CHORES,
+  NOTICES,
+  isChoreType,
+  laundryTonightNotice,
+  laundryTonightOffer,
+  offerNotice,
+  type ChoreType,
+} from "../../domain/chores.js";
 import { bandTable, ruleQuote, safetyAlert } from "../../domain/rules/index.js";
+import { addDays, madridDateOf } from "../../domain/time.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
-import { launchBookmaker } from "./gemma-cards.js";
+import { launchNewCardJobs } from "./gemma-cards.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
@@ -35,14 +44,17 @@ function insertCard(
     readonly label?: string;
     readonly alertReason?: string;
     readonly notice?: string;
+    /** The sunset a laundry-tonight card is priced on (migration 0008). */
+    readonly sunsetAt?: number;
   },
 ): CardRow {
   const now = deps.now();
   const id = Number(
     deps.db
       .prepare(
-        `INSERT INTO cards (input_text, chore_type, kind, alert_reason, notice, gemma_state, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cards (input_text, chore_type, kind, alert_reason, notice, gemma_state,
+           sunset_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         fields.label ?? (isChoreType(fields.choreType) ? CHORES[fields.choreType].title : ""),
@@ -53,6 +65,7 @@ function insertCard(
         // Only a bettable weather card is quoted by Gemma; alerts and notices never are, so the
         // fixed backstop always wins (AC-012.1).
         fields.kind === "weather" ? "thinking" : null,
+        fields.sunsetAt ?? null,
         now,
       ).lastInsertRowid,
   );
@@ -128,8 +141,8 @@ function isOfferedYet(deps: LedgerDeps, choreType: ChoreType): boolean {
       // "skip the AC, skip the heater" (REQ-016, Could); there is no separate `ac` flag.
       return deps.flags.heater;
     case "laundry_tonight":
-      // T-013 builds the sunset offer window and turns this on behind `laundryTonight`.
-      return false;
+      // Tier 4 (Should): behind its flag, off by default (REQ-029).
+      return deps.flags.laundryTonight;
   }
 }
 
@@ -150,9 +163,12 @@ function isNotNeeded(deps: LedgerDeps, choreType: ChoreType): boolean {
  * 2. A chore not offered yet: "Coming later".
  * 3. Line-dry outside 07:00 to 15:00: says when it can be offered (AC-016.4).
  * 4. No forecast younger than 24 h: "No forecast, can't set odds", no betting (AC-014.4).
- * 5. The fixed heat, frost or storm backstop: a "Do it now" alert with its reason, no odds, no bet
+ *    Laundry tonight also needs today's sunset from the forecast.
+ * 5. Laundry tonight outside 1 h before to 2 h after sunset: says when it can be offered
+ *    (AC-016.2). The sunset is stored on the card, and its window starts there.
+ * 6. The fixed heat, frost or storm backstop: a "Do it now" alert with its reason, no odds, no bet
  *    action, whatever Gemma would say (AC-012.1).
- * 6. Otherwise the rule band is quoted at once (AC-004.1, AC-013.1): the card and quote are
+ * 7. Otherwise the rule band is quoted at once (AC-004.1, AC-013.1): the card and quote are
  *    written together.
  */
 export async function createChoreCard(
@@ -189,7 +205,25 @@ export async function createChoreCard(
     throw error;
   }
 
-  const window = chore.ruleWindow(now);
+  // Laundry tonight is priced from sunset to 08:00, so the forecast must know today's sunset and
+  // the card is offered only around it (AC-016.2).
+  let sunsetMs: number | undefined;
+  if (choreType === "laundry_tonight") {
+    const today = madridDateOf(now);
+    sunsetMs = forecast.sunsetMsByDate[today];
+    if (sunsetMs === undefined) {
+      return noOddsCard(deps, choreType, NOTICES.noForecast, label);
+    }
+    if (forecast.sunsetFallbackDates?.includes(today) === true) {
+      deps.log({ event: "sunset_fallback", date: today });
+    }
+    const offer = laundryTonightOffer(now, sunsetMs, forecast.sunsetMsByDate[addDays(today, 1)]);
+    if (!offer.offered) {
+      return noOddsCard(deps, choreType, laundryTonightNotice(now, offer.nextAtMs), label);
+    }
+  }
+
+  const window = chore.ruleWindow(now, sunsetMs);
   const alert = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
   if (alert !== null) {
     const card =
@@ -212,6 +246,7 @@ export async function createChoreCard(
       choreType,
       kind: "weather",
       ...(label === undefined ? {} : { label }),
+      ...(sunsetMs === undefined ? {} : { sunsetAt: sunsetMs }),
     });
     const quoteId = Number(
       deps.db
@@ -235,7 +270,7 @@ export async function createChoreCard(
   });
   const { card, quote } = insert();
   // Gemma quotes in the background; the person sees the rule odds at once (AC-013.1).
-  launchBookmaker(deps, card.id);
+  launchNewCardJobs(deps, card.id);
   return cardView(card, quote, table);
 }
 

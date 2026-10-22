@@ -1,0 +1,8 @@
+{
+  "description": "Hand-written synthetic safety answer: the chore touches safety (a pet stays outside in a hot spell), so an alert with a reason.",
+  "content": {
+    "status": "ok",
+    "alert": true,
+    "reason": "A hot afternoon and the dog stays on the balcony: bring it in and give it water."
+  }
+}

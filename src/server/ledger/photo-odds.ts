@@ -112,6 +112,11 @@ async function inspectPhoto(deps: InspectDeps, cardId: number, photoId: string):
     return;
   }
   const choreType: ChoreType = card.chore_type;
+  if (card.kind !== "weather") {
+    // The safety guard made the card an alert while the photo waited its turn: no odds for it.
+    setPhotoState(deps, cardId, photoId, "seen", "odds_kept");
+    return;
+  }
   let image: Buffer;
   try {
     image = deps.photos.read(photo.file);
@@ -176,6 +181,7 @@ async function bookmakeWithPhoto(
   }
   const nowMs = deps.now();
   const anchorMs = card.created_at;
+  const sunsetMs = card.sunset_at ?? undefined;
   let hours: readonly ForecastHour[];
   try {
     hours = (
@@ -200,7 +206,15 @@ async function bookmakeWithPhoto(
     anchorMs,
     ruleBand: ruleRow.band,
     ruleBandAt: (settleAtMs) =>
-      ruleBandOrFallback(choreType, hours, anchorMs, settleAtMs, deps.rules, ruleRow.band),
+      ruleBandOrFallback(
+        choreType,
+        hours,
+        anchorMs,
+        settleAtMs,
+        deps.rules,
+        ruleRow.band,
+        sunsetMs,
+      ),
     answers: parseAnswers(card.gemma_answers),
     readForecast: (hoursAhead) => Promise.resolve(forecastFrom(hours, nowMs, hoursAhead)),
     cardId,
@@ -239,12 +253,20 @@ async function bookmakeWithPhoto(
     : (output.reason ?? "");
   // The fixed backstop also covers the window the answer settles on (AC-012.1), as for the first
   // answer; decided inside the transaction below, once the photo is known to be current.
-  const finalWindow = ruleWindowAt(choreType, anchorMs, settleAt);
+  const finalWindow = ruleWindowAt(choreType, anchorMs, settleAt, sunsetMs);
   const alert = safetyAlert(hours, finalWindow.fromMs, finalWindow.toMs, deps.rules);
 
   deps.db.transaction((): void => {
     if (!photoIsCurrent(deps.db, cardId, photoId)) {
       // The photo was deleted or replaced meanwhile: this job is stale, its answer is dropped.
+      return;
+    }
+    const kind = deps.db
+      .prepare<[number], { kind: string }>("SELECT kind FROM cards WHERE id = ?")
+      .get(cardId)?.kind;
+    if (kind !== "weather") {
+      // The safety guard turned the card into an alert while the photo was read: no odds for it.
+      setPhotoState(deps, cardId, photoId, "seen", "odds_kept");
       return;
     }
     if (hasActiveBet(deps, cardId)) {
@@ -260,7 +282,7 @@ async function bookmakeWithPhoto(
     const createdAt = deps.now();
     if (settleAt !== ruleRow.settle_at) {
       // The rule band is stored for the final settle window (AC-004.2), as for the first answer.
-      const rule = ruleQuoteAt(choreType, hours, anchorMs, settleAt, deps.rules);
+      const rule = ruleQuoteAt(choreType, hours, anchorMs, settleAt, deps.rules, sunsetMs);
       if (rule !== null) {
         deps.db
           .prepare(

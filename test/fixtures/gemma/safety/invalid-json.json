@@ -1,0 +1,4 @@
+{
+  "description": "The answer is not JSON, and the retry is not JSON either.",
+  "steps": [{ "content": "Looks safe to me." }, { "content": "Yes, safe." }]
+}

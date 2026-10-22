@@ -1,12 +1,16 @@
-export type Route = "today" | "slips";
+export type Route = "today" | "slips" | "score";
 
 export function routeOf(hash: string): Route {
-  return hash === "#/slips" ? "slips" : "today";
+  if (hash === "#/slips") {
+    return "slips";
+  }
+  return hash === "#/score" ? "score" : "today";
 }
 
 export const ROUTE_TITLES: Readonly<Record<Route, string>> = {
   today: "Today · Should I Bother?",
   slips: "Slips · Should I Bother?",
+  score: "Score · Should I Bother?",
 };
 
 /** The part of `document` that announcing a screen change needs; a test passes a fake. */
@@ -22,4 +26,18 @@ export interface AnnounceTarget {
 export function announceRoute(route: Route, target: AnnounceTarget): void {
   target.title = ROUTE_TITLES[route];
   target.querySelector("h1")?.focus();
+}
+
+/**
+ * The hash to replace the current one with, when the screen asked for is not available: a flagged
+ * screen whose flag is off sends the person to Today, so the URL and the title are right. Flags
+ * not yet loaded never redirect.
+ */
+export function redirectFor(
+  route: Route,
+  flags: Readonly<Record<string, boolean>> | undefined,
+): string | undefined {
+  return route === "score" && flags !== undefined && flags["score"] !== true
+    ? "#/today"
+    : undefined;
 }

@@ -21,6 +21,7 @@ import {
   answerCard,
   assertGemmaCapacity,
   recoverThinkingCards,
+  resumeUnguardedCards,
   retryCard,
 } from "./ledger/gemma-cards.js";
 import { sweepOrphanPhotos } from "./ledger/photos.js";
@@ -28,6 +29,7 @@ import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
 import { pointsTotal } from "./ledger/points.js";
 import { getReceipt } from "./ledger/receipt.js";
 import { backfillSavingsSnapshots, weekSavings } from "./ledger/savings.js";
+import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
 import { MULTIPART_OPTIONS, photoRoutes, readUploadedPhoto } from "./photos/routes.js";
@@ -156,6 +158,7 @@ export function createCore(deps: CoreDeps): Core {
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
+  resumeUnguardedCards(ledger);
   recoverInspections(ledger);
   sweepOrphanPhotos(ledger);
 
@@ -303,6 +306,11 @@ export function createCore(deps: CoreDeps): Core {
         },
       }),
     );
+
+    // Flagged: with `score` off the route does not exist and a request gets a plain 404.
+    if (deps.flags.score) {
+      await app.register(scoreRoutes(ledger));
+    }
   };
 
   return {
