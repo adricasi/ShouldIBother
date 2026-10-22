@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { Writable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -53,6 +54,8 @@ export interface CoreHarnessOptions {
   household?: Household;
   /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
   liveWeather?: (db: Db, now: () => number) => WeatherClient;
+  /** Collects the structured log lines (one JSON line each) of the app, for tests of log events. */
+  logLines?: string[];
 }
 
 export interface CoreHarness {
@@ -111,6 +114,17 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     flags,
     core,
     ...(options.webRoot === undefined ? {} : { webRoot: options.webRoot }),
+    ...(options.logLines === undefined
+      ? {}
+      : {
+          logger: true,
+          logStream: new Writable({
+            write(chunk: Buffer, _encoding, done) {
+              options.logLines?.push(chunk.toString());
+              done();
+            },
+          }),
+        }),
     auth: {
       store,
       allowlist: buildAllowlist({

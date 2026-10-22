@@ -10,6 +10,11 @@
  * `start_date`, `end_date`, `timezone` and `timeformat=unixtime` parameters; that the forecast
  * API answers `start_date`/`end_date` ranges in the recent past (settlement uses them); the
  * default units (mm, km/h, °C, seconds of sunshine); and the error body shape.
+ *
+ * UNVERIFIED (T-013): the forecast API answers the daily variable `sunset` (the one the backtest
+ * already reads from the archive host) as epoch seconds with `timeformat=unixtime`, one value
+ * per local day, next to `daily.time`. When that column is missing the client falls back to the
+ * end of the last daylight hour (`is_day`), at most an hour late.
  */
 
 import { OPEN_METEO_HOSTS } from "../../domain/open-meteo.js";
@@ -33,10 +38,14 @@ export const HOURLY_VARIABLES = {
 
 export type HourlyField = keyof typeof HOURLY_VARIABLES;
 
+/** Daily variables read from the forecast API: the sunset that opens the laundry-tonight window. */
+export const DAILY_VARIABLES = { sunset: "sunset" } as const;
+
 export const QUERY = {
   latitude: "latitude",
   longitude: "longitude",
   hourly: "hourly",
+  daily: "daily",
   forecastDays: "forecast_days",
   pastDays: "past_days",
   startDate: "start_date",

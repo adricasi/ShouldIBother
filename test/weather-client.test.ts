@@ -84,6 +84,16 @@ describe("AC-014.1: the forecast is requested for the configured coordinates, ro
     ]);
   });
 
+  it("asks for the daily sunset only when told to (the laundryTonight flag), and reads it", async () => {
+    const asked = await client({ requestSunset: true }).getForecast({
+      fromMs: clock.now(),
+      hours: 48,
+    });
+    expect(server.requests[0]?.searchParams.get("daily")).toBe("sunset");
+    expect(Object.keys(asked.sunsetMsByDate).length).toBeGreaterThan(1);
+    expect(asked.sunsetFallbackDates).toEqual([]);
+  });
+
   it("rounds to 2 decimals, west and south too", () => {
     expect(roundCoordinate(41.4012)).toBe(41.4);
     expect(roundCoordinate(2.1587)).toBe(2.16);

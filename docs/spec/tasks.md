@@ -160,7 +160,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Done when: training finishes and the merged GGUF loads in Ollama and answers the bookmaker schema on 20 hold-out prompts with ≥ 19/20 valid JSON; model tag and digest in `config/models.json`; CI Python job green. If training fails by Fri 12:00, the flag stays off and the post reports it.
 
 ## Milestone 3: Tier 3–4 (Fri)
-- [ ] T-013: Gemma safety guard and "Leave it out tonight"
+- [x] T-013: Gemma safety guard and "Leave it out tonight"
   - Who / when: Agent W1 · Fri AM (stacked on T-009); merged Fri PM
   - Requirements: REQ-012 (AC-012.3, AC-012.4), REQ-016 (AC-016.2)
   - Depends on: T-005, T-006, T-009

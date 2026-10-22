@@ -6,6 +6,7 @@ import { HOUR_MS, addDays, madridDateOf, madridWallTimeToEpochMs } from "../../s
 import { HOURLY_VARIABLES } from "../../src/server/weather/open-meteo.js";
 import {
   fakeForecastHours,
+  fakeSunsets,
   type FakeWeatherProfile,
   FAKE_WEATHER_PROFILES,
 } from "../../src/server/weather/fake.js";
@@ -31,6 +32,8 @@ export class FakeOpenMeteo {
   retryAfterSeconds: number | undefined;
   /** Open-Meteo variables the answer leaves null in every hour (a gap in the model data). */
   nullVariables: string[] = [];
+  /** True: the answer has no `daily` block even when asked (the client falls back to `is_day`). */
+  omitDaily = false;
   private server: Server | undefined;
   private port = 0;
   /** The URL the client would have called, as the server saw it, per request. */
@@ -139,7 +142,17 @@ export class FakeOpenMeteo {
         ]),
       ) as T;
     const at = (index: number) => hours[index]!;
+    const sunsets = Object.entries(fakeSunsets(hours));
     return {
+      // Only the forecast request asks for the daily sunset.
+      ...(url.searchParams.has("daily") && !this.omitDaily
+        ? {
+            daily: {
+              time: sunsets.map(([date]) => madridWallTimeToEpochMs(date, "00:00") / 1000),
+              sunset: sunsets.map(([, sunsetMs]) => sunsetMs / 1000),
+            },
+          }
+        : {}),
       hourly: unless({
         time: hours.map((hour) => hour.startsAt / 1000),
         [HOURLY_VARIABLES.temperatureC]: column((i) => at(i).temperatureC),

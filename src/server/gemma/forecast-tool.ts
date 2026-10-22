@@ -50,12 +50,9 @@ function round(value: number | null, digits = 1): number | null {
   return Math.round(value * factor) / factor;
 }
 
-/**
- * One tool result as Gemma reads it: compact rows, local times, inside the data delimiters. A value
- * the forecast lacks is an explicit `null`, which the prompt says means unknown.
- */
-export function formatForecast(hours: readonly ForecastHour[]): string {
-  const rows = hours.map((hour) => {
+/** Compact forecast rows with local times; a value the forecast lacks is an explicit `null`. */
+export function forecastRows(hours: readonly ForecastHour[]) {
+  return hours.map((hour) => {
     const t = madridParts(hour.startsAt);
     return {
       time: `${t.year}-${pad(t.month)}-${pad(t.day)} ${pad(t.hour)}:00`,
@@ -70,6 +67,11 @@ export function formatForecast(hours: readonly ForecastHour[]): string {
       weather_code: hour.weatherCode,
     };
   });
+}
+
+/** One tool result as Gemma reads it: the rows inside the data delimiters. */
+export function formatForecast(hours: readonly ForecastHour[]): string {
+  const rows = forecastRows(hours);
   return `<untrusted_data>\n${JSON.stringify({ timezone: "Europe/Madrid", hours: rows })}\n</untrusted_data>`;
 }
 

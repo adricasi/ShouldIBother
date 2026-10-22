@@ -80,6 +80,7 @@ export async function startServer(
           now,
           location: household.location ?? DEFAULT_LOCATION,
           log: (entry) => appRef?.log.info(entry),
+          requestSunset: flags.laundryTonight,
         });
     core = createCore({
       db: runtime.db,

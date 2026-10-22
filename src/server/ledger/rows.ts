@@ -19,6 +19,10 @@ export interface CardRow {
   /** Where the before photo stands with the inspector (migration 0006); null without a photo. */
   photo_state: "inspecting" | "seen" | "unsure" | "failed" | null;
   photo_failure: string | null;
+  /** The sunset a laundry-tonight card was priced on, epoch ms (migration 0008); null otherwise. */
+  sunset_at: number | null;
+  /** When the safety guard gave a verdict on the card (migration 0008); null if it never did. */
+  safety_checked_at: number | null;
 }
 
 export interface QuoteRow {

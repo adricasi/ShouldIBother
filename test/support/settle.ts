@@ -24,6 +24,8 @@ export interface SeedOptions {
   /** Hours the bet was open before its settle time. */
   readonly openHours?: number;
   readonly withSnapshot?: boolean;
+  /** The sunset stored on a laundry-tonight card (`cards.sunset_at`). */
+  readonly sunsetAt?: number;
 }
 
 /** Inserts a card and a bet straight into the database, at the odds of `band`. Returns the bet id. */
@@ -35,9 +37,10 @@ export function seedBet(harness: CoreHarness, options: SeedOptions = {}): number
   const card = Number(
     harness.db
       .prepare(
-        "INSERT INTO cards (input_text, chore_type, kind, created_at) VALUES ('seed', ?, 'weather', ?)",
+        `INSERT INTO cards (input_text, chore_type, kind, sunset_at, created_at)
+         VALUES ('seed', ?, 'weather', ?, ?)`,
       )
-      .run(chore, placedAt).lastInsertRowid,
+      .run(chore, options.sunsetAt ?? null, placedAt).lastInsertRowid,
   );
   const snapshot =
     options.withSnapshot === false

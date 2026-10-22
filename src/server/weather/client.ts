@@ -5,6 +5,14 @@ export interface Forecast {
   /** When the forecast was fetched, epoch milliseconds (shown as its age, REQ-014). */
   readonly fetchedAt: number;
   readonly hours: readonly ForecastHour[];
+  /**
+   * The sunset instant (epoch ms) of each Madrid date the forecast covers, as far as it is known.
+   * Laundry tonight's window starts at sunset (design.md, Rule baseline); a date without an entry
+   * means the offer cannot be priced.
+   */
+  readonly sunsetMsByDate: Readonly<Record<string, number>>;
+  /** Dates whose sunset is the start of the last daylight hour, not Open-Meteo's own figure. */
+  readonly sunsetFallbackDates?: readonly string[];
 }
 
 /**

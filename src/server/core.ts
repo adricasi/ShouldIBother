@@ -21,6 +21,7 @@ import {
   answerCard,
   assertGemmaCapacity,
   recoverThinkingCards,
+  resumeUnguardedCards,
   retryCard,
 } from "./ledger/gemma-cards.js";
 import { sweepOrphanPhotos } from "./ledger/photos.js";
@@ -157,6 +158,7 @@ export function createCore(deps: CoreDeps): Core {
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
+  resumeUnguardedCards(ledger);
   recoverInspections(ledger);
   sweepOrphanPhotos(ledger);
 
