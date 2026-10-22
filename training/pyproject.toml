@@ -1,0 +1,29 @@
+[project]
+name = "sib-training"
+version = "0.1.0"
+description = "QLoRA fine-tune tooling for the Should I Bother? bookmaker (offline, runs on the builder's GPU)"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest==8.4.2",
+  "ruff==0.14.2",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/training"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

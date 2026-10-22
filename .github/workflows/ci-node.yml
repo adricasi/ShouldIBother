@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          node-version: 24
           cache: npm
       - name: Install (from committed package-lock.json)
         run: npm ci
@@ -34,3 +34,24 @@ jobs:
         run: npm test -- --coverage
       - name: Dependency audit
         run: npm audit --audit-level=high
+
+  # Fine-tune tooling (training/): lint and tests only, no GPU, no model, no network at test time.
+  training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: training
+    steps:
+      - uses: actions/checkout@v7
+      # The runner's Python 3.12 is used (.python-version); uv is pinned like the lockfile.
+      - name: Install uv
+        run: pipx install uv==0.11.32
+      - name: Install (from committed uv.lock)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest
