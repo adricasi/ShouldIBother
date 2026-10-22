@@ -517,7 +517,9 @@ label.button.disabled {
   }
 }
 
-/* AC-017.2: reduced motion fades the stamp in; no transform is animated. */
+/* AC-017.2: reduced motion fades the stamp in; no transform is animated. The duration is a literal
+   because tokens.css sets --motion-stamp to 0ms under reduced motion, which would show no fade.
+   This rule must stay after the base .stamp-animated rule so it wins at equal specificity. */
 @media (prefers-reduced-motion: reduce) {
   .stamp-animated {
     animation: stamp-fade 250ms ease-out both;

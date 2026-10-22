@@ -1,5 +1,6 @@
 import type { Slips } from "./api.js";
 import { DueSlip, SettledLine, WaitingLine } from "./BetParts.js";
+import { isMadridToday } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
@@ -105,7 +106,9 @@ export function SlipsScreen(props: SlipsScreenProps) {
                     <SettledLine
                       key={bet.id}
                       bet={bet}
-                      animateStamp={isStampAnimated(props.flags)}
+                      animateStamp={
+                        isStampAnimated(props.flags) && isMadridToday(bet.receipt.settled_at, nowMs)
+                      }
                     />
                   ))}
                 </ul>
