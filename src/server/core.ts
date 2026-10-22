@@ -11,6 +11,8 @@ import { forecastAgeLabel } from "../domain/weather.js";
 import type { Household } from "./config.js";
 import type { Db } from "./db.js";
 import { FLAG_NAMES, type Flags } from "./flags.js";
+import { householdRoutes } from "./household-routes.js";
+import { HouseholdStore } from "./household-store.js";
 import { GemmaStatusMonitor } from "./gemma/status.js";
 import { JobRunner, type RunnerOptions } from "./gemma/runner.js";
 import { listDueBets, listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
@@ -54,6 +56,11 @@ export interface CoreDeps {
   readonly flags: Flags;
   /** The household baseline behind "Not needed this season" (AC-016.5). */
   readonly household: Household;
+  /**
+   * The onboarding answers (flag `onboarding`). Only read while the flag is on; omitted, the core
+   * makes its own over the same database.
+   */
+  readonly householdStore?: HouseholdStore;
   /** What one won bet saves per chore (REQ-011). */
   readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
@@ -134,6 +141,14 @@ export function createCore(deps: CoreDeps): Core {
     ...deps.runner,
   });
   let logEntry: LedgerDeps["log"] = () => undefined;
+  // Onboarding (REQ-024): with the flag off nothing reads the store and the baseline is the
+  // config file, as before the feature existed.
+  const householdStore = deps.flags.onboarding
+    ? (deps.householdStore ??
+      new HouseholdStore(deps.db, deps.household, deps.now, (entry) => {
+        logEntry(entry);
+      }))
+    : undefined;
   const ledger: LedgerDeps = {
     log: (entry) => {
       logEntry(entry);
@@ -143,7 +158,10 @@ export function createCore(deps: CoreDeps): Core {
     weather: deps.weather,
     gemma,
     rules: deps.rules,
-    household: deps.household,
+    // Read at every use: a bet takes the household of the moment it is placed (AC-024.2).
+    get household() {
+      return householdStore?.current() ?? deps.household;
+    },
     flags: deps.flags,
     savings: deps.savings,
     photos: deps.photos,
@@ -331,6 +349,10 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: with `score` off the route does not exist and a request gets a plain 404.
     if (deps.flags.score) {
       await app.register(scoreRoutes(ledger));
+    }
+    // Flagged: onboarding (REQ-024) has no routes while `onboarding` is off.
+    if (householdStore !== undefined) {
+      await app.register(householdRoutes(householdStore));
     }
     // Flagged: appeals (REQ-023) have no route while `appeals` is off.
     if (deps.flags.appeals) {

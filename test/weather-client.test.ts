@@ -84,6 +84,19 @@ describe("AC-014.1: the forecast is requested for the configured coordinates, ro
     ]);
   });
 
+  it("AC-024.1: a location given as a function is read at every request, rounded, with its own cache entry", async () => {
+    let place = GRACIA;
+    const weather = client({ location: () => place });
+    await weather.getForecast({ fromMs: clock.now(), hours: 48 });
+    place = { latitude: 40.4168, longitude: -3.7038 };
+    await weather.getForecast({ fromMs: clock.now(), hours: 48 });
+    expect(server.requests.map((url) => url.searchParams.get("latitude"))).toEqual([
+      "41.4",
+      "40.42",
+    ]);
+    expect(server.requests[1]!.searchParams.get("longitude")).toBe("-3.7");
+  });
+
   it("asks for the daily sunset only when told to (the laundryTonight flag), and reads it", async () => {
     const asked = await client({ requestSunset: true }).getForecast({
       fromMs: clock.now(),

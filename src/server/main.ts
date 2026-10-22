@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
 import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./commands.js";
+import { HouseholdStore } from "./household-store.js";
 import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
 import { createFakeServices } from "./fakes.js";
@@ -67,6 +68,10 @@ export async function startServer(
     const now = Date.now;
     const fakes = createFakeServices(now);
     const household = loadHousehold();
+    // Onboarding answers (flag `onboarding`) replace the baseline, location included.
+    const householdStore = flags.onboarding
+      ? new HouseholdStore(runtime.db, household, now, (entry) => appRef?.log.warn(entry))
+      : undefined;
     const modelsConfig = loadModelsConfig(`${configDir}models.json`);
     const selection = await selectModel(modelsConfig, {
       useFake: env["SIB_FAKE_MODEL"] === "1",
@@ -79,7 +84,7 @@ export async function startServer(
       : new OpenMeteoWeatherClient({
           db: runtime.db,
           now,
-          location: household.location ?? DEFAULT_LOCATION,
+          location: () => (householdStore?.current() ?? household).location ?? DEFAULT_LOCATION,
           log: (entry) => appRef?.log.info(entry),
           requestSunset: flags.laundryTonight,
           // The planner scores four days (REQ-021); with it off the request is what it was.
@@ -92,6 +97,7 @@ export async function startServer(
       model: selection.model,
       rules: loadRules(),
       household,
+      ...(householdStore === undefined ? {} : { householdStore }),
       savings: loadSavings(),
       flags,
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
@@ -119,7 +125,11 @@ export async function startServer(
       auth: { store: runtime.store, allowlist: runtime.allowlist, print: output },
     });
     appRef = app;
-    app.addHook("onClose", () => {
+    app.addHook("onClose", async () => {
+      // A clean stop: no new scheduler ticks, and running Gemma jobs finish before the database
+      // closes (otherwise a late job step writes to a closed connection).
+      core.scheduler.stop();
+      await core.gemma.idle();
       runtime.db.close();
     });
     await listenLoopbackAndLan(app, { port: runtime.port, lanAddress: runtime.lanAddress });

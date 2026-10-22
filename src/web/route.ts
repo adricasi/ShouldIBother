@@ -1,8 +1,11 @@
-export type Route = "today" | "slips" | "score";
+export type Route = "today" | "slips" | "score" | "onboarding";
 
 export function routeOf(hash: string): Route {
   if (hash === "#/slips") {
     return "slips";
+  }
+  if (hash === "#/onboarding") {
+    return "onboarding";
   }
   return hash === "#/score" ? "score" : "today";
 }
@@ -11,6 +14,7 @@ export const ROUTE_TITLES: Readonly<Record<Route, string>> = {
   today: "Today · Should I Bother?",
   slips: "Slips · Should I Bother?",
   score: "Score · Should I Bother?",
+  onboarding: "Household · Should I Bother?",
 };
 
 /** The part of `document` that announcing a screen change needs; a test passes a fake. */
@@ -37,7 +41,6 @@ export function redirectFor(
   route: Route,
   flags: Readonly<Record<string, boolean>> | undefined,
 ): string | undefined {
-  return route === "score" && flags !== undefined && flags["score"] !== true
-    ? "#/today"
-    : undefined;
+  const flagged = route === "score" || route === "onboarding";
+  return flagged && flags !== undefined && flags[route] !== true ? "#/today" : undefined;
 }

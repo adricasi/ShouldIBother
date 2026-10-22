@@ -1,0 +1,97 @@
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { CONFIG_DIR } from "../src/server/config.js";
+import { startServer, type RunningServer } from "../src/server/main.js";
+
+import { cookieHeaderFrom } from "./helpers.js";
+import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      probe.close(() => {
+        resolve(port);
+      });
+    });
+  });
+}
+
+let dir: string;
+let server: FakeOpenMeteo;
+let running: RunningServer | undefined;
+
+beforeEach(async () => {
+  dir = mkdtempSync(join(tmpdir(), "sib-wiring-"));
+  server = new FakeOpenMeteo(Date.now);
+  await server.start();
+  // The weather client reads the global fetch when it is built: this sends it to the fake server.
+  // The fake server is on 127.0.0.1 and reached by the real fetch; Open-Meteo's hosts go to it.
+  const realFetch = fetch;
+  vi.stubGlobal("fetch", (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
+      .hostname === "127.0.0.1"
+      ? realFetch(input, init)
+      : server.transport(input, init),
+  );
+});
+
+afterEach(async () => {
+  await running?.close();
+  running = undefined;
+  vi.unstubAllGlobals();
+  await server.stop();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe("main.ts wiring: the onboarding store feeds the weather client's location (AC-024.1)", () => {
+  it("a location saved in onboarding is the place the next forecast is asked for, without a restart", async () => {
+    const configDir = join(dir, "config") + "/";
+    // A config folder of its own: flags with onboarding on, the committed models and server files.
+    mkdirSync(configDir);
+    writeFileSync(`${configDir}flags.json`, JSON.stringify({ onboarding: true }));
+    for (const name of ["models.json", "server.example.json"]) {
+      copyFileSync(`${CONFIG_DIR}${name}`, `${configDir}${name}`);
+    }
+    const port = await freePort();
+    running = await startServer(
+      { SIB_DATA_DIR: join(dir, "data"), SIB_FAKE_MODEL: "1", SIB_PORT: String(port) },
+      { configDir, output: () => undefined },
+    );
+    const { app, runtime } = running;
+    const host = `localhost:${String(port)}`;
+    const origin = `http://${host}`;
+    const { token } = runtime.store.issuePairingToken();
+    const cookie = cookieHeaderFrom(
+      await app.inject({ method: "GET", url: `/pair?token=${token}`, headers: { host } }),
+    );
+    const call = (method: "PUT" | "POST", url: string, payload: Record<string, unknown>) =>
+      app.inject({ method, url, payload, headers: { host, origin, cookie } });
+    const answers = (latitude: number, longitude: number) => ({
+      outdoorItems: [],
+      dryer: "none",
+      airConditioning: false,
+      heaterThisSeason: false,
+      location: { latitude, longitude },
+    });
+
+    expect((await call("PUT", "/api/onboarding", answers(40.4168, -3.7038))).statusCode).toBe(200);
+    expect((await call("POST", "/api/cards/quick", { chore_type: "plants" })).statusCode).toBe(201);
+    expect((await call("PUT", "/api/onboarding", answers(48.8566, 2.3522))).statusCode).toBe(200);
+    expect((await call("POST", "/api/cards/quick", { chore_type: "plants" })).statusCode).toBe(201);
+
+    const places = server.forecastRequests.map(
+      (url) =>
+        `${url.searchParams.get("latitude") ?? ""},${url.searchParams.get("longitude") ?? ""}`,
+    );
+    expect(places).toEqual(["40.42,-3.7", "48.86,2.35"]);
+  });
+});

@@ -66,8 +66,8 @@ export function lockDatabase(db: Db): void {
  * truncates the WAL. With `--all-data` it also removes the database and its WAL files, which holds
  * the weather cache: nothing of the household stays in the data folder. Only files the app owns
  * are removed (logs go to stdout; no log files are kept here, and `config/household.json` lives
- * outside the data folder). If the WAL cannot be truncated nothing is unlinked. Returns true when
- * something was deleted.
+ * outside the data folder; onboarding answers are rows of the database and go with it). If the
+ * WAL cannot be truncated nothing is unlinked. Returns true when something was deleted.
  */
 export async function deletePhotosCommand(
   runtime: Runtime,
@@ -82,7 +82,7 @@ export async function deletePhotosCommand(
     photos.warn = io.print;
     const confirmed = options.allData
       ? await io.confirm(
-          `This deletes ALL app data in ${dataDir}: every bet, card, verdict and photo, the database and the weather cache. Your settings in config/household.json live outside this folder and are kept. Logs go to the terminal and are not touched. It cannot be undone.\nType "${CONFIRM_ALL}" to continue: `,
+          `This deletes ALL app data in ${dataDir}: every bet, card, verdict and photo, the database and the weather cache. Your settings in config/household.json live outside this folder and are kept; answers given on the Household screen (onboarding) are in the database and are deleted with it. Logs go to the terminal and are not touched. It cannot be undone.\nType "${CONFIRM_ALL}" to continue: `,
           CONFIRM_ALL,
         )
       : await io.confirm(

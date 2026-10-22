@@ -51,7 +51,11 @@ export interface Location {
 export interface OpenMeteoClientOptions {
   readonly db: Db;
   readonly now: () => number;
-  readonly location: Location;
+  /**
+   * Where the household is. A function is read at every request, so a location chosen in
+   * onboarding (T-025) applies without a restart; the cache keys carry the coordinates.
+   */
+  readonly location: Location | (() => Location);
   /** The HTTP layer; tests inject a transport that reaches a fake server. */
   readonly http?: OpenMeteoHttp;
   readonly fetch?: typeof fetch;
@@ -77,8 +81,7 @@ export interface OpenMeteoClientOptions {
 export class OpenMeteoWeatherClient implements WeatherClient {
   private readonly db: Db;
   private readonly now: () => number;
-  private readonly latitude: number;
-  private readonly longitude: number;
+  private readonly locate: () => Location;
   private readonly requestSunset: boolean;
   private readonly forecastDays: number;
   private readonly http: OpenMeteoHttp;
@@ -90,8 +93,8 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   constructor(options: OpenMeteoClientOptions) {
     this.db = options.db;
     this.now = options.now;
-    this.latitude = roundCoordinate(options.location.latitude);
-    this.longitude = roundCoordinate(options.location.longitude);
+    const { location } = options;
+    this.locate = typeof location === "function" ? location : () => location;
     this.requestSunset = options.requestSunset ?? false;
     this.forecastDays = options.forecastDays ?? FORECAST_DAYS;
     this.cache = new WeatherCache(options.db);
@@ -107,22 +110,28 @@ export class OpenMeteoWeatherClient implements WeatherClient {
       });
   }
 
-  private get coordinates(): string {
-    return `${this.latitude}|${this.longitude}`;
+  /**
+   * The rounded place a request is for: the one it names (a bet or card placed under an earlier
+   * location), else the current one. Resolved once per request, so the cache key and the URL of
+   * one request always agree.
+   */
+  private place(requested?: Location): Location {
+    const { latitude, longitude } = requested ?? this.locate();
+    return { latitude: roundCoordinate(latitude), longitude: roundCoordinate(longitude) };
   }
 
-  private forecastKey(): string {
-    return `forecast|${this.coordinates}|${FORECAST_PAST_DAYS}p${this.forecastDays}d`;
+  private forecastKey(where: Location): string {
+    return `forecast|${where.latitude}|${where.longitude}|${FORECAST_PAST_DAYS}p${this.forecastDays}d`;
   }
 
-  private recordedKey(startDate: string, endDate: string): string {
-    return `recorded|${this.coordinates}|${startDate}|${endDate}`;
+  private recordedKey(where: Location, startDate: string, endDate: string): string {
+    return `recorded|${where.latitude}|${where.longitude}|${startDate}|${endDate}`;
   }
 
-  private url(range: Record<string, string>, daily = false): string {
+  private url(where: Location, range: Record<string, string>, daily = false): string {
     const params = new URLSearchParams();
-    params.set(QUERY.latitude, String(this.latitude));
-    params.set(QUERY.longitude, String(this.longitude));
+    params.set(QUERY.latitude, String(where.latitude));
+    params.set(QUERY.longitude, String(where.longitude));
     params.set(QUERY.hourly, Object.values(HOURLY_VARIABLES).join(","));
     if (daily) {
       params.set(QUERY.daily, Object.values(DAILY_VARIABLES).join(","));
@@ -174,7 +183,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   }
 
   latestForecastFetchedAt(): number | undefined {
-    const entry = this.readable(this.forecastKey());
+    const entry = this.readable(this.forecastKey(this.place()));
     return entry !== undefined && this.now() - entry.fetchedAt < FORECAST_MAX_AGE_MS
       ? entry.fetchedAt
       : undefined;
@@ -184,9 +193,12 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     fromMs: number;
     hours: number;
     pastHours?: number;
+    location?: Location;
   }): Promise<Forecast> {
     const pastHours = request.pastHours ?? 0;
-    const { fetchedAt, table, sunsetMsByDate, sunsetFallbackDates } = await this.forecastTable();
+    const { fetchedAt, table, sunsetMsByDate, sunsetFallbackDates } = await this.forecastTable(
+      this.place(request.location),
+    );
     const firstHour = Math.floor(request.fromMs / HOUR_MS) * HOUR_MS - pastHours * HOUR_MS;
     const hours = forecastHours(table)
       .filter((hour) => hour.startsAt >= firstHour)
@@ -195,8 +207,8 @@ export class OpenMeteoWeatherClient implements WeatherClient {
   }
 
   /** Cached table younger than 1 h, else a fresh fetch, else the cache if it is under 24 h old. */
-  private async forecastTable(): Promise<CachedTable> {
-    const key = this.forecastKey();
+  private async forecastTable(where: Location): Promise<CachedTable> {
+    const key = this.forecastKey(where);
     const cached = this.readable(key);
     if (cached !== undefined && this.now() - cached.fetchedAt < FORECAST_TTL_MS) {
       return cached;
@@ -205,6 +217,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
       return await this.shared(key, async () => {
         const body = await this.http.getJson(
           this.url(
+            where,
             {
               [QUERY.forecastDays]: String(this.forecastDays),
               [QUERY.pastDays]: String(FORECAST_PAST_DAYS),
@@ -232,10 +245,15 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     }
   }
 
-  async getRecorded(request: { fromMs: number; toMs: number }): Promise<RecordedWeather> {
+  async getRecorded(request: {
+    fromMs: number;
+    toMs: number;
+    location?: Location;
+  }): Promise<RecordedWeather> {
     const startDate = madridDateOf(request.fromMs);
     const endDate = madridDateOf(Math.max(request.fromMs, request.toMs - 1));
-    const key = this.recordedKey(startDate, endDate);
+    const where = this.place(request.location);
+    const key = this.recordedKey(where, startDate, endDate);
     const cached = this.readable(key);
     if (cached !== undefined && this.now() - cached.fetchedAt < RECORDED_TTL_MS) {
       return this.recordedFrom(cached.fetchedAt, cached.table, request);
@@ -243,7 +261,7 @@ export class OpenMeteoWeatherClient implements WeatherClient {
     try {
       const { fetchedAt, body, table } = await this.shared(key, async () => {
         const answer = await this.http.getJson(
-          this.url({ [QUERY.startDate]: startDate, [QUERY.endDate]: endDate }),
+          this.url(where, { [QUERY.startDate]: startDate, [QUERY.endDate]: endDate }),
         );
         return { fetchedAt: this.now(), body: answer, table: parseHourlyTable(answer) };
       });

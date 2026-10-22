@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Bet, Card, Receipt, Slips, Today } from "./api.js";
 import { Nav } from "./Nav.js";
+import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
 import { ROUTE_TITLES, type Route } from "./route.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
@@ -627,5 +628,62 @@ describe("T-026: Score with a rank and achievements, and the heater chip, have n
     });
     expect(html).toContain("Skip the heater");
     expect(await violationsOf(html, "today")).toEqual([]);
+  });
+});
+
+describe("NFR-009: the household screen (flag onboarding on) has no axe violations", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const answers = {
+    outdoorItems: ["balcony_plants" as const],
+    dryer: "condenser" as const,
+    airConditioning: true,
+    heaterThisSeason: false,
+    location: { latitude: 41.4, longitude: 2.16 },
+  };
+
+  async function violationsOf(html: string): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES.onboarding;
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  const household = (
+    onboarding: Parameters<typeof OnboardingScreen>[0]["onboarding"],
+    notice?: { kind: "error"; text: string },
+  ): string =>
+    renderToStaticMarkup(
+      <OnboardingScreen
+        onboarding={onboarding}
+        flags={{ onboarding: true }}
+        busy={false}
+        notice={notice}
+        onSave={() => undefined}
+        onSkip={() => undefined}
+        onReload={() => undefined}
+      />,
+    );
+
+  it("first open, answered, loading and the failed first load", async () => {
+    expect(await violationsOf(household({ state: "pending", household: answers }))).toEqual([]);
+    expect(await violationsOf(household({ state: "completed", household: answers }))).toEqual([]);
+    expect(await violationsOf(household(undefined))).toEqual([]);
+    const failed = household(undefined, { kind: "error", text: "No answer." });
+    expect(await violationsOf(failed)).toEqual([]);
+  });
+
+  it("Today with the household card above the chips", async () => {
+    const html = today(emptyToday, {
+      prompt: <OnboardingPrompt busy={false} onSkip={() => undefined} />,
+    });
+    expect(html).toContain("Tell me about your home");
+    document.title = ROUTE_TITLES.today;
+    expect(await violationsOf(html)).toEqual([]);
   });
 });

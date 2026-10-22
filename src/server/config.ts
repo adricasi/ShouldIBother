@@ -23,8 +23,12 @@ export function readJsonFile(path: string): unknown {
   }
 }
 
+/** What the household has outside the door (onboarding, AC-024.1). */
+export const OUTDOOR_ITEMS = ["balcony_plants", "clothes_line"] as const;
+export type OutdoorItem = (typeof OUTDOOR_ITEMS)[number];
+
 /** The household baseline behind the savings figures (A-6). */
-const householdSchema = z.object({
+export const householdSchema = z.object({
   airConditioning: z.boolean(),
   heaterThisSeason: z.boolean(),
   dryer: z.enum(["heat-pump", "condenser", "vented", "none"]),
@@ -35,6 +39,12 @@ const householdSchema = z.object({
   location: z
     .object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) })
     .strict()
+    .optional(),
+  /** Asked in onboarding (AC-024.1); absent in the config file, which does not need it. */
+  outdoorItems: z
+    .array(z.enum(OUTDOOR_ITEMS))
+    .max(OUTDOOR_ITEMS.length)
+    .refine((items) => new Set(items).size === items.length, "each item once")
     .optional(),
 });
 export type Household = z.infer<typeof householdSchema>;

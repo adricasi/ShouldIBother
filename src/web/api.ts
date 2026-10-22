@@ -397,7 +397,9 @@ async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   init?:
-    { method: "POST"; body: unknown } | { method: "POST"; form: FormData } | { method: "DELETE" },
+    | { method: "POST" | "PUT"; body: unknown }
+    | { method: "POST"; form: FormData }
+    | { method: "DELETE" },
 ): Promise<T> {
   let response: Response;
   try {
@@ -487,6 +489,29 @@ export const uploadPhoto = (cardId: number, file: File): Promise<Card> => {
 /** Deletes a photo and what was derived from it (AC-015.2). */
 export const deletePhoto = (photoId: string): Promise<undefined> =>
   request(`/api/photos/${photoId}`, z.undefined(), { method: "DELETE" });
+
+/** The onboarding questions and where they stand (flag `onboarding`, REQ-024). */
+export const onboardingSchema = z.object({
+  state: z.enum(["pending", "completed", "skipped"]),
+  household: z.object({
+    outdoorItems: z.array(z.enum(["balcony_plants", "clothes_line"])).optional(),
+    dryer: z.enum(["none", "heat-pump", "condenser", "vented"]),
+    airConditioning: z.boolean(),
+    heaterThisSeason: z.boolean(),
+    location: z.object({ latitude: z.number(), longitude: z.number() }),
+  }),
+});
+export type Onboarding = z.infer<typeof onboardingSchema>;
+export type OnboardingAnswers = Required<Onboarding["household"]>;
+
+export const fetchOnboarding = (): Promise<Onboarding> =>
+  request("/api/onboarding", onboardingSchema);
+
+export const saveOnboarding = (answers: OnboardingAnswers): Promise<Onboarding> =>
+  request("/api/onboarding", onboardingSchema, { method: "PUT", body: answers });
+
+export const skipOnboarding = (): Promise<Onboarding> =>
+  request("/api/onboarding/skip", onboardingSchema, { method: "POST", body: {} });
 
 export const fetchScore = (): Promise<Score> => request("/api/score", scoreSchema);
 
