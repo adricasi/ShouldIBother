@@ -85,58 +85,80 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
     throw error;
   }
   const table = bandTable(deps.rules);
+  // The forecast took time: the bets may have changed meanwhile (cashed out, undone, deleted, or
+  // past their settle time). Each row is therefore written only if its bet is still open and
+  // ahead of its settle time, by the INSERT itself, in one synchronous transaction with no await.
+  // A bet that went away is skipped; it can neither abort the pass nor leave a row behind.
   const save = deps.db.prepare(
     `INSERT INTO rescue_checks (bet_id, checked_at, forecast_at, rule_band, alert, reason)
-     VALUES (?, ?, ?, ?, ?, ?)
+     SELECT @bet_id, @checked_at, @forecast_at, @rule_band, @alert, @reason
+     WHERE EXISTS (SELECT 1 FROM bets WHERE id = @bet_id AND kind = 'do_nothing'
+                   AND status = 'open' AND settle_at > @checked_at)
      ON CONFLICT (bet_id) DO UPDATE SET checked_at = excluded.checked_at,
        forecast_at = excluded.forecast_at, rule_band = excluded.rule_band,
        alert = excluded.alert, reason = excluded.reason`,
   );
-  let checked = 0;
-  for (const bet of due) {
-    const window = remainingWindow(
-      bet,
-      { chore_type: bet.chore_type, sunset_at: bet.card_sunset_at },
-      now,
-    );
-    if (window === null || !isChoreType(bet.chore_type)) {
-      continue;
+  const checkedAt = deps.now();
+  return deps.db.transaction((): number => {
+    let checked = 0;
+    for (const bet of due) {
+      const window = remainingWindow(
+        bet,
+        { chore_type: bet.chore_type, sunset_at: bet.card_sunset_at },
+        checkedAt,
+      );
+      if (window === null || !isChoreType(bet.chore_type)) {
+        continue;
+      }
+      // The backstop is looked at first and needs no complete window: a missing hour cannot hide
+      // a limit that the hours present already cross (safety is never a bet).
+      const backstop = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
+      const rule = ruleQuote(
+        bet.chore_type,
+        forecast.hours,
+        window.fromMs,
+        window.toMs,
+        deps.rules,
+      );
+      if (rule === null && backstop === null) {
+        // The forecast does not cover the remaining window: no false odds, so no new check.
+        continue;
+      }
+      const dropped = rule !== null && bandDroppedEnough(bet.band, rule.band);
+      const reason =
+        dropped || backstop !== null
+          ? alertText(table, {
+              betBand: bet.band,
+              ruleBand: dropped ? rule.band : null,
+              backstop: backstop?.reason ?? null,
+            })
+          : null;
+      checked += save.run({
+        bet_id: bet.id,
+        checked_at: checkedAt,
+        forecast_at: forecast.fetchedAt,
+        rule_band: rule?.band ?? null,
+        alert: reason === null ? 0 : 1,
+        reason,
+      }).changes;
     }
-    const rule = ruleQuote(bet.chore_type, forecast.hours, window.fromMs, window.toMs, deps.rules);
-    if (rule === null) {
-      // The forecast does not cover the remaining window: no false odds, so no new check.
-      continue;
-    }
-    const backstop = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
-    const dropped = bandDroppedEnough(bet.band, rule.band);
-    const reason =
-      dropped || backstop !== null
-        ? alertText(table, {
-            dropped,
-            betBand: bet.band,
-            ruleBand: rule.band,
-            backstop: backstop?.reason ?? null,
-          })
-        : null;
-    save.run(bet.id, now, forecast.fetchedAt, rule.band, reason === null ? 0 : 1, reason);
-    checked += 1;
-  }
-  return checked;
+    return checked;
+  })();
 }
 
 function alertText(
   table: BandTable,
   input: {
-    readonly dropped: boolean;
     readonly betBand: Band;
-    readonly ruleBand: Band;
+    /** The rule band when it fell far enough below the bet's band; null when it did not. */
+    readonly ruleBand: Band | null;
     readonly backstop: string | null;
   },
 ): string {
   const words = (band: Band): string =>
     `${nameOfBand(table, band)} (${String(oddsOfBand(table, band))}%)`;
   const parts: string[] = [];
-  if (input.dropped) {
+  if (input.ruleBand !== null) {
     parts.push(
       `The forecast turned against this bet: ${words(input.ruleBand)} for the rest of the window, down from ${words(input.betBand)} when you bet.`,
     );
@@ -155,9 +177,10 @@ export interface RescueView {
   /** The rescue alert, when the last check found the forecast turned against the bet. */
   readonly alert: {
     readonly text: string;
-    readonly rule_band: Band;
-    readonly rule_band_name: string;
-    readonly rule_odds: number;
+    /** Null when the forecast did not cover the window and only the safety backstop fired. */
+    readonly rule_band: Band | null;
+    readonly rule_band_name: string | null;
+    readonly rule_odds: number | null;
     readonly checked_at: string;
     readonly forecast_at: string;
   } | null;
@@ -186,8 +209,8 @@ export function rescueView(
         : {
             text: check.reason,
             rule_band: check.rule_band,
-            rule_band_name: nameOfBand(table, check.rule_band),
-            rule_odds: oddsOfBand(table, check.rule_band),
+            rule_band_name: check.rule_band === null ? null : nameOfBand(table, check.rule_band),
+            rule_odds: check.rule_band === null ? null : oddsOfBand(table, check.rule_band),
             checked_at: new Date(check.checked_at).toISOString(),
             forecast_at: new Date(check.forecast_at).toISOString(),
           },
@@ -245,6 +268,8 @@ export function cashOutBet(
     const alertShowing = deps.db
       .prepare<[number], { alert: number }>("SELECT alert FROM rescue_checks WHERE bet_id = ?")
       .get(bet.id)?.alert;
+    // The check was only there to raise the alert; whether it was up is kept on the cash-out.
+    deps.db.prepare("DELETE FROM rescue_checks WHERE bet_id = ?").run(bet.id);
     deps.db
       .prepare(
         "INSERT INTO cash_outs (bet_id, points, cashed_out_at, alert_showing) VALUES (?, ?, ?, ?)",

@@ -111,7 +111,8 @@ export interface RescueCheckRow {
   bet_id: number;
   checked_at: number;
   forecast_at: number;
-  rule_band: Band;
+  /** Null when the forecast did not cover the window and only the safety backstop fired. */
+  rule_band: Band | null;
   alert: number;
   /** The sentence on the slip when the alert is up; null otherwise. */
   reason: string | null;

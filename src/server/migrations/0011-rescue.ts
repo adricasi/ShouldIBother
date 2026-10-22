@@ -5,8 +5,9 @@ import type { Migration } from "../db.js";
  *
  * - `rescue_checks`: the latest forecast re-check of an open bet (AC-022.1): when it ran, the
  *   forecast it used, the rule band of the remaining window, and whether the alert is up with
- *   the sentence shown on the slip. One row per bet, replaced by the next check. It is a table of
- *   its own because the `bets` columns are locked (migration 0003).
+ *   the sentence shown on the slip. One row per bet, replaced by the next check and removed when
+ *   the bet is cashed out. It is derived from the forecast, not household data to keep. It is a
+ *   table of its own because the `bets` columns are locked (migration 0003).
  * - `cash_outs`: a bet cashed out at -10 points (AC-022.2). `settlements.verdict` has a CHECK
  *   list that cannot be widened without rebuilding that table, and a cash-out has no verdict, no
  *   evidence and no multiplier, so it gets its own row; the points total adds both tables. The
@@ -23,7 +24,8 @@ CREATE TABLE rescue_checks (
   bet_id      INTEGER PRIMARY KEY REFERENCES bets(id) ON DELETE CASCADE,
   checked_at  INTEGER NOT NULL,
   forecast_at INTEGER NOT NULL,
-  rule_band   INTEGER NOT NULL CHECK (rule_band BETWEEN 0 AND 4),
+  -- Null when the forecast did not cover the window but the safety backstop still fired.
+  rule_band   INTEGER CHECK (rule_band IS NULL OR rule_band BETWEEN 0 AND 4),
   alert       INTEGER NOT NULL CHECK (alert IN (0, 1)),
   reason      TEXT
 );

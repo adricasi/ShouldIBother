@@ -36,6 +36,10 @@ const iso = (ms: number): string => new Date(ms).toISOString();
 export function buildExport(db: Db, nowMs: number) {
   const all = <T>(sql: string): T[] => db.prepare<[], T>(sql).all();
   const week = madridWeekOf(nowMs);
+  // Bets cashed out at -10 points (REQ-022) have no verdict, so they sit in a table of their own.
+  // The key is there only when there are rows: with the `rescue` flag never on, the export is
+  // exactly what it was. `rescue_checks` are derived from the forecast and are not exported.
+  const cashOuts = all<Record<string, unknown>>("SELECT * FROM cash_outs ORDER BY bet_id");
   return {
     version: EXPORT_VERSION,
     exported_at: iso(nowMs),
@@ -49,8 +53,7 @@ export function buildExport(db: Db, nowMs: number) {
       ...settlement,
       weather: parseWeatherSnapshot(settlement.weather),
     })),
-    // Bets cashed out at -10 points (REQ-022): a closed bet with no verdict, so a table of its own.
-    cash_outs: all<Record<string, unknown>>("SELECT * FROM cash_outs ORDER BY bet_id"),
+    ...(cashOuts.length === 0 ? {} : { cash_outs: cashOuts }),
     answers: all<ProgressRow>("SELECT * FROM settle_progress ORDER BY bet_id").map((progress) => ({
       bet_id: progress.bet_id,
       evidence: progress.evidence,

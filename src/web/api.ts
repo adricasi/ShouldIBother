@@ -164,9 +164,10 @@ export const rescueSchema = z.object({
   alert: z
     .object({
       text: z.string(),
-      rule_band: z.number(),
-      rule_band_name: z.string(),
-      rule_odds: z.number(),
+      /** Null when only the safety backstop fired (the forecast did not cover the window). */
+      rule_band: z.number().nullable(),
+      rule_band_name: z.string().nullable(),
+      rule_odds: z.number().nullable(),
       checked_at: z.string(),
       forecast_at: z.string(),
     })

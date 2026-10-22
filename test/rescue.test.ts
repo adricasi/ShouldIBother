@@ -248,6 +248,84 @@ describe("REQ-022: rescue alerts (AC-022.1)", () => {
     }
   });
 
+  /** Holds the next forecast request until `release()`, so a test can change bets meanwhile. */
+  function holdForecast(h: CoreHarness): { release: () => void } {
+    const original = h.weather.getForecast.bind(h.weather);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.weather.getForecast = async (request) => {
+      await gate;
+      return original(request);
+    };
+    return { release };
+  }
+
+  it("AC-022.1: a bet cashed out while the forecast is on its way gets no rescue check, and the others do", async () => {
+    const h = await setup();
+    const folded = await placeBet();
+    const kept = await placeBet();
+    const held = holdForecast(h);
+    const pass = h.core.scheduler.tickRescue();
+    await Promise.resolve();
+    expect((await h.post(`/api/bets/${folded.id}/cashout`, {})).statusCode).toBe(200);
+    held.release();
+    expect(await pass).toBe(1);
+    expect(h.db.prepare("SELECT bet_id FROM rescue_checks").all()).toEqual([{ bet_id: kept.id }]);
+  });
+
+  it("AC-022.1: a bet undone or deleted while the forecast is on its way does not abort the pass", async () => {
+    const h = await setup();
+    const undone = await placeBet();
+    const deleted = await placeBet();
+    const kept = await placeBet();
+    const held = holdForecast(h);
+    const pass = h.core.scheduler.tickRescue();
+    await Promise.resolve();
+    expect((await h.delete(`/api/bets/${undone.id}`)).statusCode).toBe(200);
+    expect((await h.delete(`/api/bets/${deleted.id}/data`)).statusCode).toBeLessThan(300);
+    held.release();
+    expect(await pass).toBe(1);
+    expect(h.db.prepare("SELECT bet_id FROM rescue_checks").all()).toEqual([{ bet_id: kept.id }]);
+  });
+
+  it("AC-022.1: a bet whose settle time passes while the forecast is on its way is not checked", async () => {
+    const h = await setup();
+    const bet = await placeBet();
+    const settleAt = (
+      h.db.prepare("SELECT settle_at FROM bets WHERE id = ?").get(bet.id) as { settle_at: number }
+    ).settle_at;
+    h.clock.current = settleAt - 1;
+    const held = holdForecast(h);
+    const pass = h.core.scheduler.tickRescue();
+    await Promise.resolve();
+    h.clock.current = settleAt;
+    held.release();
+    expect(await pass).toBe(0);
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 0 });
+  });
+
+  it("AC-022.1 + safety: the backstop alert is not hidden when the forecast does not cover the window", async () => {
+    const h = await setup({ rescue: true }, FAKE_WEATHER_PROFILES.mild);
+    // A plants bet that settles 60 h ahead: the 48 h forecast cannot price its window.
+    const id = seedBet(h, { status: "open", settleOffsetMs: 60 * HOUR, openHours: 61 });
+    h.weather.setProfile(FAKE_WEATHER_PROFILES.mild);
+    expect(await h.core.scheduler.tickRescue()).toBe(0); // no rule band, no limit crossed: nothing to say
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 0 });
+
+    h.weather.setProfile(FAKE_WEATHER_PROFILES.storm);
+    expect(await h.core.scheduler.tickRescue()).toBe(1);
+    expect(h.db.prepare("SELECT rule_band, alert FROM rescue_checks").get()).toEqual({
+      rule_band: null,
+      alert: 1,
+    });
+    const bet = (await slips()).waiting.find((candidate) => candidate.id === id);
+    expect(bet?.rescue?.alert).toMatchObject({ rule_band: null, rule_band_name: null });
+    expect(bet?.rescue?.alert?.text).toContain("Safety: Storm");
+    slipsSchema.parse((await h.get("/api/slips")).json());
+  });
+
   describe("the remaining window", () => {
     const placedAt = Date.UTC(2026, 9, 22, 8, 0); // 10:00 Madrid
     const bet = (settleAt: number): BetRow =>
@@ -542,13 +620,25 @@ describe("REQ-022: cash-out (AC-022.2)", () => {
     expect(score.calibration.settled).toBe(0);
   });
 
-  it("AC-015.2: deleting the bet's data removes its cash-out and rescue rows", async () => {
+  it("AC-022.2: cashing out removes the bet's rescue check and keeps whether the alert was up", async () => {
     const h = await setup();
     const bet = await placeBet();
     await h.core.scheduler.tickRescue();
-    await h.post(`/api/bets/${bet.id}/cashout`, {});
     expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 1 });
-    expect((await h.delete(`/api/bets/${bet.id}/data`)).statusCode).toBeLessThan(300);
+    await h.post(`/api/bets/${bet.id}/cashout`, {});
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 0 });
+    expect(h.db.prepare("SELECT alert_showing FROM cash_outs").get()).toEqual({ alert_showing: 0 });
+  });
+
+  it("AC-015.2: deleting the bet's data removes its cash-out and rescue rows", async () => {
+    const h = await setup();
+    const folded = await placeBet();
+    await h.post(`/api/bets/${folded.id}/cashout`, {});
+    const open = await placeBet();
+    await h.core.scheduler.tickRescue();
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 1 });
+    expect((await h.delete(`/api/bets/${folded.id}/data`)).statusCode).toBeLessThan(300);
+    expect((await h.delete(`/api/bets/${open.id}/data`)).statusCode).toBeLessThan(300);
     expect(h.db.prepare("SELECT COUNT(*) AS n FROM cash_outs").get()).toEqual({ n: 0 });
     expect(h.db.prepare("SELECT COUNT(*) AS n FROM rescue_checks").get()).toEqual({ n: 0 });
   });
@@ -582,6 +672,13 @@ describe("migration 0011", () => {
     expect(() => h.db.prepare("UPDATE bets SET status = 'settled' WHERE id = ?").run(id)).toThrow(
       "state machine",
     );
+  });
+
+  it("the export has no cash_outs key until something was cashed out", async () => {
+    const h = harness!;
+    await placeBet();
+    const { buildExport } = await import("../src/server/ledger/export.js");
+    expect(Object.keys(buildExport(h.db, h.clock.now()))).not.toContain("cash_outs");
   });
 
   it("the export carries the cash-outs", async () => {
