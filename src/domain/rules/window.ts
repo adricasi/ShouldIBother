@@ -1,5 +1,10 @@
 import { dryingIndex, type DryingIndexWeights } from "../outcomes.js";
-import { hoursInWindow, windowIsCovered, type ForecastHour } from "../weather.js";
+import {
+  hoursInWindow,
+  windowIsCovered,
+  type ForecastField,
+  type ForecastHour,
+} from "../weather.js";
 
 /**
  * The forecast hours of `[fromMs, toMs)`, or null unless they cover the whole window without a
@@ -26,20 +31,50 @@ export function mean(values: readonly number[]): number {
   return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-/** The drying index of one forecast hour: the outcome labels' formula, with the config's weights. */
-export function hourDryingIndex(
-  hour: ForecastHour,
+/** The values of `field` over `hours`; null when any hour lacks it (the rule cannot price the window). */
+export function allValues(hours: readonly ForecastHour[], field: ForecastField): number[] | null {
+  const values: number[] = [];
+  for (const hour of hours) {
+    const value = hour[field];
+    if (value === null) {
+      return null;
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+/** The values of `field` that are there; a rule that can do without the rest uses these. */
+export function presentValues(hours: readonly ForecastHour[], field: ForecastField): number[] {
+  return hours.flatMap((hour) => hour[field] ?? []);
+}
+
+/**
+ * The drying index of each hour, with the outcome labels' formula and the config's weights; null
+ * unless every hour has precipitation, wind, humidity and sunshine.
+ */
+export function dryingIndices(
+  hours: readonly ForecastHour[],
   weights: DryingIndexWeights,
   wetHourMm: number,
-): number {
-  return dryingIndex(
-    {
-      precipitationMm: hour.precipitationMm,
-      windSpeedKmh: hour.windKmh,
-      relativeHumidityPct: hour.relativeHumidityPct,
-      sunshineSeconds: hour.sunshineSeconds,
-    },
-    weights,
-    wetHourMm,
+): number[] | null {
+  const precipitation = allValues(hours, "precipitationMm");
+  const wind = allValues(hours, "windKmh");
+  const humidity = allValues(hours, "relativeHumidityPct");
+  const sunshine = allValues(hours, "sunshineSeconds");
+  if (precipitation === null || wind === null || humidity === null || sunshine === null) {
+    return null;
+  }
+  return hours.map((_hour, index) =>
+    dryingIndex(
+      {
+        precipitationMm: precipitation[index] ?? 0,
+        windSpeedKmh: wind[index] ?? 0,
+        relativeHumidityPct: humidity[index] ?? 0,
+        sunshineSeconds: sunshine[index] ?? 0,
+      },
+      weights,
+      wetHourMm,
+    ),
   );
 }

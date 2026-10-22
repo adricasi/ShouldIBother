@@ -59,7 +59,7 @@ export function ruleQuote(
         : sentence(
             config,
             plantsBand(facts, config),
-            `${facts.rainMm} mm of rain expected, up to ${facts.maxHourlyProbabilityPct}% chance in an hour, high of ${facts.maxTempC} °C.`,
+            `${facts.rainMm} mm of rain expected, ${facts.maxHourlyProbabilityPct === null ? "" : `up to ${facts.maxHourlyProbabilityPct}% chance in an hour, `}high of ${facts.maxTempC} °C.`,
             "skipping the watering",
           );
     }

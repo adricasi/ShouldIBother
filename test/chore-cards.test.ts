@@ -468,6 +468,12 @@ describe("AC-014.5: recorded weather that is not there yet keeps the bet waiting
     expect(recorded?.complete).toBe(true);
     expect(recorded?.hours.length).toBeGreaterThan(0);
     expect(status()).toBe("due");
+    // Nothing is left to say it is still waiting.
+    expect(
+      harness.db
+        .prepare("SELECT COUNT(*) AS n FROM weather_cache WHERE key LIKE 'recorded-attempt|%'")
+        .get(),
+    ).toEqual({ n: 0 });
   });
 
   it("a fake weather client that is down surfaces as waiting too", async () => {
@@ -476,5 +482,101 @@ describe("AC-014.5: recorded weather that is not there yet keeps the bet waiting
     await expect(harness.weather.getRecorded({ fromMs: 0, toMs: HOUR })).rejects.toBeInstanceOf(
       WeatherUnavailableError,
     );
+  });
+});
+
+describe("tapping a chip again does not stack quiet cards", () => {
+  const cardCount = (): number =>
+    harness.db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM cards").get()!.n;
+
+  it("while Open-Meteo is down: the same 'No forecast' card, until 30 minutes have passed", async () => {
+    await setup();
+    harness.weather.failWith = new Error("down");
+    const first = await quick("plants");
+    harness.clock.advance(10 * MINUTE);
+    const second = await quick("plants");
+    expect(second.id).toBe(first.id);
+    expect(cardCount()).toBe(1);
+    expect((await today()).cards).toHaveLength(1);
+
+    harness.clock.advance(21 * MINUTE); // 31 minutes after the first
+    const third = await quick("plants");
+    expect(third.id).not.toBe(first.id);
+    expect(cardCount()).toBe(2);
+  });
+
+  it("another chore, or another reason, is its own card", async () => {
+    await setup();
+    harness.weather.failWith = new Error("down");
+    const plants = await quick("plants");
+    const lineDry = await quick("laundry_line");
+    expect(lineDry.id).not.toBe(plants.id);
+    expect(cardCount()).toBe(2);
+  });
+
+  it("'Not needed this season' and 'Coming later' are reused too", async () => {
+    await setup({ household: { airConditioning: false, heaterThisSeason: false, dryer: "none" } });
+    const ac = await quick("ac");
+    expect((await quick("ac")).id).toBe(ac.id);
+    const tonight = await quick("laundry_tonight");
+    expect((await quick("laundry_tonight")).id).toBe(tonight.id);
+    expect(cardCount()).toBe(2);
+  });
+
+  it("an alert is reused while it says the same, and a new reason is a new card", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.heatwave });
+    const alert = await quick("plants");
+    expect((await quick("plants")).id).toBe(alert.id);
+    harness.weather.setProfile(FAKE_WEATHER_PROFILES.frost);
+    const frost = await quick("plants");
+    expect(frost.id).not.toBe(alert.id);
+    expect(cardCount()).toBe(2);
+  });
+
+  it("a card with odds is never reused: each tap is its own bet slip", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.mild });
+    const first = await quick("plants");
+    const second = await quick("plants");
+    expect(second.id).not.toBe(first.id);
+  });
+});
+
+describe("whole windows: the AC's night is priced from 22:00 even when it is under way (REQ-016)", () => {
+  it("at 03:00 the AC card has rule odds from the hours before now", async () => {
+    const clock = new FakeClock();
+    clock.current = madridWallTime(T0, 1, 3); // 03:00 Madrid on 23 Oct
+    await setup({
+      clock,
+      household: { airConditioning: true, heaterThisSeason: true, dryer: "none" },
+      flags: { heater: true },
+      weatherProfile: { temperatureC: 19, dryProbabilityPct: 0 },
+    });
+    const card = await quick("ac");
+    expect(card).toMatchObject({ kind: "weather", quote: { band: 4, source: "rule" } });
+    expect(Date.parse(card.quote?.settle_at ?? "")).toBe(madridWallTime(T0, 1, 7));
+    // The forecast was asked for the 24 hours before now as well.
+    expect(harness.weather.requests[0]).toMatchObject({ fromMs: clock.now(), hours: 48 });
+  });
+
+  it("the live API reaches back a day for it (past_days) and the live client prices it", async () => {
+    const clock = new FakeClock();
+    clock.current = madridWallTime(T0, 1, 3);
+    await setupLive(
+      {
+        clock,
+        household: { airConditioning: true, heaterThisSeason: true, dryer: "none" },
+        flags: { heater: true },
+      },
+      { temperatureC: 19, dryProbabilityPct: 0 },
+    );
+    const card = await quick("ac");
+    expect(card.kind).toBe("weather");
+    expect(server?.forecastRequests[0]?.searchParams.get("past_days")).toBe("1");
+  });
+
+  it("an extreme hour with missing sunshine and is_day still stops the card (AC-012.1)", async () => {
+    await setupLive({}, FAKE_WEATHER_PROFILES.heatwave);
+    server!.nullVariables = ["sunshine_duration", "is_day", "precipitation_probability"];
+    expect(await quick("plants")).toMatchObject({ kind: "alert", quote: null });
   });
 });

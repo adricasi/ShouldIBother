@@ -26,6 +26,11 @@ export class FakeOpenMeteo {
   nullFromMs: number | undefined;
   /** Fails this many requests with a 503 before answering normally. */
   failFirst = 0;
+  /** Status of those failures, and the `Retry-After` seconds they carry, if any. */
+  failStatus = 503;
+  retryAfterSeconds: number | undefined;
+  /** Open-Meteo variables the answer leaves null in every hour (a gap in the model data). */
+  nullVariables: string[] = [];
   private server: Server | undefined;
   private port = 0;
   /** The URL the client would have called, as the server saw it, per request. */
@@ -68,7 +73,13 @@ export class FakeOpenMeteo {
     this.requests.push(url);
     if (this.failFirst > 0) {
       this.failFirst -= 1;
-      response.writeHead(503).end("busy");
+      response
+        .writeHead(this.failStatus, {
+          ...(this.retryAfterSeconds === undefined
+            ? {}
+            : { "retry-after": String(this.retryAfterSeconds) }),
+        })
+        .end("busy");
       return;
     }
     switch (this.mode) {
@@ -98,23 +109,38 @@ export class FakeOpenMeteo {
   private body(url: URL): unknown {
     const startDate = url.searchParams.get("start_date");
     const endDate = url.searchParams.get("end_date");
+    const midnight = madridWallTimeToEpochMs(madridDateOf(this.now()), "00:00");
+    const pastHours = Number(url.searchParams.get("past_days") ?? "0") * 24;
     const first =
       startDate === null
-        ? madridWallTimeToEpochMs(madridDateOf(this.now()), "00:00")
+        ? midnight - pastHours * HOUR_MS
         : madridWallTimeToEpochMs(startDate, "00:00");
     const end =
       endDate === null
-        ? first + Number(url.searchParams.get("forecast_days") ?? "3") * 24 * HOUR_MS
+        ? midnight + Number(url.searchParams.get("forecast_days") ?? "3") * 24 * HOUR_MS
         : madridWallTimeToEpochMs(addDays(endDate, 1), "00:00");
     const starts = windowHourStarts({ startMs: first, endMs: end });
-    const hours = fakeForecastHours(this.profile, first, starts.length);
+    // The profile's rain is counted from today's midnight, as before; earlier hours are dry.
+    const hours = fakeForecastHours(
+      this.profile,
+      startDate === null ? midnight : first,
+      starts.length - (startDate === null ? pastHours : 0),
+      startDate === null ? pastHours : 0,
+    );
     const column = (pick: (index: number) => number): (number | null)[] =>
       hours.map((hour, index) =>
         this.nullFromMs !== undefined && hour.startsAt >= this.nullFromMs ? null : pick(index),
       );
+    const unless = <T extends Record<string, unknown>>(hourly: T): T =>
+      Object.fromEntries(
+        Object.entries(hourly).map(([name, values]) => [
+          name,
+          this.nullVariables.includes(name) ? (values as unknown[]).map(() => null) : values,
+        ]),
+      ) as T;
     const at = (index: number) => hours[index]!;
     return {
-      hourly: {
+      hourly: unless({
         time: hours.map((hour) => hour.startsAt / 1000),
         [HOURLY_VARIABLES.temperatureC]: column((i) => at(i).temperatureC),
         [HOURLY_VARIABLES.dewPointC]: column((i) => at(i).dewPointC),
@@ -129,7 +155,7 @@ export class FakeOpenMeteo {
         [HOURLY_VARIABLES.sunshineSeconds]: column((i) => at(i).sunshineSeconds),
         [HOURLY_VARIABLES.isDay]: column((i) => (at(i).isDay ? 1 : 0)),
         [HOURLY_VARIABLES.et0Mm]: column(() => 0.1),
-      },
+      }),
     };
   }
 }

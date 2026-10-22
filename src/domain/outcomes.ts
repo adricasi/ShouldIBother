@@ -36,8 +36,9 @@ export const WET_HOUR_MM = 0.2;
 const PLANTS_MAX_NET_DEFICIT_MM = 1.0;
 const PLANTS_FALLBACK_MIN_RAIN_MM = 2;
 const LINE_DRY_MIN_DRYING_SUM = 3.0;
-const DEW_MAX_SPREAD_C = 2;
-const DEW_HOURS_LIMIT = 3;
+/** Dew hour: temp - dew point at most this; the label needs fewer than `DEW_HOURS_LIMIT` of them. */
+export const DEW_MAX_SPREAD_C = 2;
+export const DEW_HOURS_LIMIT = 3;
 const AC_NIGHT_MIN_LIMIT_C = 23;
 const HEATER_MAX_TEMP_C = 18;
 const HEATER_SUNNY_MAX_TEMP_C = 15;

@@ -21,6 +21,8 @@ import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
 
 const FORECAST_HOURS = 48;
+/** The same look-back the card creation uses, so the rule windows are covered (T-005). */
+const FORECAST_PAST_HOURS = 24;
 
 /** Stored on the card when the failure is not one of the runner's. */
 type CardFailure = JobFailure | "weather";
@@ -105,7 +107,13 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
   const nowMs = enqueuedAt;
   let hours: readonly ForecastHour[];
   try {
-    hours = (await deps.weather.getForecast({ fromMs: nowMs, hours: FORECAST_HOURS })).hours;
+    hours = (
+      await deps.weather.getForecast({
+        fromMs: nowMs,
+        hours: FORECAST_HOURS,
+        pastHours: FORECAST_PAST_HOURS,
+      })
+    ).hours;
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
       markOffline(deps, cardId, "weather");

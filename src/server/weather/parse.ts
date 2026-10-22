@@ -73,42 +73,31 @@ export function parseHourlyTable(
   };
 }
 
-const REQUIRED_FOR_FORECAST: readonly HourlyField[] = [
-  "temperatureC",
-  "dewPointC",
-  "relativeHumidityPct",
-  "precipitationMm",
-  "precipitationProbabilityPct",
-  "windKmh",
-  "gustKmh",
-  "weatherCode",
-  "sunshineSeconds",
-  "isDay",
-];
-
-/** Forecast hours with every value present; an hour with a gap is left out (the rules then see a hole). */
+/**
+ * Every hour Open-Meteo listed, with the values it gave. An hour with a missing value is kept
+ * with `null` there: the safety backstop must still see its temperature, gust and weather code,
+ * and a rule that needs the missing value simply cannot price its window.
+ */
 export function forecastHours(table: HourlyTable): ForecastHour[] {
-  const hours: ForecastHour[] = [];
-  for (const startsAt of table.hourStarts) {
-    const v = (field: HourlyField): number | null => table.value(field, startsAt);
-    if (REQUIRED_FOR_FORECAST.some((field) => v(field) === null)) {
-      continue;
-    }
-    hours.push({
-      startsAt,
-      temperatureC: v("temperatureC") ?? 0,
-      dewPointC: v("dewPointC") ?? 0,
-      relativeHumidityPct: v("relativeHumidityPct") ?? 0,
-      precipitationMm: v("precipitationMm") ?? 0,
-      precipitationProbabilityPct: v("precipitationProbabilityPct") ?? 0,
-      windKmh: v("windKmh") ?? 0,
-      gustKmh: v("gustKmh") ?? 0,
-      weatherCode: v("weatherCode") ?? 0,
-      sunshineSeconds: v("sunshineSeconds") ?? 0,
-      isDay: v("isDay") === 1,
-    });
-  }
-  return hours.sort((a, b) => a.startsAt - b.startsAt);
+  return table.hourStarts
+    .map((startsAt) => {
+      const v = (field: HourlyField): number | null => table.value(field, startsAt);
+      const day = v("isDay");
+      return {
+        startsAt,
+        temperatureC: v("temperatureC"),
+        dewPointC: v("dewPointC"),
+        relativeHumidityPct: v("relativeHumidityPct"),
+        precipitationMm: v("precipitationMm"),
+        precipitationProbabilityPct: v("precipitationProbabilityPct"),
+        windKmh: v("windKmh"),
+        gustKmh: v("gustKmh"),
+        weatherCode: v("weatherCode"),
+        sunshineSeconds: v("sunshineSeconds"),
+        isDay: day === null ? null : day === 1,
+      };
+    })
+    .sort((a, b) => a.startsAt - b.startsAt);
 }
 
 /** Recorded hours as the outcome labels read them: a value Open-Meteo did not give stays null. */

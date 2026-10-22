@@ -41,25 +41,32 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-function round(value: number, digits = 1): number {
+/** Rounds a value; a value the forecast does not have stays `null` (unknown, never zero). */
+function round(value: number | null, digits = 1): number | null {
+  if (value === null) {
+    return null;
+  }
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
 }
 
-/** One tool result as Gemma reads it: compact rows, local times, inside the data delimiters. */
+/**
+ * One tool result as Gemma reads it: compact rows, local times, inside the data delimiters. A value
+ * the forecast lacks is an explicit `null`, which the prompt says means unknown.
+ */
 export function formatForecast(hours: readonly ForecastHour[]): string {
   const rows = hours.map((hour) => {
     const t = madridParts(hour.startsAt);
     return {
       time: `${t.year}-${pad(t.month)}-${pad(t.day)} ${pad(t.hour)}:00`,
       precip_mm: round(hour.precipitationMm),
-      precip_prob_pct: Math.round(hour.precipitationProbabilityPct),
+      precip_prob_pct: round(hour.precipitationProbabilityPct, 0),
       temp_c: round(hour.temperatureC),
       dew_point_c: round(hour.dewPointC),
-      humidity_pct: Math.round(hour.relativeHumidityPct),
+      humidity_pct: round(hour.relativeHumidityPct, 0),
       wind_kmh: round(hour.windKmh, 0),
       gust_kmh: round(hour.gustKmh, 0),
-      sunshine_min: Math.round(hour.sunshineSeconds / 60),
+      sunshine_min: round(hour.sunshineSeconds === null ? null : hour.sunshineSeconds / 60, 0),
       weather_code: hour.weatherCode,
     };
   });

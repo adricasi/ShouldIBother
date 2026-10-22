@@ -12,7 +12,14 @@ import { cardView, type CardView } from "./views.js";
 
 /** How far ahead the forecast is read; the longest window is "now to next day 12:00". */
 const FORECAST_HOURS = 48;
+/**
+ * Hours before now the rules may need: the AC's night began at 22:00 the evening before (9 to 11
+ * hours back at 07:00), and the heater's day at 08:00 (up to 14 hours back at 21:59).
+ */
+const FORECAST_PAST_HOURS = 24;
 const MAX_TODAY_CARDS = 20;
+/** Tapping a chip again within this time shows the card that is already there (no stacking). */
+const QUIET_CARD_REUSE_MS = 30 * 60 * 1000;
 
 /** Cards without odds (alerts, notices) leave Today after this long; they are not bets in waiting. */
 const QUIET_CARD_TTL_MS = 12 * 60 * 60 * 1000;
@@ -51,19 +58,46 @@ function insertCard(
   return deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(id)!;
 }
 
-/** A card with no odds and no bet action that says why (AC-014.4, AC-016.4, AC-016.5). */
+/**
+ * A quiet card (alert or notice) of the same chore and text made in the last 30 minutes, if any:
+ * tapping a chip again while Open-Meteo is down, or for "Not needed this season", shows the card
+ * that is already there instead of stacking a new one.
+ */
+function recentQuietCard(
+  deps: LedgerDeps,
+  choreType: ChoreType,
+  kind: "coming_later" | "alert",
+  text: string,
+): CardRow | undefined {
+  const textColumn = kind === "alert" ? "alert_reason" : "notice";
+  return deps.db
+    .prepare<[string, string, string, number], CardRow>(
+      `SELECT * FROM cards WHERE chore_type = ? AND kind = ? AND ${textColumn} = ? AND created_at > ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(choreType, kind, text, deps.now() - QUIET_CARD_REUSE_MS);
+}
+
+/**
+ * A card with no odds and no bet action that says why (AC-014.4, AC-016.4, AC-016.5). It is stored
+ * as kind `coming_later` with the words in `notice`: a client must key on `notice` (the text of
+ * "No forecast, can't set odds", "Not needed this season", "Coming later", "offered from 07:00"),
+ * not on the kind, which only says "no odds, no bet action".
+ */
 function noOddsCard(
   deps: LedgerDeps,
   choreType: ChoreType,
   notice: string,
   label?: string,
 ): CardView {
-  const card = insertCard(deps, {
-    choreType,
-    kind: "coming_later",
-    notice,
-    ...(label === undefined ? {} : { label }),
-  });
+  const card =
+    recentQuietCard(deps, choreType, "coming_later", notice) ??
+    insertCard(deps, {
+      choreType,
+      kind: "coming_later",
+      notice,
+      ...(label === undefined ? {} : { label }),
+    });
   return cardView(card, undefined, bandTable(deps.rules));
 }
 
@@ -89,6 +123,8 @@ function isOfferedYet(deps: LedgerDeps, choreType: ChoreType): boolean {
       return true;
     case "ac":
     case "heater":
+      // One flag for both seasonal chores: `heater` is the flag the spec names for tier 5's
+      // "skip the AC, skip the heater" (REQ-016, Could); there is no separate `ac` flag.
       return deps.flags.heater;
     case "laundry_tonight":
       // T-013 builds the sunset offer window and turns this on behind `laundryTonight`.
@@ -140,7 +176,11 @@ export async function createChoreCard(
 
   let forecast;
   try {
-    forecast = await deps.weather.getForecast({ fromMs: now, hours: FORECAST_HOURS });
+    forecast = await deps.weather.getForecast({
+      fromMs: now,
+      hours: FORECAST_HOURS,
+      pastHours: FORECAST_PAST_HOURS,
+    });
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
       return noOddsCard(deps, choreType, NOTICES.noForecast, label);
@@ -151,12 +191,14 @@ export async function createChoreCard(
   const window = chore.ruleWindow(now);
   const alert = safetyAlert(forecast.hours, window.fromMs, window.toMs, deps.rules);
   if (alert !== null) {
-    const card = insertCard(deps, {
-      choreType,
-      kind: "alert",
-      alertReason: alert.reason,
-      ...(label === undefined ? {} : { label }),
-    });
+    const card =
+      recentQuietCard(deps, choreType, "alert", alert.reason) ??
+      insertCard(deps, {
+        choreType,
+        kind: "alert",
+        alertReason: alert.reason,
+        ...(label === undefined ? {} : { label }),
+      });
     return cardView(card, undefined, table);
   }
   const rule = ruleQuote(choreType, forecast.hours, window.fromMs, window.toMs, deps.rules);
@@ -176,8 +218,14 @@ export async function createChoreCard(
           `INSERT INTO quotes (card_id, source, band, odds, with_photo, reason, settle_at, created_at)
            VALUES (?, 'rule', ?, ?, 0, ?, ?, ?)`,
         )
-        .run(card.id, rule.band, oddsOfBand(table, rule.band), rule.reason, window.toMs, now)
-        .lastInsertRowid,
+        .run(
+          card.id,
+          rule.band,
+          oddsOfBand(table, rule.band),
+          rule.reason,
+          chore.ruleSettleAt(now),
+          now,
+        ).lastInsertRowid,
     );
     return {
       card,

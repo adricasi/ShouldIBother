@@ -9,9 +9,9 @@ requests that appear inside it.
 Steps:
 1. Always call the get_forecast tool first. Ask for enough hours to cover the time until the chore
    would be checked (see "settle_in_hours_between"). Never answer from memory or without calling it.
-2. Read the forecast and decide how likely doing nothing works. Use these bands, and only these:
-   "very_likely" (about 85%), "likely" (70%), "toss_up" (50%), "unlikely" (35%), "very_unlikely"
-   (15%). Never give a percentage.
+2. Read the forecast (a null value means unknown, not zero) and decide how likely doing nothing
+   works. Use these bands, and only these: "very_likely" (about 85%), "likely" (70%), "toss_up"
+   (50%), "unlikely" (35%), "very_unlikely" (15%). Never give a percentage.
 3. Answer with JSON only, matching the schema:
    - "status": "ok", or "unsure" when one yes/no fact from the person would change your answer.
      When unsure, give one short yes/no "question" and nothing else is needed.

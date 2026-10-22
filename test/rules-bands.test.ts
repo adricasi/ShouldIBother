@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { Band } from "../src/domain/bands.js";
-import { DRYING_INDEX_WEIGHTS, WET_HOUR_MM, dryingIndex } from "../src/domain/outcomes.js";
+import {
+  DEW_HOURS_LIMIT,
+  DEW_MAX_SPREAD_C,
+  DRYING_INDEX_WEIGHTS,
+  WET_HOUR_MM,
+  dryingIndex,
+} from "../src/domain/outcomes.js";
 import {
   acBand,
   heaterBand,
@@ -50,7 +56,6 @@ describe("REQ-016: line-dry today rule (design.md, first match wins, half-open i
     wetHours: 0,
     meanDryingIndex: 0,
     daylightHours: 8,
-    maxTempC: 20,
     ...overrides,
   });
 
@@ -309,5 +314,76 @@ describe("config/rules.json is read strictly (no tuning, no silent typos)", () =
     const without = raw();
     delete without["safetyBackstop"];
     expect(() => parseRulesConfig(without)).toThrow("Invalid rules config");
+  });
+});
+
+describe("missing values in the forecast (a gap never hides danger, never prices a rule)", () => {
+  const extreme = { temperatureC: 38, gustKmh: 75, weatherCode: 96 };
+  const gaps = {
+    sunshineSeconds: null,
+    isDay: null,
+    precipitationProbabilityPct: null,
+    precipitationMm: null,
+    relativeHumidityPct: null,
+    dewPointC: null,
+    windKmh: null,
+  };
+
+  it("an extreme hour with null sunshine, is_day and the rest still raises the alert", () => {
+    const forecast = [hour(0), hour(1, { ...extreme, ...gaps }), hour(2)];
+    const alert = safetyAlert(forecast, 0, 3 * HOUR_MS, rules);
+    expect(alert?.kinds).toEqual(["storm", "heat"]);
+  });
+
+  it("each limit looks at the values that are there: a null temperature does not hide a gust", () => {
+    const forecast = [hour(0, { temperatureC: null, gustKmh: 90 })];
+    expect(safetyAlert(forecast, 0, HOUR_MS, rules)?.kinds).toEqual(["storm"]);
+    expect(
+      safetyAlert(
+        [hour(0, { temperatureC: null, gustKmh: null, weatherCode: null })],
+        0,
+        HOUR_MS,
+        rules,
+      ),
+    ).toBeNull();
+  });
+
+  it("a rule whose input is missing in the window gives no quote, for every chore", () => {
+    const hole = (overrides: Partial<ForecastHour>): ForecastHour[] => [
+      hour(0),
+      hour(1, overrides),
+      ...hours(11)
+        .slice(2)
+        .map((h) => ({ ...h, startsAt: h.startsAt + 1 * HOUR_MS })),
+    ];
+    const window = 12 * HOUR_MS;
+    expect(ruleQuote("plants", hole({ precipitationMm: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("plants", hole({ temperatureC: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("laundry_line", hole({ sunshineSeconds: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("laundry_line", hole({ isDay: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("laundry_tonight", hole({ dewPointC: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("ac", hole({ windKmh: null }), 0, window, rules)).toBeNull();
+    expect(ruleQuote("heater", hole({ sunshineSeconds: null }), 0, window, rules)).toBeNull();
+  });
+
+  it("no rain probability: that condition is skipped, the rest of the plants rule still prices", () => {
+    const forecast = hours(12, { precipitationProbabilityPct: null, temperatureC: 30 });
+    const quote = ruleQuote("plants", forecast, 0, 12 * HOUR_MS, rules);
+    expect(quote?.band).toBe(0);
+    expect(quote?.reason).not.toContain("chance");
+    // With a probability of 60% in one hour the same window is a toss-up.
+    const some = [
+      ...forecast.slice(0, 5),
+      hour(5, { precipitationProbabilityPct: 60, temperatureC: 30 }),
+      ...forecast.slice(6),
+    ];
+    expect(ruleQuote("plants", some, 0, 12 * HOUR_MS, rules)?.band).toBe(2);
+  });
+});
+
+describe("the dew constants of the outcome label equal config/rules.json", () => {
+  it("dew spread and hour count", () => {
+    expect(rules.chores.laundryTonight.dew.tempMinusDewPointCAtMost).toBe(DEW_MAX_SPREAD_C);
+    expect(rules.chores.laundryTonight.dew.hoursAtLeast).toBe(DEW_HOURS_LIMIT);
   });
 });

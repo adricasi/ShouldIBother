@@ -66,19 +66,28 @@ function isDaylight(startsAt: number): boolean {
   return hour >= 7 && hour < 20;
 }
 
+/** A fake hour has every value, unlike a real answer that may leave some out. */
+export type FakeHour = { [K in keyof ForecastHour]: NonNullable<ForecastHour[K]> };
+
+/**
+ * `hours` synthetic hours from the hour of `fromMs`, preceded by `pastHours` hours before it. The
+ * profile's rainy spell is counted from the hour of `fromMs`, so past hours are always dry.
+ */
 export function fakeForecastHours(
   profile: FakeWeatherProfile,
   fromMs: number,
   hours: number,
-): ForecastHour[] {
-  const first = Math.floor(fromMs / HOUR_MS) * HOUR_MS;
-  return Array.from({ length: hours }, (_unused, index) => {
+  pastHours = 0,
+): FakeHour[] {
+  const anchor = Math.floor(fromMs / HOUR_MS) * HOUR_MS;
+  return Array.from({ length: pastHours + hours }, (_unused, position) => {
+    const index = position - pastHours;
     const rain = profile.rain;
     const raining =
       rain !== undefined &&
       index >= rain.startsAfterHours &&
       index < rain.startsAfterHours + rain.hours;
-    const startsAt = first + index * HOUR_MS;
+    const startsAt = anchor + index * HOUR_MS;
     const daylight = isDaylight(startsAt);
     return {
       startsAt,
@@ -139,15 +148,15 @@ export class FakeWeatherClient implements WeatherClient {
     return this.lastFetchedAt;
   }
 
-  getForecast(request: { fromMs: number; hours: number }): Promise<Forecast> {
-    this.requests.push({ ...request });
+  getForecast(request: { fromMs: number; hours: number; pastHours?: number }): Promise<Forecast> {
+    this.requests.push({ fromMs: request.fromMs, hours: request.hours });
     if (this.failWith !== undefined) {
       return Promise.reject(new WeatherUnavailableError(this.failWith.message));
     }
     this.lastFetchedAt = this.now();
     return Promise.resolve({
       fetchedAt: this.lastFetchedAt,
-      hours: fakeForecastHours(this.profile, request.fromMs, request.hours),
+      hours: fakeForecastHours(this.profile, request.fromMs, request.hours, request.pastHours),
     });
   }
 

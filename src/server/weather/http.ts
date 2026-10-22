@@ -52,6 +52,12 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/** `Retry-After` in whole seconds (the form Open-Meteo's rate limit uses), as milliseconds. */
+function retryAfterMs(response: Response): number | undefined {
+  const seconds = Number(response.headers.get("retry-after"));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+}
+
 function causeMessage(error: unknown): string {
   const cause = error instanceof Error ? error.cause : undefined;
   return cause instanceof Error ? cause.message : "";
@@ -92,9 +98,12 @@ export class OpenMeteoHttp {
     assertAllowedUrl(url, this.allowedHosts);
     const target = new URL(url);
     const deadline = AbortSignal.timeout(this.deadlineMs);
+    const deadlineAt = performance.now() + this.deadlineMs;
+    const remainingMs = (): number => Math.max(0, deadlineAt - performance.now());
     let failure = "no attempt was made";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.aborted; attempt += 1) {
+      let waitMs = BACKOFF_BASE_MS * 2 ** (attempt - 1) + this.random() * BACKOFF_JITTER_MS;
       const callsToday = this.counter.take();
       const startedAt = this.clock();
       const entry = (outcome: CallLogEntry["outcome"], status?: number): CallLogEntry => ({
@@ -120,6 +129,16 @@ export class OpenMeteoHttp {
           if (!isRetryableStatus(response.status)) {
             throw new WeatherUnavailableError(failure);
           }
+          // A server that says when to come back is obeyed, as long as that fits in the deadline.
+          const asked = retryAfterMs(response);
+          if (asked !== undefined) {
+            if (asked > remainingMs()) {
+              throw new WeatherUnavailableError(
+                `${failure}, and asked us to wait ${asked / 1000} s`,
+              );
+            }
+            waitMs = Math.max(waitMs, asked);
+          }
         } else {
           const body: unknown = await response.json();
           this.log(entry("ok", response.status));
@@ -135,13 +154,15 @@ export class OpenMeteoHttp {
         this.log(entry("network-error"));
         const reason = causeMessage(error) || (error instanceof Error ? error.message : "failed");
         failure = `Open-Meteo could not be reached: ${reason}`;
+        // undici words a refused redirect "unexpected redirect"; the redirect test in
+        // test/weather-client.test.ts pins that, so an undici change fails there, not silently.
         if (reason.includes("redirect")) {
           // A redirect will not change on a retry; refusing it is the point of `redirect: "error"`.
           throw new WeatherUnavailableError(failure);
         }
       }
       if (attempt < MAX_ATTEMPTS && !deadline.aborted) {
-        await this.sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1) + this.random() * BACKOFF_JITTER_MS);
+        await this.sleep(Math.min(waitMs, remainingMs()));
       }
     }
     throw new WeatherUnavailableError(failure);
