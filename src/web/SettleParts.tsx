@@ -1,4 +1,5 @@
 import type { Receipt, RecordedWeather, SavingsTotals } from "./api.js";
+import { AppealNote } from "./AppealParts.js";
 import { stampClassName } from "./stamp.js";
 import { Icon, type IconName } from "./ui/Icon.js";
 import {
@@ -186,6 +187,7 @@ export function ReceiptCard({
           Lucky win: the recorded weather did not call for it, but the bet paid like any other win.
         </p>
       ) : null}
+      {receipt.appeal === undefined ? null : <AppealNote appeal={receipt.appeal} />}
       {receipt.message === null ? null : <p className="loss-copy">{receipt.message}</p>}
       {receipt.multiplier < 1 && paid && !receipt.multiplier_capped ? (
         <p className="meta">A photo would have paid in full; a tap or no answer pays half.</p>

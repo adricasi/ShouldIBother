@@ -140,9 +140,12 @@ describe("migration 0002: core schema", () => {
     expect(() => insert.run("undone")).not.toThrow();
   });
 
-  it("allows one original settlement per bet, and appeals as extra rows", () => {
+  it("allows one original settlement per bet, and appeals as extra rows (migration 0012 adds the final-row rules)", () => {
     const db = openDatabase(":memory:");
-    migrate(db, MIGRATIONS);
+    migrate(
+      db,
+      MIGRATIONS.filter((migration) => migration.id <= 2),
+    );
     seedCard(db);
     db.prepare(
       `INSERT INTO bets (${betColumns}, status) VALUES (1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3, 'settled')`,

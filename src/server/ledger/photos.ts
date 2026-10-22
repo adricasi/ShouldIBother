@@ -161,17 +161,18 @@ export async function addBeforePhoto(
 }
 
 /**
- * Stores the after photo of a bet (AC-008.2): metadata stripped and shrunk first (AC-005.1), then
- * the row. An undecodable file is refused with 415 and nothing is written (AC-005.6). Like the
- * before photo it is staged under a temporary name and renamed after the commit; `record` runs
- * in the same transaction as the row, so the person's answer and its photo are stored together
- * or not at all.
+ * Stores the after photo of a bet (AC-008.2), or the new photo of its appeal (`role` "appeal",
+ * AC-023.1): metadata stripped and shrunk first (AC-005.1), then the row. An undecodable file is
+ * refused with 415 and nothing is written (AC-005.6). Like the before photo it is staged under a
+ * temporary name and renamed after the commit; `record` runs in the same transaction as the row,
+ * so the person's answer and its photo are stored together or not at all.
  */
 export async function addAfterPhoto(
   deps: Pick<LedgerDeps, "db" | "now" | "photos">,
   betId: number,
   bytes: Buffer,
   record: (photo: PhotoRow) => void,
+  role: "after" | "appeal" = "after",
 ): Promise<PhotoRow> {
   if (!deps.photos.beginUpload()) {
     throw new HttpError(
@@ -194,9 +195,9 @@ export async function addAfterPhoto(
           deps.db
             .prepare(
               `INSERT INTO photos (id, card_id, bet_id, role, file, received_at, width, height)
-               VALUES (?, NULL, ?, 'after', ?, ?, ?, ?)`,
+               VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`,
             )
-            .run(staged.id, betId, staged.file, deps.now(), staged.width, staged.height);
+            .run(staged.id, betId, role, staged.file, deps.now(), staged.width, staged.height);
           const row = deps.db
             .prepare<[string], PhotoRow>("SELECT * FROM photos WHERE id = ?")
             .get(staged.id)!;
@@ -399,12 +400,21 @@ export function sweepOrphanPhotos(deps: Pick<LedgerDeps, "db" | "photos">): numb
     .prepare<[], PhotoRow>("SELECT * FROM photos WHERE role = 'after'")
     .all()
     .filter((photo) => !deps.photos.exists(photo.file));
-  if (lost.length > 0) {
+  // An appeal photo with no appeal behind it belongs to a request the process died in (nothing is
+  // in flight at start): the person can appeal again with a new photo (REQ-023).
+  const unused = deps.db
+    .prepare<[], PhotoRow>(
+      `SELECT * FROM photos p WHERE p.role = 'appeal' AND NOT EXISTS (
+         SELECT 1 FROM settlements s WHERE s.bet_id = p.bet_id AND s.appeal_of IS NOT NULL)`,
+    )
+    .all();
+  const gone = [...lost, ...unused];
+  if (gone.length > 0) {
     deps.db
       .transaction(() => {
         removePhotoRows(
           deps.db,
-          lost.map((photo) => photo.id),
+          gone.map((photo) => photo.id),
         );
       })
       .immediate();
