@@ -15,6 +15,7 @@ import { loadFlags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
 import { loadRules } from "./rules.js";
+import { loadSavings } from "./savings.js";
 import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client.js";
@@ -87,6 +88,7 @@ export async function startServer(
       model: selection.model,
       rules: loadRules(),
       household,
+      savings: loadSavings(),
       flags,
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
       runner: { toolUse: modelsConfig.gemma.toolUse, answerMode: modelsConfig.gemma.answerMode },

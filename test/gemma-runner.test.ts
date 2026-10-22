@@ -470,8 +470,12 @@ describe("the judge runs on the job runner (T-004's judge moved onto it)", () =>
         VALUES (1, 1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3);`);
     const result = await judgeBet(runner, {
       chore: CHORES.plants,
+      kind: "do_nothing",
       odds: 50,
-      answerId: "moist",
+      evidence: { kind: "tap", answerId: "moist" },
+      weather: null,
+      followups: [],
+      canAsk: true,
       betId: 1,
       cardId: 1,
     });

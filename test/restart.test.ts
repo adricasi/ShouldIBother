@@ -74,7 +74,10 @@ describe("NFR-003: an open bet survives a server restart and settles", () => {
     ]);
     const settled = await running.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
     expect(settled.statusCode).toBe(200);
-    expect(settled.json()).toMatchObject({ verdict: "win", points: 15 });
+    expect(settled.json()).toMatchObject({
+      state: "settled",
+      receipt: { verdict: "win", points: 15 },
+    });
     expect((await running.get("/api/today")).json<Today>().points.total).toBe(15);
   });
 

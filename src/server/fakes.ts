@@ -28,6 +28,10 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
     return "ok";
   }
   const text = request.messages.map((message) => message.content).join("\n");
+  if (text.includes('"bet":"do_it"')) {
+    // A do-it decision is scored on the recorded weather: wet hours mean the weather had it.
+    return /"wet_hours":[1-9]/.test(text) ? "do-it-would-have" : "do-it-would-not";
+  }
   for (const chore of Object.values(CHORES)) {
     for (const answer of chore.tapAnswers) {
       if (text.includes(answer.label)) {

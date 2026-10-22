@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { processPhoto } from "./process.js";
@@ -54,6 +62,18 @@ export class PhotoStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
+    }
+  }
+
+  /** The files in the folder that this store wrote (named like its UUID files). */
+  list(): string[] {
+    return readdirSync(this.dir).filter((name) => FILE_NAME.test(name));
+  }
+
+  /** Deletes every photo file in the folder, also the ones no database row names. */
+  removeAll(): void {
+    for (const file of this.list()) {
+      this.remove(file);
     }
   }
 

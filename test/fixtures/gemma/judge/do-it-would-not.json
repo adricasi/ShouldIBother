@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer for a do-it decision: the recorded weather would not have done the chore.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "weather_would_not",
+    "reason": "It stayed dry and warm, so watering by hand was needed.",
+    "evidence": ["Recorded rain 0 mm", "Highest temperature 24 C"]
+  }
+}

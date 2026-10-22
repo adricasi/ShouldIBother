@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer with a verdict that does not fit the bet's kind (a do-it verdict on a bet on doing nothing).",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "weather_would_not",
+    "reason": "Wrong kind of verdict.",
+    "evidence": []
+  }
+}

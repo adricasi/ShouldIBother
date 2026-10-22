@@ -16,6 +16,7 @@ import { PhotoStore } from "../src/server/photos/store.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 import { loadRules } from "../src/server/rules.js";
+import { loadSavings } from "../src/server/savings.js";
 import type { WeatherClient } from "../src/server/weather/client.js";
 import { FakeWeatherClient, type FakeWeatherProfile } from "../src/server/weather/fake.js";
 
@@ -101,6 +102,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     model,
     rules: loadRules(),
     household: options.household ?? EXAMPLE_HOUSEHOLD,
+    savings: loadSavings(),
     flags,
     photos,
     ...(options.runner === undefined ? {} : { runner: options.runner }),

@@ -1,0 +1,23 @@
+{
+  "description": "Hand-written synthetic judge script: unsure with a question on the first call, a win on the second.",
+  "steps": [
+    {
+      "model": "fake-gemma",
+      "content": {
+        "status": "unsure",
+        "reason": "The photo is dark.",
+        "evidence": [],
+        "question": "Is the soil damp to the touch?"
+      }
+    },
+    {
+      "model": "fake-gemma",
+      "content": {
+        "status": "ok",
+        "verdict": "win",
+        "reason": "The soil is damp, so skipping the watering worked.",
+        "evidence": ["Person confirmed damp soil"]
+      }
+    }
+  ]
+}

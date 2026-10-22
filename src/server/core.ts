@@ -1,7 +1,9 @@
+import multipart from "@fastify/multipart";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { CHORE_TYPES } from "../domain/chores.js";
+import type { SavingsCatalogue } from "../domain/savings.js";
 import type { RulesConfig } from "../domain/rules/index.js";
 import { ATTRIBUTION } from "../domain/open-meteo.js";
 import { forecastAgeLabel } from "../domain/weather.js";
@@ -11,15 +13,18 @@ import type { Db } from "./db.js";
 import { FLAG_NAMES, type Flags } from "./flags.js";
 import { GemmaStatusMonitor } from "./gemma/status.js";
 import { JobRunner, type RunnerOptions } from "./gemma/runner.js";
-import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
+import { listDueBets, listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import { captureText, MAX_CAPTURE_CHARS } from "./ledger/capture.js";
 import { BackgroundTasks, type LedgerDeps } from "./ledger/deps.js";
 import { answerCard, recoverThinkingCards, retryCard } from "./ledger/gemma-cards.js";
 import { recoverInspections, startInspection } from "./ledger/photo-odds.js";
-import { pointsTotal, settleByTap } from "./ledger/settle.js";
+import { pointsTotal } from "./ledger/points.js";
+import { getReceipt } from "./ledger/receipt.js";
+import { backfillSavingsSnapshots, weekSavings } from "./ledger/savings.js";
+import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
-import { photoRoutes } from "./photos/routes.js";
+import { MULTIPART_OPTIONS, photoRoutes, readUploadedPhoto } from "./photos/routes.js";
 import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
@@ -36,6 +41,8 @@ export interface CoreDeps {
   readonly flags: Flags;
   /** The household baseline behind "Not needed this season" (AC-016.5). */
   readonly household: Household;
+  /** What one won bet saves per chore (REQ-011). */
+  readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
   readonly photos: PhotoStore;
   readonly onSchedulerError?: (error: unknown) => void;
@@ -107,7 +114,6 @@ function forecastStatus(deps: CoreDeps) {
 }
 
 export function createCore(deps: CoreDeps): Core {
-  const scheduler = createScheduler(deps, deps.onSchedulerError ?? (() => undefined));
   const gemma = new JobRunner({
     model: deps.model,
     db: deps.db,
@@ -126,9 +132,16 @@ export function createCore(deps: CoreDeps): Core {
     rules: deps.rules,
     household: deps.household,
     flags: deps.flags,
+    savings: deps.savings,
     photos: deps.photos,
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
   };
+  const settler = new Settler(ledger);
+  const scheduler = createScheduler(deps, deps.onSchedulerError ?? (() => undefined), {
+    settle: () => settler.runPass(),
+  });
+  // Bets placed before savings existed (the first real bets) get their snapshot once (REQ-011).
+  backfillSavingsSnapshots(ledger);
   const status = new GemmaStatusMonitor(deps.model, deps.now);
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
@@ -142,6 +155,8 @@ export function createCore(deps: CoreDeps): Core {
     logEntry = (entry) => {
       app.log.info(entry, "gemma card");
     };
+    // The after photo of a settlement arrives as multipart; the card photo route shares the parser.
+    await app.register(multipart, MULTIPART_OPTIONS);
     app.addHook("onSend", (_request, reply, payload) => {
       if (!reply.hasHeader("cache-control")) {
         reply.header("cache-control", "no-store");
@@ -173,11 +188,12 @@ export function createCore(deps: CoreDeps): Core {
           checked_at: new Date(gemmaStatus.checkedAt).toISOString(),
         },
         points: { total: pointsTotal(ledger) },
+        week: weekSavings(ledger),
         forecast: forecastStatus(deps),
         attribution: ATTRIBUTION,
         cards: listOpenCards(ledger),
         open_bets: listBetsWithStatus(ledger, "open"),
-        due_bets: listBetsWithStatus(ledger, "due"),
+        due_bets: listDueBets(ledger),
       };
     });
 
@@ -212,11 +228,49 @@ export function createCore(deps: CoreDeps): Core {
 
     app.get("/api/slips", () => getSlips(ledger));
 
-    app.post("/api/bets/:id/settle", async (request) => {
+    /** The judge's verdict, a question, or the saved answer waiting for the weather or Gemma. */
+    const outcomeResponse = (outcome: SettleOutcome, reply: FastifyReply): FastifyReply => {
+      switch (outcome.state) {
+        case "settled":
+          return reply.send({ state: "settled", receipt: outcome.receipt });
+        case "question":
+          return reply.send(outcome);
+        case "awaiting_weather":
+          return reply.code(202).send({
+            state: "awaiting_weather",
+            note: "Your answer is saved. The recorded weather is not in yet; it settles when it is.",
+          });
+        case "awaiting_gemma":
+          return reply.code(202).send({
+            state: "awaiting_gemma",
+            note: "Your answer is saved. It settles when Gemma is back.",
+          });
+      }
+    };
+
+    // One tap (JSON) or an after photo (multipart): the answer is stored, then the judge decides.
+    app.post("/api/bets/:id/settle", async (request, reply) => {
       const { id } = parse(idParams, request.params);
+      if (request.isMultipart()) {
+        const bytes = await readUploadedPhoto(request);
+        return outcomeResponse(await settler.submitPhoto(id, bytes), reply);
+      }
       const body = parse(settleBody, request.body);
-      return settleByTap(ledger, id, body.answer);
+      return outcomeResponse(await settler.submitTap(id, body.answer), reply);
     });
+
+    // The tap on the judge's yes/no question (AC-008.5).
+    app.post("/api/bets/:id/answer", async (request, reply) => {
+      const { id } = parse(idParams, request.params);
+      return outcomeResponse(
+        await settler.answerQuestion(id, parse(answerBody, request.body).yes),
+        reply,
+      );
+    });
+
+    app.get("/api/bets/:id/receipt", (request) =>
+      getReceipt(ledger, parse(idParams, request.params).id),
+    );
 
     await app.register(
       photoRoutes({

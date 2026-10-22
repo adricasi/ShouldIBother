@@ -1,3 +1,4 @@
+import type { SavingsCatalogue } from "../../domain/savings.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import type { Household } from "../config.js";
 import type { Db } from "../db.js";
@@ -44,6 +45,8 @@ export interface LedgerDeps {
   /** The household baseline: whether the AC and heater are used this season (AC-016.5). */
   readonly household: Household;
   readonly flags: Flags;
+  /** What one won bet saves per chore; the figure is written on the bet when it is placed (REQ-011). */
+  readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
   readonly photos: PhotoStore;
   readonly background: BackgroundTasks;

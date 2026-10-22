@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer for a do-it decision: the recorded weather would have done the chore.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "weather_would_have",
+    "reason": "Rain fell overnight, so the pots would have been watered anyway.",
+    "evidence": ["Recorded rain 3 mm", "Wet hours 4"]
+  }
+}
