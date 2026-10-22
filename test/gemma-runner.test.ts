@@ -6,8 +6,11 @@ import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { judgeBet } from "../src/server/gemma/judge.js";
 import {
   JobRunner,
+  JobQueueFullError,
+  JobToolArgumentError,
   JobToolError,
   MAX_MODEL_CALLS,
+  MAX_QUEUED_JOBS,
   type JobRequest,
   type JobTool,
   type RunnerOptions,
@@ -360,16 +363,46 @@ describe("Gemma job runner: the tool loop (AC-003.1, AC-003.6)", () => {
     expect(toolMessages[2]?.content).toContain("Too many tool calls");
   });
 
-  it("answers an unknown tool name with a message instead of running anything", async () => {
+  it("AC-003.6: an unknown tool name is not a use of the tool: nothing runs, it is a miss and a retry", async () => {
     const executed: unknown[] = [];
     const { runner, model } = setup((_request, n) =>
       n === 1
         ? answer("", { toolCalls: [{ name: "delete_everything", arguments: {} }] })
-        : answer(GOOD),
+        : n === 2
+          ? callTool()
+          : answer(GOOD),
     );
-    await runner.run(request({ tool: tool(true, executed) }));
+    const result = await runner.run(request({ tool: tool(true, executed) }));
+    expect(executed).toEqual([{ hours_ahead: 12 }]);
+    expect(result).toMatchObject({ ok: true, toolMode: "called", retries: 1, calls: 3 });
+    expect(model.calls[1]?.messages.at(-1)?.content).toContain("get_forecast");
+  });
+
+  it("AC-003.6: wrong-named calls twice end as tool_missed, tool_mode missed, with no answer call", async () => {
+    const executed: unknown[] = [];
+    const { runner, model } = setup(() =>
+      answer("", { toolCalls: [{ name: "delete_everything", arguments: {} }] }),
+    );
+    const result = await runner.run(request({ tool: tool(true, executed) }));
+    expect(result).toMatchObject({
+      ok: false,
+      failure: "tool_missed",
+      toolMode: "missed",
+      calls: 2,
+    });
     expect(executed).toEqual([]);
-    expect(model.calls[1]?.messages.at(-1)?.content).toContain("Unknown tool");
+    expect(model.calls).toHaveLength(2);
+    expect(decisions()[0]).toMatchObject({ tool_mode: "missed" });
+  });
+
+  it("AC-003.6: arguments the tool rejects are not a use of the tool either", async () => {
+    const rejecting: JobTool = {
+      ...tool(true),
+      execute: () => Promise.reject(new JobToolArgumentError("hours_ahead must be 1 to 48")),
+    };
+    const { runner } = setup(() => callTool({ hours_ahead: 99 }));
+    const result = await runner.run(request({ tool: rejecting }));
+    expect(result).toMatchObject({ ok: false, failure: "tool_missed", toolMode: "missed" });
   });
 
   it("fails with tool_error, without a retry, when the tool cannot run", async () => {
@@ -452,5 +485,62 @@ describe("the judge runs on the job runner (T-004's judge moved onto it)", () =>
       retries: 1,
       valid: 1,
     });
+  });
+});
+
+describe("Gemma job runner: the retry message, internal errors and the bounded queue", () => {
+  it("quotes the rejected answer, cut to 300 characters, next to the validation error", async () => {
+    const long = JSON.stringify({ answer: "maybe", pad: "z".repeat(900) });
+    const { runner, model } = setup((_request, n) => answer(n === 1 ? long : GOOD));
+    await runner.run(request());
+    const retry = model.calls[1]?.messages.at(-1)?.content ?? "";
+    expect(retry).toContain("rejected");
+    expect(retry).toContain("previous_answer");
+    expect(retry).toContain("maybe");
+    expect(retry.match(/z/g)?.length).toBeLessThan(300);
+    expect(retry.match(/<\/untrusted_data>/g)).toHaveLength(1);
+  });
+
+  it("an exception from the model client becomes an internal failure with a decision row", async () => {
+    const { runner } = setup(() => {
+      throw new Error("fixture exploded");
+    });
+    const result = await runner.run(request());
+    expect(result).toMatchObject({ ok: false, failure: "internal" });
+    expect(decisions()).toEqual([
+      expect.objectContaining({ valid: 0, error: "internal: fixture exploded" }),
+    ]);
+    expect(runner.queued).toBe(0);
+  });
+
+  it("an exception from the job's own check is an internal failure too", async () => {
+    const { runner } = setup(() => answer(GOOD));
+    const result = await runner.run(
+      request({
+        check: () => {
+          throw new Error("check bug");
+        },
+      }),
+    );
+    expect(result).toMatchObject({ ok: false, failure: "internal" });
+    expect(decisions()).toHaveLength(1);
+  });
+
+  it("refuses new jobs with JobQueueFullError when 8 are queued or running, then recovers", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { runner } = setup(async () => {
+      await held;
+      return answer(GOOD);
+    });
+    const jobs = Array.from({ length: MAX_QUEUED_JOBS }, () => runner.run(request()));
+    expect(runner.full).toBe(true);
+    await expect(runner.run(request())).rejects.toBeInstanceOf(JobQueueFullError);
+    release();
+    await Promise.all(jobs);
+    expect(runner.full).toBe(false);
+    expect((await runner.run(request())).ok).toBe(true);
   });
 });

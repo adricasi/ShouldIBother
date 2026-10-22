@@ -33,8 +33,43 @@ export interface OllamaOptions {
   readonly fetch?: typeof fetch;
 }
 
+/** No answer from a local runtime is bigger than this; a larger body is refused unread. */
+export const MAX_RESPONSE_BYTES = 1_048_576;
 const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
 const DEFAULT_WARM_UP_TIMEOUT_MS = 120_000;
+
+/** `gemma4` and `gemma4:latest` are the same model in Ollama's listings. */
+function normaliseTag(name: string): string {
+  return name.includes(":") ? name : `${name}:latest`;
+}
+
+/** Reads a response body as text, giving up when it grows past `maxBytes`. */
+async function readLimited(response: Response, maxBytes: number): Promise<string> {
+  const declared = Number(response.headers.get("content-length") ?? "0");
+  if (declared > maxBytes) {
+    await response.body?.cancel();
+    throw new ModelUnavailableError("Ollama sent an answer that is too large");
+  }
+  if (response.body === null) {
+    return "";
+  }
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new ModelUnavailableError("Ollama sent an answer that is too large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 function isTimeout(error: unknown): boolean {
   return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
@@ -81,6 +116,8 @@ export class OllamaClient implements ModelClient {
         ...(body === undefined
           ? {}
           : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+        // A redirect would leave 127.0.0.1: refuse it.
+        redirect: "error",
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -91,8 +128,12 @@ export class OllamaClient implements ModelClient {
     }
     let payload: unknown;
     try {
-      payload = await response.json();
+      const text = await readLimited(response, MAX_RESPONSE_BYTES);
+      payload = text === "" ? undefined : JSON.parse(text);
     } catch (error) {
+      if (error instanceof ModelUnavailableError) {
+        throw error;
+      }
       if (isTimeout(error)) {
         throw new ModelTimeoutError(`Ollama did not finish within ${timeoutMs} ms`);
       }
@@ -118,12 +159,13 @@ export class OllamaClient implements ModelClient {
     if (parsed === undefined) {
       throw new ModelUnavailableError("Ollama sent an answer this app cannot read");
     }
-    const digest = await this.modelDigest();
+    // The digest comes from the health check and the warm-up; a chat makes no extra request, so
+    // a good answer is never pushed past its timeout by a lookup.
     return {
       content: parsed.content,
       toolCalls: parsed.toolCalls,
       model: parsed.model ?? this.settings.model,
-      ...(digest === undefined ? {} : { modelDigest: digest }),
+      ...(this.digest === undefined ? {} : { modelDigest: this.digest }),
     };
   }
 
@@ -136,25 +178,17 @@ export class OllamaClient implements ModelClient {
     }
   }
 
-  /** Digest of the model as Ollama lists it, looked up once and then remembered. */
-  private async modelDigest(): Promise<string | undefined> {
-    if (this.digest === undefined) {
-      const listed = await this.listModels();
-      this.digest = listed?.find((entry) => entry.name === this.settings.model)?.digest;
-    }
-    return this.digest;
-  }
-
   async health(): Promise<ModelHealth> {
     const listed = await this.listModels();
     if (listed === undefined) {
       return { state: "offline", detail: "Ollama is not answering" };
     }
-    const entry = listed.find((model) => model.name === this.settings.model);
+    const wanted = normaliseTag(this.settings.model);
+    const entry = listed.find((model) => normaliseTag(model.name) === wanted);
     if (entry === undefined) {
       return { state: "offline", detail: `model ${this.settings.model} is not pulled` };
     }
-    this.digest ??= entry.digest;
+    this.digest = entry.digest ?? this.digest;
     return this.warming
       ? { state: "waking", detail: "loading the model" }
       : { state: "online", detail: this.settings.model };
