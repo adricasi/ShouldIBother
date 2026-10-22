@@ -46,6 +46,8 @@ export interface CoreHarness {
   get(url: string): Promise<LightMyRequestResponse>;
   /** POST JSON with the session and a same-origin Origin header. */
   post(url: string, body: unknown): Promise<LightMyRequestResponse>;
+  /** DELETE with the session and a same-origin Origin header. */
+  delete(url: string): Promise<LightMyRequestResponse>;
   close(): Promise<void>;
 }
 
@@ -92,6 +94,12 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
         method: "POST",
         url,
         payload: body as Record<string, unknown>,
+        headers: { cookie: harness.cookie, origin: LOCAL_ORIGIN },
+      }),
+    delete: (url) =>
+      harness.request({
+        method: "DELETE",
+        url,
         headers: { cookie: harness.cookie, origin: LOCAL_ORIGIN },
       }),
     close: async () => {

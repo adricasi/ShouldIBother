@@ -42,6 +42,12 @@ export async function settleByTap(
   if (bet === undefined) {
     throw new HttpError(404, "Bet not found");
   }
+  if (bet.status === "open" && bet.settle_at <= deps.now()) {
+    // Slips lists it under Settle now at read time (AC-007.2); the 60 s scheduler may not have
+    // marked it due yet, so the tap does it. The status guard makes this race-free.
+    deps.db.prepare("UPDATE bets SET status = 'due' WHERE id = ? AND status = 'open'").run(bet.id);
+    bet.status = "due";
+  }
   if (bet.status !== "due") {
     throw new HttpError(
       409,

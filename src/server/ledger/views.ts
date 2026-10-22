@@ -1,6 +1,7 @@
 import { nameOfBand, type BandTable } from "../../domain/bands.js";
 import { CHORES, isChoreType } from "../../domain/chores.js";
-import { winPoints, LOSS_POINTS } from "../../domain/points.js";
+import { canUndo } from "../../domain/bet-state.js";
+import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
 
@@ -11,6 +12,9 @@ export interface Payouts {
   readonly small_loss: number;
   readonly normal_loss: number;
   readonly harmful_loss: number;
+  /** "I'll do it" scores +5 when the weather would not have helped, -10 when it would (AC-009.3). */
+  readonly do_it_if_not_needed: number;
+  readonly do_it_if_needed: number;
 }
 
 export function payoutsAt(odds: number): Payouts {
@@ -20,6 +24,8 @@ export function payoutsAt(odds: number): Payouts {
     small_loss: LOSS_POINTS.small_loss,
     normal_loss: LOSS_POINTS.normal_loss,
     harmful_loss: LOSS_POINTS.harmful_loss,
+    do_it_if_not_needed: DO_IT_POINTS.weather_would_not,
+    do_it_if_needed: DO_IT_POINTS.weather_would_have,
   };
 }
 
@@ -52,7 +58,11 @@ export function quoteView(quote: QuoteRow, table: BandTable) {
 
 export type QuoteView = ReturnType<typeof quoteView>;
 
-export function betView(bet: BetRow, card: CardRow, table: BandTable) {
+/**
+ * A bet as the client sees it. `undoable` is computed at read time from the clock (AC-006.4,
+ * AC-006.5): the client never decides alone whether Undo is offered.
+ */
+export function betView(bet: BetRow, card: CardRow, table: BandTable, nowMs: number) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
   return {
     id: bet.id,
@@ -66,6 +76,7 @@ export function betView(bet: BetRow, card: CardRow, table: BandTable) {
     reason: bet.reason,
     placed_at: new Date(bet.placed_at).toISOString(),
     undo_until: new Date(bet.undo_until).toISOString(),
+    undoable: canUndo({ status: bet.status, undoUntil: bet.undo_until }, nowMs),
     settle_at: new Date(bet.settle_at).toISOString(),
     status: bet.status,
     payouts: payoutsAt(bet.odds),

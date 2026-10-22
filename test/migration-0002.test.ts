@@ -12,9 +12,9 @@ const tables = (db: ReturnType<typeof openDatabase>): string[] =>
 
 describe("migration 0002: core schema", () => {
   it("is number 2 and creates the design's tables", () => {
-    expect(MIGRATIONS.map((migration) => migration.id)).toEqual([1, 2]);
+    expect(MIGRATIONS.map((migration) => migration.id).slice(0, 2)).toEqual([1, 2]);
     const db = openDatabase(":memory:");
-    migrate(db, MIGRATIONS);
+    migrate(db, MIGRATIONS.slice(0, 2));
     expect(tables(db)).toEqual(
       expect.arrayContaining([
         "cards",
@@ -49,7 +49,7 @@ describe("migration 0002: core schema", () => {
       "INSERT INTO sessions (id_hash, created_at, expires_at, last_seen_at) VALUES ('h', 1, 2, 1)",
     ).run();
     db.prepare("INSERT INTO pairing (token_hash, created_at, expires_at) VALUES ('t', 1, 2)").run();
-    expect(migrate(db, MIGRATIONS)).toEqual([2]);
+    expect(migrate(db, MIGRATIONS.slice(0, 2))).toEqual([2]);
     expect(db.prepare("SELECT id_hash FROM sessions").all()).toEqual([{ id_hash: "h" }]);
     expect(db.prepare("SELECT token_hash FROM pairing").all()).toEqual([{ token_hash: "t" }]);
   });
