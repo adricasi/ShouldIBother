@@ -9,6 +9,7 @@ import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./fo
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
+import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
 import { choreIconName, Icon } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
@@ -369,6 +370,14 @@ export function TodayScreen(props: TodayScreenProps) {
             {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
           </p>
         )}
+
+        {today?.flags["splitFlap"] === true ? (
+          <WeatherBoard
+            board={today.weather_board ?? null}
+            now={today.now}
+            attribution={today.attribution}
+          />
+        ) : null}
 
         {today === undefined && notice?.kind === "error" ? (
           <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>

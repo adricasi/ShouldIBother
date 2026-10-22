@@ -486,3 +486,25 @@ describe("Retry-After and the deadline", () => {
     }
   });
 });
+
+describe("T-027: the weather board reads the cached forecast without a request (REQ-026)", () => {
+  it("is empty before the first fetch, then serves the cached hours with no new request", async () => {
+    const weather = client();
+    expect(weather.latestForecast()).toBeUndefined();
+    await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    const requests = server.requests.length;
+    const cached = weather.latestForecast();
+    expect(cached?.fetchedAt).toBe(clock.now());
+    expect(cached?.hours.length).toBeGreaterThan(24);
+    expect(server.requests).toHaveLength(requests);
+  });
+
+  it("keeps serving a stale forecast under 24 h old and drops it at 24 h, like the age line", async () => {
+    const weather = client();
+    await weather.getForecast({ fromMs: clock.now(), hours: 24 });
+    clock.advance(FORECAST_MAX_AGE_MS - 1);
+    expect(weather.latestForecast()).toBeDefined();
+    clock.advance(1);
+    expect(weather.latestForecast()).toBeUndefined();
+  });
+});

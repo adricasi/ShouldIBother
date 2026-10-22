@@ -150,6 +150,7 @@ export class FakeWeatherClient implements WeatherClient {
   /** False: the forecast carries no sunset, so laundry tonight cannot be priced. */
   sunsets = true;
   private lastFetchedAt: number | undefined;
+  private lastForecast: Forecast | undefined;
 
   constructor(
     private readonly now: () => number,
@@ -164,6 +165,10 @@ export class FakeWeatherClient implements WeatherClient {
     return this.lastFetchedAt;
   }
 
+  latestForecast(): Forecast | undefined {
+    return this.lastForecast;
+  }
+
   getForecast(request: { fromMs: number; hours: number; pastHours?: number }): Promise<Forecast> {
     this.requests.push({ fromMs: request.fromMs, hours: request.hours });
     if (this.failWith !== undefined) {
@@ -171,11 +176,12 @@ export class FakeWeatherClient implements WeatherClient {
     }
     this.lastFetchedAt = this.now();
     const hours = fakeForecastHours(this.profile, request.fromMs, request.hours, request.pastHours);
-    return Promise.resolve({
+    this.lastForecast = {
       fetchedAt: this.lastFetchedAt,
       hours,
       sunsetMsByDate: this.sunsets ? fakeSunsets(hours) : {},
-    });
+    };
+    return Promise.resolve(this.lastForecast);
   }
 
   getRecorded(request: { fromMs: number; toMs: number }): Promise<RecordedWeather> {

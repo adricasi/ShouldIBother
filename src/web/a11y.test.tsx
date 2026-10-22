@@ -485,3 +485,75 @@ describe("NFR-009: the laundry planner card (flag laundryPlanner on) has no axe 
     expect(await violationsOf(planner([slip]))).toEqual([]);
   });
 });
+
+describe("NFR-009: the split-flap weather board (flag splitFlap on) has no axe violations", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const board: NonNullable<Today["weather_board"]> = {
+    temperature_c: 21,
+    condition: "Partly cloudy",
+    rain_pct: 10,
+    wind_kmh: 18,
+    hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map((hour) => ({
+      hour,
+      level: hour === 9 ? 0.2 : 0.9,
+      lazy: hour >= 10 && hour < 18,
+    })),
+    lazy_window: { from: "10:00", to: "18:00" },
+  };
+  const withBoard = (value: Today["weather_board"]): string =>
+    today({ ...emptyToday, flags: { splitFlap: true }, weather_board: value });
+
+  async function violationsOf(html: string): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES.today;
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  it("populated, with the lazy window", async () => {
+    const html = withBoard(board);
+    expect(html).toContain("Lazy window 10:00 to 18:00");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("no lazy window left, below freezing, and a long condition", async () => {
+    const html = withBoard({
+      ...board,
+      temperature_c: -3,
+      condition: "Thunderstorm",
+      lazy_window: null,
+      hours: board.hours.map((hour) => ({ ...hour, lazy: false })),
+    });
+    expect(html).toContain("No lazy window left today");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("values the forecast lacks, and no hourly bars", async () => {
+    const html = withBoard({
+      ...board,
+      temperature_c: null,
+      rain_pct: null,
+      wind_kmh: null,
+      hours: [],
+      lazy_window: null,
+    });
+    expect(html).toContain("Temperature unknown");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("empty: no forecast cached yet", async () => {
+    const html = withBoard(null);
+    expect(html).toContain("No forecast yet");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("loading and error states of Today do not show the board", () => {
+    expect(today(undefined)).not.toContain("weather-board");
+  });
+});
