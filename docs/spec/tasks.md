@@ -245,7 +245,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [x] T-024: Appeals — REQ-023 · Depends on: T-009, T-016 · Done when: tests for AC-023.1–AC-023.3; overrule rate on Score counts appeals; flag `appeals`.
 - [x] T-025: Onboarding and habit baseline — REQ-024 · Depends on: T-009 · Done when: tests for AC-024.1–AC-024.2; flag `onboarding`.
 - [x] T-026: Ranks, achievements and the heater bet — REQ-025, REQ-016 (AC-016.3) · Depends on: T-016 · Done when: tests for AC-025.1–AC-025.2, AC-016.3; flags `ranks`, `heater`.
-- [ ] T-027: Split-flap weather board — REQ-026 · Depends on: T-005 · Done when: component tests for AC-026.1–AC-026.2; flag `splitFlap`.
+- [x] T-027: Split-flap weather board — REQ-026 · Depends on: T-005 · Done when: component tests for AC-026.1–AC-026.2; flag `splitFlap`.
 - [ ] T-028: Voice capture through Gemma 4 audio — REQ-027 · Depends on: T-006, T-010 · Scope: llama.cpp client on 127.0.0.1; whisper.cpp fallback stated in the post · Done when: tests for AC-027.1–AC-027.3 on fixtures; a live voice note produces cards on the laptop; flag `voice`.
 
 ## Coverage check

@@ -253,6 +253,18 @@ export const betSchema = z.object({
   rescue: rescueSchema.optional(),
 });
 
+/** The split-flap weather board (flag `splitFlap`, REQ-026): now, and today's hours as bars. */
+export const weatherBoardSchema = z.object({
+  temperature_c: z.number().nullable(),
+  condition: z.string(),
+  rain_pct: z.number().nullable(),
+  wind_kmh: z.number().nullable(),
+  /** Today's daylight hours: how well the sky dries the line (0 to 1) and whether it is lazy. */
+  hours: z.array(z.object({ hour: z.number(), level: z.number().nullable(), lazy: z.boolean() })),
+  lazy_window: z.object({ from: z.string(), to: z.string() }).nullable(),
+});
+export type WeatherBoard = z.infer<typeof weatherBoardSchema>;
+
 export const todaySchema = z.object({
   now: z.string(),
   flags: flagsSchema,
@@ -271,6 +283,8 @@ export const todaySchema = z.object({
     .nullable(),
   /** Open-Meteo attribution, shown in the app (AC-014.6). */
   attribution: z.string(),
+  /** Only with the `splitFlap` flag on; null while no forecast is cached yet (REQ-026). */
+  weather_board: weatherBoardSchema.nullable().optional(),
   cards: z.array(cardSchema),
   open_bets: z.array(betSchema),
   due_bets: z.array(betSchema),

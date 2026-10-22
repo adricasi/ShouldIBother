@@ -39,6 +39,7 @@ import { backfillSavingsSnapshots, weekSavings } from "./ledger/savings.js";
 import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
+import { weatherBoardView } from "./ledger/weather-board.js";
 import { MULTIPART_OPTIONS, photoRoutes, readUploadedPhoto } from "./photos/routes.js";
 import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
@@ -231,6 +232,8 @@ export function createCore(deps: CoreDeps): Core {
         week: weekSavings(ledger),
         forecast: forecastStatus(deps),
         attribution: ATTRIBUTION,
+        // Only with the `splitFlap` flag on: the weather board reads the cached forecast (REQ-026).
+        ...(deps.flags.splitFlap ? { weather_board: weatherBoardView(ledger) } : {}),
         cards: listOpenCards(ledger),
         open_bets: listBetsWithStatus(ledger, "open"),
         due_bets: listDueBets(ledger),

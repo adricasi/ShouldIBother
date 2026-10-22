@@ -56,6 +56,11 @@ export interface WeatherClient {
   }): Promise<RecordedWeather>;
   /** When the newest usable forecast was fetched, without a network call (Today's forecast age). */
   latestForecastFetchedAt(): number | undefined;
+  /**
+   * The newest usable forecast read from the cache only, never from the network (the weather
+   * board on Today, REQ-026). Absent on a client that keeps no cache.
+   */
+  latestForecast?(): Forecast | undefined;
 }
 
 /** No forecast could be obtained (offline, timeout, bad answer, no recent cache). */

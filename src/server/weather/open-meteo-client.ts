@@ -189,6 +189,19 @@ export class OpenMeteoWeatherClient implements WeatherClient {
       : undefined;
   }
 
+  latestForecast(): Forecast | undefined {
+    const entry = this.readable(this.forecastKey(this.place()));
+    if (entry === undefined || this.now() - entry.fetchedAt >= FORECAST_MAX_AGE_MS) {
+      return undefined;
+    }
+    return {
+      fetchedAt: entry.fetchedAt,
+      hours: forecastHours(entry.table),
+      sunsetMsByDate: entry.sunsetMsByDate,
+      sunsetFallbackDates: entry.sunsetFallbackDates,
+    };
+  }
+
   async getForecast(request: {
     fromMs: number;
     hours: number;
