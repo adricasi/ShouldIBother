@@ -130,6 +130,7 @@ async function bookmakeWithPhoto(
     return;
   }
   const nowMs = deps.now();
+  const anchorMs = card.created_at;
   let hours: readonly ForecastHour[];
   try {
     hours = (
@@ -150,9 +151,10 @@ async function bookmakeWithPhoto(
     chore: choreType,
     label: card.input_text,
     nowMs,
+    anchorMs,
     ruleBand: ruleRow.band,
     ruleBandAt: (settleAtMs) =>
-      ruleBandOrFallback(choreType, hours, nowMs, settleAtMs, deps.rules, ruleRow.band),
+      ruleBandOrFallback(choreType, hours, anchorMs, settleAtMs, deps.rules, ruleRow.band),
     answers: parseAnswers(card.gemma_answers),
     readForecast: (hoursAhead) => Promise.resolve(forecastFrom(hours, nowMs, hoursAhead)),
     cardId,
@@ -175,7 +177,7 @@ async function bookmakeWithPhoto(
   }
 
   const band = bandOfName(output.band!);
-  const settleAt = settleAtOf(choreType, nowMs, output.settle_in_hours!);
+  const settleAt = settleAtOf(choreType, anchorMs, nowMs, output.settle_in_hours!);
   const table = bandTable(deps.rules);
   const reason = explained
     ? `${output.reason ?? ""} Differs from the rule: ${output.disagreement_reason!.trim()}`
@@ -199,7 +201,7 @@ async function bookmakeWithPhoto(
     const createdAt = deps.now();
     if (settleAt !== ruleRow.settle_at) {
       // The rule band is stored for the final settle window (AC-004.2), as for the first answer.
-      const rule = ruleQuoteAt(choreType, hours, nowMs, settleAt, deps.rules);
+      const rule = ruleQuoteAt(choreType, hours, anchorMs, settleAt, deps.rules);
       if (rule !== null) {
         deps.db
           .prepare(
