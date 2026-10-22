@@ -1,0 +1,4 @@
+# Verified false positives (reviewed by hand). Each entry is one exact finding fingerprint.
+# test/weather-client.test.ts: a fake "user:secret@" URL used to prove the weather client refuses
+# URLs with credentials (AC-014.7); replaced by "u:p@" in the next commit, but it stays in history.
+431faab96a977fa8d9a11c67d444b0360fa7e390:test/weather-client.test.ts:generic-api-key:268

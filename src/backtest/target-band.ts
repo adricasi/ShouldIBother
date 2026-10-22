@@ -10,6 +10,7 @@
  * influence a target.
  */
 
+import type { Band } from "../domain/bands.js";
 import {
   OUTCOME_CHORES,
   dewHours,
@@ -27,8 +28,8 @@ export const HOLDOUT_START_DATE = "2026-09-01";
 
 export const NEIGHBOUR_COUNT = 30;
 
-/** Ordinal band: 0 very unlikely ... 4 very likely. */
-export type BandIndex = 0 | 1 | 2 | 3 | 4;
+/** Ordinal band: 0 very unlikely ... 4 very likely (the app's `Band`). */
+export type BandIndex = Band;
 export const BAND_NAMES: Readonly<Record<BandIndex, string>> = {
   0: "very unlikely",
   1: "unlikely",

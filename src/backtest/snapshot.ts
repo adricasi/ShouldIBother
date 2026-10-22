@@ -20,9 +20,13 @@ import {
   type HourlyWeather,
 } from "../domain/outcomes.js";
 import {
+  DisallowedHostError,
+  assertAllowedUrl as assertAllowedHost,
+  roundCoordinate,
+} from "../domain/open-meteo.js";
+import {
   ALLOWED_HOSTS,
   ATTRIBUTION,
-  COORDINATE_DECIMALS,
   CORE_VARIABLES,
   DAILY_VARIABLE_SUNSET,
   LICENSE,
@@ -102,12 +106,7 @@ export class SnapshotCoverageError extends Error {
   }
 }
 
-export class DisallowedHostError extends Error {
-  constructor(host: string) {
-    super(`refusing to call host "${host}": not an allowed Open-Meteo host`);
-    this.name = "DisallowedHostError";
-  }
-}
+export { DisallowedHostError };
 
 export type FetchJson = (url: string) => Promise<unknown>;
 
@@ -142,11 +141,9 @@ export const fetchJsonWithTimeout: FetchJson = async (url) => {
   return await response.json();
 };
 
+/** The snapshot's allowlist: the three historical APIs (the forecast host is not among them). */
 export function assertAllowedUrl(url: string): void {
-  const parsed = new URL(url);
-  if (parsed.protocol !== "https:" || !ALLOWED_HOSTS.includes(parsed.hostname)) {
-    throw new DisallowedHostError(parsed.hostname);
-  }
+  assertAllowedHost(url, ALLOWED_HOSTS);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -213,11 +210,6 @@ export interface FetchSnapshotParams {
   readonly fetchedAt: string;
   /** Defaults to `SUM_VARIABLE_STAMP`; a parameter so tests can exercise both conventions. */
   readonly sumVariableStamp?: HourStamp;
-}
-
-function roundCoordinate(value: number): number {
-  const factor = 10 ** COORDINATE_DECIMALS;
-  return Math.round(value * factor) / factor;
 }
 
 /** One request per calendar month keeps responses small and the merge order fixed. */

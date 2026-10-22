@@ -6,8 +6,19 @@
  * All wall-clock times are Europe/Madrid. Instants are epoch milliseconds (UTC).
  */
 
-export const TIME_ZONE = "Europe/Madrid";
-export const HOUR_MS = 3_600_000;
+import { HOUR_MS, MADRID_TIME_ZONE, addDays, madridWallTimeToEpochMs } from "./time.js";
+
+// The Europe/Madrid helpers live in `./time.ts`, the one implementation; re-exported here so the
+// backtest and its tests keep their imports.
+export {
+  HOUR_MS,
+  addDays,
+  assertIsoDate,
+  dateRange,
+  madridDateOf,
+  madridWallTimeToEpochMs,
+} from "./time.js";
+export const TIME_ZONE = MADRID_TIME_ZONE;
 
 /** Chores that have an outcome label (listener `chore_type` values; `laundry_plan` has none). */
 export const OUTCOME_CHORES = [
@@ -25,8 +36,9 @@ export const WET_HOUR_MM = 0.2;
 const PLANTS_MAX_NET_DEFICIT_MM = 1.0;
 const PLANTS_FALLBACK_MIN_RAIN_MM = 2;
 const LINE_DRY_MIN_DRYING_SUM = 3.0;
-const DEW_MAX_SPREAD_C = 2;
-const DEW_HOURS_LIMIT = 3;
+/** Dew hour: temp - dew point at most this; the label needs fewer than `DEW_HOURS_LIMIT` of them. */
+export const DEW_MAX_SPREAD_C = 2;
+export const DEW_HOURS_LIMIT = 3;
 const AC_NIGHT_MIN_LIMIT_C = 23;
 const HEATER_MAX_TEMP_C = 18;
 const HEATER_SUNNY_MAX_TEMP_C = 15;
@@ -71,108 +83,6 @@ export class IncompleteWeatherError extends Error {
     super(message);
     this.name = "IncompleteWeatherError";
   }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Europe/Madrid time helpers (no dependencies; Intl has the tz database)
-// ---------------------------------------------------------------------------------------------
-
-const MADRID_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  timeZone: TIME_ZONE,
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
-
-function madridParts(epochMs: number): Record<string, number> {
-  const parts: Record<string, number> = {};
-  for (const part of MADRID_FORMAT.formatToParts(new Date(epochMs))) {
-    if (part.type !== "literal") {
-      parts[part.type] = Number(part.value);
-    }
-  }
-  return parts;
-}
-
-/** Madrid's offset from UTC at an instant, in milliseconds. */
-function madridOffsetMs(epochMs: number): number {
-  const p = madridParts(epochMs);
-  const wallAsUtc = Date.UTC(
-    p["year"] ?? 0,
-    (p["month"] ?? 1) - 1,
-    p["day"] ?? 1,
-    p["hour"] ?? 0,
-    p["minute"] ?? 0,
-    p["second"] ?? 0,
-  );
-  return wallAsUtc - Math.floor(epochMs / 1000) * 1000;
-}
-
-/** Throws unless `date` is a real calendar date written YYYY-MM-DD. */
-export function assertIsoDate(date: string): void {
-  parseDate(date);
-}
-
-function parseDate(date: string): { year: number; month: number; day: number } {
-  const match = DATE_PATTERN.exec(date);
-  if (match === null) {
-    throw new Error(`invalid date "${date}", expected YYYY-MM-DD`);
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const check = new Date(Date.UTC(year, month - 1, day));
-  if (
-    check.getUTCFullYear() !== year ||
-    check.getUTCMonth() !== month - 1 ||
-    check.getUTCDate() !== day
-  ) {
-    throw new Error(`invalid calendar date "${date}"`);
-  }
-  return { year, month, day };
-}
-
-/** Instant of a Madrid wall-clock time ("HH:MM") on a Madrid calendar date. */
-export function madridWallTimeToEpochMs(date: string, time: string): number {
-  const { year, month, day } = parseDate(date);
-  const timeMatch = TIME_PATTERN.exec(time);
-  if (timeMatch === null) {
-    throw new Error(`invalid time "${time}", expected HH:MM`);
-  }
-  const wallAsUtc = Date.UTC(year, month - 1, day, Number(timeMatch[1]), Number(timeMatch[2]));
-  const firstGuess = wallAsUtc - madridOffsetMs(wallAsUtc);
-  return wallAsUtc - madridOffsetMs(firstGuess);
-}
-
-/** Madrid calendar date (YYYY-MM-DD) of an instant. */
-export function madridDateOf(epochMs: number): string {
-  const p = madridParts(epochMs);
-  const year = String(p["year"]).padStart(4, "0");
-  const month = String(p["month"]).padStart(2, "0");
-  const day = String(p["day"]).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-/** Calendar arithmetic on YYYY-MM-DD strings (no time zone involved). */
-export function addDays(date: string, days: number): string {
-  const { year, month, day } = parseDate(date);
-  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
-}
-
-/** Inclusive list of dates from `start` to `end` (empty if end < start). */
-export function dateRange(start: string, end: string): string[] {
-  const dates: string[] = [];
-  for (let date = start; date <= end; date = addDays(date, 1)) {
-    dates.push(date);
-  }
-  return dates;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -304,23 +214,45 @@ export function isWetHour(precipitationMm: number): boolean {
   return precipitationMm >= WET_HOUR_MM;
 }
 
+/** Weights of the drying index; `config/rules.json` carries the same values (tested equal). */
+export interface DryingIndexWeights {
+  readonly windWeight: number;
+  readonly windCapKmh: number;
+  readonly humidityWeight: number;
+  readonly sunshineWeight: number;
+  readonly sunshineSecondsPerHour: number;
+}
+
+export const DRYING_INDEX_WEIGHTS: DryingIndexWeights = {
+  windWeight: 0.5,
+  windCapKmh: 30,
+  humidityWeight: 0.3,
+  sunshineWeight: 0.2,
+  sunshineSecondsPerHour: 3600,
+};
+
 /**
  * Drying index D for one hour: 0.5 * min(wind km/h, 30)/30 + 0.3 * (100 - RH)/100
- * + 0.2 * sunshine seconds/3600; a wet hour scores 0.
+ * + 0.2 * sunshine seconds/3600; a wet hour scores 0. The one implementation: the rule baseline
+ * (live odds) and the outcome labels both call it.
  */
-export function dryingIndex(hour: {
-  readonly precipitationMm: number;
-  readonly windSpeedKmh: number;
-  readonly relativeHumidityPct: number;
-  readonly sunshineSeconds: number;
-}): number {
-  if (isWetHour(hour.precipitationMm)) {
+export function dryingIndex(
+  hour: {
+    readonly precipitationMm: number;
+    readonly windSpeedKmh: number;
+    readonly relativeHumidityPct: number;
+    readonly sunshineSeconds: number;
+  },
+  weights: DryingIndexWeights = DRYING_INDEX_WEIGHTS,
+  wetHourMm: number = WET_HOUR_MM,
+): number {
+  if (hour.precipitationMm >= wetHourMm) {
     return 0;
   }
   return settle(
-    (0.5 * Math.min(hour.windSpeedKmh, 30)) / 30 +
-      (0.3 * (100 - hour.relativeHumidityPct)) / 100 +
-      (0.2 * hour.sunshineSeconds) / 3600,
+    (weights.windWeight * Math.min(hour.windSpeedKmh, weights.windCapKmh)) / weights.windCapKmh +
+      (weights.humidityWeight * (100 - hour.relativeHumidityPct)) / 100 +
+      (weights.sunshineWeight * hour.sunshineSeconds) / weights.sunshineSecondsPerHour,
   );
 }
 
@@ -339,13 +271,20 @@ function dryingIndices(hours: readonly HourlyWeather[]): number[] {
   );
 }
 
-/** Number of hours with temp - dew point <= 2 C (dew risk for laundry left out). */
+/** One hour is a dew hour when temp - dew point <= 2 C (dew risk for laundry left out). */
+export function isDewHour(
+  temperatureC: number,
+  dewPointC: number,
+  maxSpreadC: number = DEW_MAX_SPREAD_C,
+): boolean {
+  return settle(temperatureC - dewPointC) <= maxSpreadC;
+}
+
+/** Number of dew hours in the window. */
 export function dewHours(hours: readonly HourlyWeather[]): number {
   const temperature = requireField(hours, "temperatureC");
   const dewPoint = requireField(hours, "dewPointC");
-  return temperature.filter(
-    (value, index) => settle(value - (dewPoint[index] ?? 0)) <= DEW_MAX_SPREAD_C,
-  ).length;
+  return temperature.filter((value, index) => isDewHour(value, dewPoint[index] ?? 0)).length;
 }
 
 // ---------------------------------------------------------------------------------------------

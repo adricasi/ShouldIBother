@@ -79,3 +79,40 @@ describe("loadHousehold", () => {
     }
   });
 });
+
+describe("household location (AC-014.1)", () => {
+  function householdIn(content: unknown): ReturnType<typeof loadHousehold> {
+    const dir = mkdtempSync(join(tmpdir(), "sib-household-"));
+    writeFileSync(join(dir, "household.example.json"), JSON.stringify(content));
+    try {
+      return loadHousehold(`${dir}/`);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  }
+  const base = { airConditioning: false, heaterThisSeason: false, dryer: "heat-pump" };
+
+  it("reads the coordinates when given, and none when the file has none", () => {
+    expect(
+      householdIn({ ...base, location: { latitude: 41.4, longitude: 2.16 } }).location,
+    ).toEqual({
+      latitude: 41.4,
+      longitude: 2.16,
+    });
+    expect(householdIn(base).location).toBeUndefined();
+  });
+
+  it("the committed example carries neighbourhood-level coordinates", () => {
+    expect(readConfig("household.example.json")["location"]).toEqual({
+      latitude: 41.4,
+      longitude: 2.16,
+    });
+  });
+
+  it("refuses coordinates outside the globe or with extra keys", () => {
+    expect(() => householdIn({ ...base, location: { latitude: 95, longitude: 2 } })).toThrow();
+    expect(() =>
+      householdIn({ ...base, location: { latitude: 41, longitude: 2, street: "x" } }),
+    ).toThrow();
+  });
+});

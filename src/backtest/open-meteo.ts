@@ -7,39 +7,45 @@
  * `_previous_day1` variable suffix, the `unixtime` time format, which variables each API
  * offers for Gràcia from April 2026, whether `end_date` beyond the archive's last day is
  * accepted (nulls) or rejected, the `models` parameter for Previous Runs, and the hour-stamp
- * convention of sum variables (`SUM_VARIABLE_STAMP` below).
+ * convention of sum variables (`SUM_VARIABLE_STAMP` in `src/domain/open-meteo.ts`).
  *
- * Hosts match the weather client allowlist in design.md (AC-014.7).
+ * Hosts come from `src/domain/open-meteo.ts`, shared with the weather client's allowlist
+ * (design.md, AC-014.7).
  */
 
-export const ATTRIBUTION =
-  "Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0.";
-export const LICENSE = "CC BY 4.0";
+import { OPEN_METEO_HOSTS, SUM_VARIABLE_NAMES } from "../domain/open-meteo.js";
+
+export { ATTRIBUTION, COORDINATE_DECIMALS, LICENSE } from "../domain/open-meteo.js";
 
 export const OPEN_METEO_SOURCES = {
   previousRunsDay1: {
-    baseUrl: "https://previous-runs-api.open-meteo.com/v1/forecast",
+    baseUrl: `https://${OPEN_METEO_HOSTS.previousRuns}/v1/forecast`,
     /** Variable name = base name + this suffix (day-1 lead forecast). */
     variableSuffix: "_previous_day1",
     includesDaily: false,
   },
   historicalForecast: {
-    baseUrl: "https://historical-forecast-api.open-meteo.com/v1/forecast",
+    baseUrl: `https://${OPEN_METEO_HOSTS.historicalForecast}/v1/forecast`,
     variableSuffix: "",
     includesDaily: false,
   },
   archive: {
-    baseUrl: "https://archive-api.open-meteo.com/v1/archive",
+    baseUrl: `https://${OPEN_METEO_HOSTS.archive}/v1/archive`,
     variableSuffix: "",
     includesDaily: true,
   },
 } as const;
 export type SnapshotSourceKey = keyof typeof OPEN_METEO_SOURCES;
 
+/**
+ * The snapshot calls the three historical APIs only; the live forecast host
+ * (`api.open-meteo.com`) belongs to the weather client's allowlist, defined next to these names
+ * in `src/domain/open-meteo.ts`.
+ */
 export const ALLOWED_HOSTS: readonly string[] = [
-  "previous-runs-api.open-meteo.com",
-  "historical-forecast-api.open-meteo.com",
-  "archive-api.open-meteo.com",
+  OPEN_METEO_HOSTS.previousRuns,
+  OPEN_METEO_HOSTS.historicalForecast,
+  OPEN_METEO_HOSTS.archive,
 ];
 
 /** Hourly variables, by Open-Meteo name. */
@@ -121,29 +127,9 @@ export const RESPONSE = { hourly: "hourly", daily: "daily", time: "time" } as co
  */
 export const DAY1_LEAD_HOURS = 24;
 
-/** Coordinates are rounded to 2 decimals before any request (NFR-002, AC-014.1). */
-export const COORDINATE_DECIMALS = 2;
+export { SUM_VARIABLE_STAMP, type HourStamp } from "../domain/open-meteo.js";
 
-/** Which instant a hourly value is stamped with. */
-export type HourStamp = "hour_start" | "hour_end";
-
-/**
- * Sum-type variables (precipitation, sunshine duration, ET0) may be stamped with the END of the
- * hour they cover (the value at 10:00 being the sum over 09:00-10:00) instead of its start.
- * Instantaneous variables (temperature, humidity, wind, ...) are not affected.
- *
- * UNVERIFIED: T-031 must check this against the real API and change this one switch if needed.
- * "hour_start" keeps every value on the hour it is stamped with; "hour_end" shifts the sum
- * variables back one hour when the snapshot is built, so the snapshot always stores hour-start
- * aligned data. The convention used is recorded in the snapshot.
- */
-export const SUM_VARIABLE_STAMP: HourStamp = "hour_start";
-
-export const SUM_VARIABLES: readonly WeatherVariable[] = [
-  "precipitation",
-  "sunshine_duration",
-  "et0_fao_evapotranspiration",
-];
+export const SUM_VARIABLES: readonly WeatherVariable[] = SUM_VARIABLE_NAMES;
 
 /**
  * Variables every source must actually deliver (non-null somewhere). A source that returns one

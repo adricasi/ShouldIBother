@@ -9,8 +9,11 @@ export interface QuickChip {
   readonly label: string;
 }
 
-/** The chips of this build; the listener and more chores arrive with T-005 and T-006. */
-export const QUICK_CHIPS: readonly QuickChip[] = [{ choreType: "plants", label: "Water plants" }];
+/** The chips for the Must chores; the listener (T-006) covers everything else. */
+export const QUICK_CHIPS: readonly QuickChip[] = [
+  { choreType: "plants", label: "Water plants" },
+  { choreType: "laundry_line", label: "Line-dry today" },
+];
 
 export interface TodayScreenProps {
   readonly today: Today | undefined;
@@ -48,6 +51,27 @@ function CardSlip({
   onDoIt: (cardId: number, quoteId: number) => void;
 }) {
   const { quote } = card;
+  if (card.kind === "alert") {
+    // AC-012.1: a "Do it now" alert has a reason and no bet action.
+    return (
+      <article className="slip alert" aria-label={`${card.title}, do it now`}>
+        <p className="eyebrow">Lazy Bookie · Safety</p>
+        <h3>Do it now: {card.title}</h3>
+        <p role="alert">{card.alert_reason}</p>
+        <p className="meta">The weather is too risky to bet on this one.</p>
+      </article>
+    );
+  }
+  if (quote === null) {
+    // AC-014.4, AC-016.4, AC-016.5: no odds, and no bet action, with the reason in words.
+    return (
+      <article className="slip" aria-label={`${card.title}, no odds`}>
+        <p className="eyebrow">Lazy Bookie · No bet</p>
+        <h3>{card.title}</h3>
+        <p>{card.notice}</p>
+      </article>
+    );
+  }
   return (
     <article
       className="slip"
@@ -130,6 +154,13 @@ export function TodayScreen(props: TodayScreenProps) {
             </p>
           )}
         </header>
+
+        {today?.forecast == null ? null : (
+          <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
+            {today.forecast.age_label}
+            {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
+          </p>
+        )}
 
         {notice === undefined ? null : (
           <p
@@ -221,6 +252,7 @@ export function TodayScreen(props: TodayScreenProps) {
             </section>
           </>
         )}
+        {today === undefined ? null : <p className="meta attribution">{today.attribution}</p>}
       </main>
       <Nav flags={today?.flags ?? {}} />
     </>

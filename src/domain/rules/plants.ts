@@ -2,19 +2,15 @@ import type { Band } from "../bands.js";
 import { hoursInWindow, windowIsCovered, type ForecastHour } from "../weather.js";
 
 import type { PlantsRow, RulesConfig } from "./schema.js";
+import { allValues, presentValues, roundTo } from "./window.js";
 
 /** What the plants rule saw in its window; shown in the rule's reason. */
 export interface PlantsFacts {
   readonly rainMm: number;
-  readonly maxHourlyProbabilityPct: number;
+  /** Null when the forecast has no probability for the window: that condition is then skipped. */
+  readonly maxHourlyProbabilityPct: number | null;
   readonly maxTempC: number;
   readonly hours: number;
-}
-
-/** Hourly values come in 0.1 mm steps; summing floats must not turn 5.0 into 4.999999. */
-function roundTo(value: number, decimals: number): number {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
 }
 
 /**
@@ -30,13 +26,19 @@ export function plantsFacts(
     return null;
   }
   const hours = hoursInWindow(forecast, fromMs, toMs);
+  const rain = allValues(hours, "precipitationMm");
+  const temperature = allValues(hours, "temperatureC");
+  if (rain === null || temperature === null) {
+    return null; // the rain total or the high is unknown: no false odds
+  }
+  const probabilities = presentValues(hours, "precipitationProbabilityPct");
   return {
     rainMm: roundTo(
-      hours.reduce((sum, hour) => sum + hour.precipitationMm, 0),
+      rain.reduce((sum, value) => sum + value, 0),
       4,
     ),
-    maxHourlyProbabilityPct: Math.max(...hours.map((hour) => hour.precipitationProbabilityPct)),
-    maxTempC: Math.max(...hours.map((hour) => hour.temperatureC)),
+    maxHourlyProbabilityPct: probabilities.length === 0 ? null : Math.max(...probabilities),
+    maxTempC: Math.max(...temperature),
     hours: hours.length,
   };
 }
@@ -54,6 +56,7 @@ function rowMatches(row: PlantsRow, facts: PlantsFacts): boolean {
     const anyHolds =
       (rainMmAtLeast !== undefined && facts.rainMm >= rainMmAtLeast) ||
       (maxHourlyProbabilityPctAtLeast !== undefined &&
+        facts.maxHourlyProbabilityPct !== null &&
         facts.maxHourlyProbabilityPct >= maxHourlyProbabilityPctAtLeast);
     if (!anyHolds) {
       return false;
