@@ -59,6 +59,8 @@ export function buildExport(db: Db, nowMs: number) {
       "SELECT status, profile, updated_at FROM household_profile WHERE id = 1",
     )
     .get();
+  // Unlocked achievements (REQ-025): the key is there only when there are rows, like cash_outs.
+  const achievements = all<Record<string, unknown>>("SELECT * FROM achievements ORDER BY id");
   return {
     version: EXPORT_VERSION,
     exported_at: iso(nowMs),
@@ -82,6 +84,7 @@ export function buildExport(db: Db, nowMs: number) {
             updated_at: iso(profile.updated_at),
           },
         }),
+    ...(achievements.length === 0 ? {} : { achievements }),
     answers: all<ProgressRow>("SELECT * FROM settle_progress ORDER BY bet_id").map((progress) => ({
       bet_id: progress.bet_id,
       evidence: progress.evidence,

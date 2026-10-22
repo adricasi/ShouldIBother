@@ -1,4 +1,4 @@
-import type { BetSettle, Receipt, SavingsTotals } from "./api.js";
+import type { Achievement, BetSettle, Rank, Receipt, SavingsTotals, Score } from "./api.js";
 
 /** Shared fixtures of the screen tests: synthetic values only. */
 export const emptyTotals: SavingsTotals = {
@@ -86,3 +86,63 @@ export const lossReceipt: Receipt = {
   message: "The weather did not cover this one, so the chore was still on.",
   saved: null,
 };
+
+const emptyBands: Score["calibration"]["gemma"] = [
+  ["very unlikely", 15],
+  ["unlikely", 35],
+  ["toss-up", 50],
+  ["likely", 70],
+  ["very likely", 85],
+].map(([name, predicted], band) => ({
+  band,
+  name: String(name),
+  predicted_pct: Number(predicted),
+  n: 0,
+  wins: 0,
+  actual_pct: null,
+  too_few: true,
+}));
+
+/** A Score with nothing settled, appeals off and no rank (the `ranks` flag off). */
+export const emptyScore: Score = {
+  now: "2026-10-22T08:00:00.000Z",
+  points: { total: 0 },
+  savings: emptyTotals,
+  judge: { appeals: "off" },
+  calibration: {
+    settled: 0,
+    gemma: emptyBands,
+    rule: emptyBands,
+    lucky_wins: { wins_labelled: 0, lucky_wins: 0, share: null, share_pct: null },
+    fake_model_bets: 0,
+  },
+};
+
+export const koala: Rank = {
+  id: "koala",
+  name: "Koala",
+  min_points: 200,
+  next: { name: "Three-toed sloth", min_points: 600, points_to_go: 150 },
+};
+
+export const lockedAchievements: Achievement[] = [
+  { id: "first_nap", name: "First nap", condition: "Win your first bet", unlocked_at: null },
+  {
+    id: "cloud_whisperer",
+    name: "Cloud whisperer",
+    condition: "Win a bet at odds of 40% or less",
+    unlocked_at: null,
+  },
+  {
+    id: "sky_freeloader",
+    name: "Sky freeloader",
+    condition: "Win three bets in a row",
+    unlocked_at: null,
+  },
+  {
+    id: "knows_when_to_fold",
+    name: "Knows when to fold",
+    condition: "Cash out for the first time",
+    unlocked_at: null,
+  },
+];
