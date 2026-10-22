@@ -1,11 +1,13 @@
 import type { Writable } from "node:stream";
 
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify";
 
 import type { Allowlist } from "./auth/allowlist.js";
 import { frameworkErrorHandler, registerAuth } from "./auth/guard.js";
 import { FailureLimiter } from "./auth/rate-limit.js";
 import type { AuthStore } from "./auth/store.js";
+import type { Core } from "./core.js";
 import { FLAG_NAMES, type FlagName, type Flags } from "./flags.js";
 
 /** Route plugins of the flagged features, keyed by their flag. */
@@ -25,6 +27,10 @@ export interface AppOptions {
   readonly auth: AuthOptions;
   readonly flags: Flags;
   readonly features?: FeaturePlugins;
+  /** The core loop (cards, bets, settlement). Omitted by tests that only exercise the access control. */
+  readonly core?: Core;
+  /** Folder with the built SPA (`dist/web`); when set, its files are served behind the same guard. */
+  readonly webRoot?: string;
   readonly logger?: boolean;
   /** Log destination; defaults to stdout. Used by tests to capture log lines. */
   readonly logStream?: Writable;
@@ -97,11 +103,24 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get("/healthz", () => ({ status: "ok" }));
 
+  if (options.core !== undefined) {
+    const { core } = options;
+    await app.register(core.plugin);
+    app.addHook("onClose", () => {
+      core.scheduler.stop();
+    });
+  }
+
   for (const flag of FLAG_NAMES) {
     const plugin = options.features?.[flag];
     if (plugin !== undefined && options.flags[flag]) {
       await app.register(plugin);
     }
+  }
+
+  if (options.webRoot !== undefined) {
+    // Registered last and without a wildcard: only files that exist at start-up get a route.
+    await app.register(fastifyStatic, { root: options.webRoot, wildcard: false });
   }
   return app;
 }

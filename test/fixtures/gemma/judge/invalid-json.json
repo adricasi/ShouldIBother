@@ -1,0 +1,5 @@
+{
+  "description": "Hand-written synthetic judge answer that is not JSON.",
+  "model": "fake-gemma",
+  "content": "The plants are probably fine, I would say."
+}
