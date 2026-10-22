@@ -1,0 +1,24 @@
+{
+  "description": "Backtest pipeline fixture: calls get_forecast, then answers unlikely with a settle time inside every chore's bounds. Synthetic; not Gemma.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 24
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "unlikely",
+        "reason": "Not much rain, so doing nothing probably will not work.",
+        "settle_in_hours": 14
+      }
+    }
+  ]
+}

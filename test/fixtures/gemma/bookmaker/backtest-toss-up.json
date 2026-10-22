@@ -1,0 +1,24 @@
+{
+  "description": "Backtest pipeline fixture: calls get_forecast, then answers toss-up with a settle time inside every chore's bounds. Synthetic; not Gemma.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 24
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "The forecast is mixed, so it could go either way.",
+        "settle_in_hours": 14
+      }
+    }
+  ]
+}

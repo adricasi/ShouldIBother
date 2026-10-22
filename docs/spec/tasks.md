@@ -174,7 +174,7 @@ Walking skeleton = paired phone → quick chip "Water plants" → rule odds → 
   - Scope: run the backtest evaluation on the Sep–Oct hold-out for base and fine-tuned E4B; band calibration with N, Brier score, tool-call miss rate; write `docs/results/finetune.md`.
   - Done when: report committed with model digests, prompt versions and seeds; re-run reproduces the numbers (NFR-012); decision recorded on whether `finetunedBookmaker` is on for the live app.
 
-- [ ] T-015: Backtest harness
+- [x] T-015: Backtest harness
   - Who / when: Agent W2 · Fri AM (branches from `main`); merged Fri PM; live run in T-019
   - Requirements: REQ-018 (AC-018.1–AC-018.4), REQ-019 (AC-019.3 harness); NFR-005, NFR-012
   - Depends on: T-005, T-006, T-011
