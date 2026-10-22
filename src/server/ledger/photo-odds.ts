@@ -1,6 +1,7 @@
+import type { Db } from "../db.js";
 import { oddsOfBand } from "../../domain/bands.js";
 import { isChoreType, type ChoreType } from "../../domain/chores.js";
-import { bandTable } from "../../domain/rules/index.js";
+import { bandTable, safetyAlert } from "../../domain/rules/index.js";
 import type { ForecastHour } from "../../domain/weather.js";
 import {
   bandOfName,
@@ -10,10 +11,10 @@ import {
   type BookmakerInput,
 } from "../gemma/bookmaker.js";
 import { runInspector, type Observation } from "../gemma/inspector.js";
-import type { JobFailure } from "../gemma/runner.js";
+import { JobQueueFullError, type JobFailure } from "../gemma/runner.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
-import { ruleBandOrFallback, ruleQuoteAt } from "./chore-rules.js";
+import { ruleBandOrFallback, ruleQuoteAt, ruleWindowAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import {
   FORECAST_HOURS,
@@ -21,28 +22,51 @@ import {
   forecastFrom,
   hasActiveBet,
   parseAnswers,
-} from "./gemma-cards.js";
+} from "./forecast.js";
+import { turnIntoAlert } from "./gemma-cards.js";
+import { inspectorRead } from "./photo-view.js";
 import type { PhotoRow } from "./photos.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 
 /** Stored in `cards.photo_failure` besides the runner's failure codes. */
-export type PhotoFailure = JobFailure | "weather" | "restart" | "odds_kept" | "file";
+export type PhotoFailure =
+  JobFailure | "weather" | "restart" | "odds_kept" | "file" | "busy" | "superseded";
 
 type InspectDeps = LedgerDeps;
 
+/** SQL that is true while `?` (a photo id) is still the photo of the card being updated. */
+const PHOTO_IS_CURRENT = "EXISTS (SELECT 1 FROM photos WHERE id = ? AND card_id = cards.id)";
+
+/** True while `photoId` is still the photo of a weather card that is being inspected. */
+function photoIsCurrent(db: Pick<Db, "prepare">, cardId: number, photoId: string): boolean {
+  return (
+    db
+      .prepare<[number, string], { id: number }>(
+        `SELECT id FROM cards
+         WHERE id = ? AND kind = 'weather' AND photo_state = 'inspecting' AND ${PHOTO_IS_CURRENT}`,
+      )
+      .get(cardId, photoId) !== undefined
+  );
+}
+
+/**
+ * Records where the inspection ended, but only while the job's own photo is still the card's
+ * photo and still being inspected. A photo deleted or replaced meanwhile makes the job stale: its
+ * result is dropped, and a newer photo's state is never touched.
+ */
 function setPhotoState(
   deps: Pick<LedgerDeps, "db">,
   cardId: number,
+  photoId: string,
   state: "seen" | "unsure" | "failed",
   failure: PhotoFailure | null,
 ): void {
-  // Only while the photo is still being inspected: a deleted photo reset the state to NULL.
   deps.db
     .prepare(
       `UPDATE cards SET photo_state = ?, photo_failure = ?
-       WHERE id = ? AND photo_state = 'inspecting'`,
+       WHERE id = ? AND photo_state = 'inspecting' AND ${PHOTO_IS_CURRENT}`,
     )
-    .run(state, failure, cardId);
+    .run(state, failure, cardId, photoId);
 }
 
 /**
@@ -56,8 +80,16 @@ export function startInspection(deps: InspectDeps, cardId: number, photoId: stri
     .run(cardId);
   deps.background.track(
     inspectPhoto(deps, cardId, photoId).catch((error: unknown) => {
-      // Never leave a card inspecting: the odds stay as they were, then let the caller log it.
-      setPhotoState(deps, cardId, "failed", "invalid");
+      // Never leave a card inspecting, and keep what the inspector already read: the odds stay as
+      // they were. The caller logs the real error.
+      const read = inspectorRead(deps.db, photoId);
+      setPhotoState(
+        deps,
+        cardId,
+        photoId,
+        read?.status === "ok" ? "seen" : read?.status === "unsure" ? "unsure" : "failed",
+        "internal",
+      );
       throw error;
     }),
   );
@@ -84,26 +116,39 @@ async function inspectPhoto(deps: InspectDeps, cardId: number, photoId: string):
   try {
     image = deps.photos.read(photo.file);
   } catch {
-    setPhotoState(deps, cardId, "failed", "file");
+    setPhotoState(deps, cardId, photoId, "failed", "file");
     return;
   }
 
-  const inspected = await runInspector(deps.gemma, {
-    chore: choreType,
-    image,
-    width: photo.width,
-    height: photo.height,
-    cardId,
-    photoId,
-    enqueuedAt,
-  });
+  let inspected;
+  try {
+    inspected = await runInspector(deps.gemma, {
+      chore: choreType,
+      image,
+      width: photo.width,
+      height: photo.height,
+      cardId,
+      photoId,
+      enqueuedAt,
+    });
+  } catch (error) {
+    if (error instanceof JobQueueFullError) {
+      setPhotoState(deps, cardId, photoId, "failed", "busy");
+      return;
+    }
+    throw error;
+  }
+  if (!photoIsCurrent(deps.db, cardId, photoId)) {
+    // Deleted or replaced while Gemma looked: nothing from this job is used.
+    return;
+  }
   if (!inspected.ok) {
-    setPhotoState(deps, cardId, "failed", inspected.failure);
+    setPhotoState(deps, cardId, photoId, "failed", inspected.failure);
     return;
   }
   if (inspected.output.status === "unsure") {
     // AC-005.4: the odds without the photo stay; the question is shown with the card.
-    setPhotoState(deps, cardId, "unsure", null);
+    setPhotoState(deps, cardId, photoId, "unsure", null);
     return;
   }
   await bookmakeWithPhoto(deps, card, choreType, photoId, inspected.output.observations ?? [], {
@@ -126,7 +171,7 @@ async function bookmakeWithPhoto(
     )
     .get(cardId);
   if (ruleRow === undefined) {
-    setPhotoState(deps, cardId, "seen", "odds_kept");
+    setPhotoState(deps, cardId, photoId, "seen", "odds_kept");
     return;
   }
   const nowMs = deps.now();
@@ -142,7 +187,7 @@ async function bookmakeWithPhoto(
     ).hours;
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
-      setPhotoState(deps, cardId, "seen", "weather");
+      setPhotoState(deps, cardId, photoId, "seen", "weather");
       return;
     }
     throw error;
@@ -151,6 +196,7 @@ async function bookmakeWithPhoto(
     chore: choreType,
     label: card.input_text,
     nowMs,
+    // Settle bounds and rule windows hang on the card's creation time, as for the first answer.
     anchorMs,
     ruleBand: ruleRow.band,
     ruleBandAt: (settleAtMs) =>
@@ -162,9 +208,18 @@ async function bookmakeWithPhoto(
     photoId,
     enqueuedAt: options.enqueuedAt,
   };
-  const result = await runBookmaker(deps.gemma, input);
+  let result;
+  try {
+    result = await runBookmaker(deps.gemma, input);
+  } catch (error) {
+    if (error instanceof JobQueueFullError) {
+      setPhotoState(deps, cardId, photoId, "seen", "busy");
+      return;
+    }
+    throw error;
+  }
   if (!result.ok) {
-    setPhotoState(deps, cardId, "seen", result.failure);
+    setPhotoState(deps, cardId, photoId, "seen", result.failure);
     return;
   }
   const { output } = result;
@@ -172,7 +227,7 @@ async function bookmakeWithPhoto(
   const farFromRule = (distanceFromRule(input, output) ?? 0) >= 2;
   if (output.status !== "ok" || (farFromRule && !explained)) {
     // A question or an unexplained disagreement: keep the odds without the photo (AC-005.4).
-    setPhotoState(deps, cardId, "seen", "odds_kept");
+    setPhotoState(deps, cardId, photoId, "seen", "odds_kept");
     return;
   }
 
@@ -182,20 +237,24 @@ async function bookmakeWithPhoto(
   const reason = explained
     ? `${output.reason ?? ""} Differs from the rule: ${output.disagreement_reason!.trim()}`
     : (output.reason ?? "");
+  // The fixed backstop also covers the window the answer settles on (AC-012.1), as for the first
+  // answer; decided inside the transaction below, once the photo is known to be current.
+  const finalWindow = ruleWindowAt(choreType, anchorMs, settleAt);
+  const alert = safetyAlert(hours, finalWindow.fromMs, finalWindow.toMs, deps.rules);
+
   deps.db.transaction((): void => {
-    const stillThere = deps.db
-      .prepare<[number, string], { id: number }>(
-        `SELECT c.id FROM cards c JOIN photos p ON p.card_id = c.id
-         WHERE c.id = ? AND p.id = ? AND c.photo_state = 'inspecting'`,
-      )
-      .get(cardId, photoId);
-    if (stillThere === undefined || hasActiveBet(deps, cardId)) {
-      // The photo was deleted meanwhile, or a bet locked the odds the person saw (AC-006.2).
-      deps.db
-        .prepare(
-          "UPDATE cards SET photo_state = 'seen', photo_failure = 'odds_kept' WHERE id = ? AND photo_state = 'inspecting'",
-        )
-        .run(cardId);
+    if (!photoIsCurrent(deps.db, cardId, photoId)) {
+      // The photo was deleted or replaced meanwhile: this job is stale, its answer is dropped.
+      return;
+    }
+    if (hasActiveBet(deps, cardId)) {
+      // A bet locked the odds the person saw: a late answer does not touch it (AC-006.2).
+      setPhotoState(deps, cardId, photoId, "seen", "superseded");
+      return;
+    }
+    if (alert !== null) {
+      turnIntoAlert(deps, cardId, alert.reason);
+      deps.db.prepare("UPDATE cards SET photo_state = 'seen' WHERE id = ?").run(cardId);
       return;
     }
     const createdAt = deps.now();
@@ -228,9 +287,7 @@ async function bookmakeWithPhoto(
         createdAt,
       );
     deps.db
-      .prepare(
-        "UPDATE cards SET photo_state = 'seen', photo_failure = NULL WHERE id = ? AND photo_state = 'inspecting'",
-      )
+      .prepare("UPDATE cards SET photo_state = 'seen', photo_failure = NULL WHERE id = ?")
       .run(cardId);
   })();
 }

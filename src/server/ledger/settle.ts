@@ -13,7 +13,7 @@ import { HttpError } from "../problem.js";
 
 import { markDueBets } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
-import { addAfterPhoto, checkpointAfterDelete, type PhotoRow } from "./photos.js";
+import { addAfterPhoto, type PhotoRow } from "./photos.js";
 import { receiptOf, type Receipt } from "./receipt.js";
 import { collectRecordedWeather } from "./recorded-weather.js";
 import type { BetRow, CardRow, ProgressRow, SettlementRow } from "./rows.js";
@@ -66,7 +66,11 @@ export class Settler {
       throw new HttpError(400, "Unknown answer");
     }
     this.assertCanAnswer(loaded.bet);
-    this.persistAnswer(loaded, { evidence: "tap", answerId });
+    this.deps.db
+      .transaction(() => {
+        this.writeAnswer(loaded, { evidence: "tap", answerId });
+      })
+      .immediate();
     return this.judge(loaded.bet.id, true);
   }
 
@@ -77,16 +81,10 @@ export class Settler {
       throw new HttpError(409, "Only bets on doing nothing take an answer");
     }
     this.assertCanAnswer(loaded.bet);
-    const photo = await addAfterPhoto(this.deps, loaded.bet.id, bytes);
-    try {
-      this.persistAnswer(loaded, { evidence: "photo", photo });
-    } catch (error) {
-      // The answer was not stored: nothing may keep the photo around.
-      this.deps.db.prepare("DELETE FROM photos WHERE id = ?").run(photo.id);
-      this.deps.photos.remove(photo.file);
-      checkpointAfterDelete(this.deps.db);
-      throw error;
-    }
+    // The photo row and the answer are stored in one transaction (see `addAfterPhoto`).
+    await addAfterPhoto(this.deps, loaded.bet.id, bytes, (photo) => {
+      this.writeAnswer(loaded, { evidence: "photo", photo });
+    });
     return this.judge(loaded.bet.id, true);
   }
 
@@ -236,8 +234,11 @@ export class Settler {
     this.assertGemmaFree();
   }
 
-  /** Stores the answer before the judge is called, so an offline Gemma loses nothing (AC-008.8). */
-  private persistAnswer(
+  /**
+   * Stores the answer before the judge is called, so an offline Gemma loses nothing (AC-008.8).
+   * Runs inside the caller's transaction.
+   */
+  private writeAnswer(
     loaded: Loaded,
     answer:
       | { readonly evidence: "tap"; readonly answerId: string }
@@ -250,7 +251,7 @@ export class Settler {
          ORDER BY received_at DESC, rowid DESC LIMIT 1`,
       )
       .get(loaded.card.id);
-    db.transaction(() => {
+    {
       ensureProgress(db, loaded.bet.id);
       const stored = db
         .prepare(
@@ -269,7 +270,7 @@ export class Settler {
       if (stored !== 1) {
         throw new HttpError(409, "Your answer is already saved");
       }
-    })();
+    }
   }
 
   /** Runs the judge on one bet unless another call has it; `user` calls fail loudly when busy. */

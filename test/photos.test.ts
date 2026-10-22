@@ -1,12 +1,14 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { crc32 } from "node:zlib";
 import { join } from "node:path";
 
 import sharp from "sharp";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PHOTO_ID } from "../src/server/photos/store.js";
 import { UNSUPPORTED_PHOTO_MESSAGE } from "../src/server/photos/process.js";
 
+import { sweepOrphanPhotos } from "../src/server/ledger/photos.js";
 import { createCoreHarness, pair, uploadPhoto, type CoreHarness } from "./core-helpers.js";
 import { LOCAL_HOST } from "./helpers.js";
 import { PLANTED_METADATA, syntheticPhoto } from "./support/photos.js";
@@ -95,9 +97,9 @@ describe("photo store", () => {
     expect(png.statusCode).toBe(201);
     expect(png.json<Uploaded>().photo).toMatchObject({ width: 300, height: 200 });
     await harness.idle();
-    expect((await sharp(join(harness.photos.dir, photoFiles()[0]!)).metadata()).format).toBe(
-      "jpeg",
-    );
+    expect(
+      (await sharp(readFileSync(join(harness.photos.dir, photoFiles()[0]!))).metadata()).format,
+    ).toBe("jpeg");
     const webp = await uploadPhoto(
       harness,
       cardId,
@@ -107,7 +109,9 @@ describe("photo store", () => {
     expect(webp.statusCode).toBe(201);
     expect(webp.json<Uploaded>().photo).toMatchObject({ width: 1024, height: 614 });
     for (const file of photoFiles()) {
-      expect((await sharp(join(harness.photos.dir, file)).metadata()).format).toBe("jpeg");
+      expect((await sharp(readFileSync(join(harness.photos.dir, file))).metadata()).format).toBe(
+        "jpeg",
+      );
     }
   });
 
@@ -266,5 +270,190 @@ describe("serving photos", () => {
     });
     expect(response.statusCode).toBe(421);
     expect(LOCAL_HOST).not.toBe("evil.example");
+  });
+});
+
+/** A PNG header that claims `width` x `height` pixels, followed by almost no data. */
+function pngClaiming(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01])),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+describe("photo input hardening (S7)", () => {
+  it("AC-005.6: an SVG, a PDF and a script are refused by their first bytes, never decoded", async () => {
+    await setup();
+    const cardId = await newCard();
+    for (const text of [
+      '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"/>',
+      "%PDF-1.7 not a picture at all",
+      "#!/bin/sh\necho not a picture either",
+    ]) {
+      const response = await uploadPhoto(harness, cardId, Buffer.from(text.padEnd(64, " ")), {
+        fileName: "x.jpg",
+        contentType: "image/jpeg",
+      });
+      expect(response.statusCode).toBe(415);
+    }
+    // Behind a JPEG signature the bytes still have to be a JPEG.
+    const disguised = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'.padEnd(64, " ")),
+    ]);
+    expect((await uploadPhoto(harness, cardId, disguised)).statusCode).toBe(415);
+    expect(photoFiles()).toEqual([]);
+  });
+
+  it("AC-005.6: GIF and TIFF are blocked in the decoder itself, not only by the signature check", async () => {
+    const { processPhoto } = await import("../src/server/photos/process.js");
+    await expect(processPhoto(await syntheticPhoto({ format: "gif" }))).rejects.toThrow(
+      UNSUPPORTED_PHOTO_MESSAGE,
+    );
+    await expect(processPhoto(await syntheticPhoto({ format: "tiff" }))).rejects.toThrow(
+      UNSUPPORTED_PHOTO_MESSAGE,
+    );
+  });
+
+  it("a PNG whose header claims over 80 megapixels is refused from the header, without a decode", async () => {
+    await setup();
+    const cardId = await newCard();
+    const bomb = pngClaiming(20_000, 20_000);
+    expect(bomb.length).toBeLessThan(200);
+    const started = Date.now();
+    const response = await uploadPhoto(harness, cardId, bomb, {
+      fileName: "x.png",
+      contentType: "image/png",
+    });
+    expect(response.statusCode).toBe(415);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // A PNG of an ordinary size from the same hand-made header is not refused for its size.
+    const { processPhoto } = await import("../src/server/photos/process.js");
+    await expect(processPhoto(pngClaiming(64, 64))).rejects.toThrow();
+    expect(photoFiles()).toEqual([]);
+  });
+});
+
+describe("one upload at a time, and no orphan files (B2, N2, S5)", () => {
+  it("B2: two concurrent uploads to a card give one 201, one 409 and one file", async () => {
+    await setup();
+    const cardId = await newCard();
+    const [a, b] = await Promise.all([
+      uploadPhoto(harness, cardId, await syntheticPhoto({ shade: 20 })),
+      uploadPhoto(harness, cardId, await syntheticPhoto({ shade: 200 })),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    await harness.idle();
+    expect(photoFiles()).toHaveLength(1);
+    expect(tableCount("photos")).toBe(1);
+  });
+
+  it("B2: a bet placed while the photo is being processed refuses the photo and leaves no file", async () => {
+    await setup();
+    const cardId = await newCard();
+    const quoteId = (await harness.get(`/api/cards/${cardId}`)).json<{ quote: { id: number } }>()
+      .quote.id;
+    const stage = harness.photos.stage.bind(harness.photos);
+    vi.spyOn(harness.photos, "stage").mockImplementation(async (bytes) => {
+      const staged = await stage(bytes);
+      const bet = await harness.post("/api/bets", {
+        card_id: cardId,
+        quote_id: quoteId,
+        kind: "do_nothing",
+      });
+      expect(bet.statusCode).toBe(201);
+      return staged;
+    });
+    const response = await uploadPhoto(harness, cardId, await syntheticPhoto());
+    expect(response.statusCode).toBe(409);
+    expect(photoFiles()).toEqual([]);
+    expect(tableCount("photos")).toBe(0);
+  });
+
+  it("B2: a card deleted while the photo is processed answers 404 and leaves no file", async () => {
+    await setup();
+    const cardId = await newCard();
+    const stage = harness.photos.stage.bind(harness.photos);
+    vi.spyOn(harness.photos, "stage").mockImplementation(async (bytes) => {
+      const staged = await stage(bytes);
+      harness.db.prepare("DELETE FROM cards WHERE id = ?").run(cardId);
+      return staged;
+    });
+    expect((await uploadPhoto(harness, cardId, await syntheticPhoto())).statusCode).toBe(404);
+    expect(photoFiles()).toEqual([]);
+  });
+
+  it("S5: a photo is written under a temporary name and gets its final name after the row exists", async () => {
+    await setup();
+    const cardId = await newCard();
+    const seen: string[][] = [];
+    const publish = harness.photos.publish.bind(harness.photos);
+    vi.spyOn(harness.photos, "publish").mockImplementation((photo) => {
+      seen.push(photoFiles());
+      expect(tableCount("photos")).toBe(1);
+      publish(photo);
+    });
+    const response = await uploadPhoto(harness, cardId, await syntheticPhoto());
+    expect(response.statusCode).toBe(201);
+    expect(seen[0]).toEqual([expect.stringMatching(/\.tmp$/)]);
+    expect(photoFiles()).toEqual([expect.stringMatching(/\.jpg$/)]);
+  });
+
+  it("S5: the start-up sweep removes temporary files and photo files no row names, nothing else", async () => {
+    await setup();
+    const cardId = await newCard();
+    const kept = (await uploadPhoto(harness, cardId, await syntheticPhoto())).json<Uploaded>()
+      .photo;
+    await harness.idle();
+    const dir = harness.photos.dir;
+    const orphanJpg = "11111111-2222-4333-8444-555555555555.jpg";
+    const orphanTmp = "66666666-7777-4888-8999-aaaaaaaaaaaa.tmp";
+    writeFileSync(join(dir, orphanJpg), "x");
+    writeFileSync(join(dir, orphanTmp), "x");
+    writeFileSync(join(dir, "notes.txt"), "not ours");
+    expect(sweepOrphanPhotos({ db: harness.db, photos: harness.photos })).toBe(2);
+    expect(photoFiles().sort()).toEqual([`${kept.id}.jpg`, "notes.txt"].sort());
+  });
+
+  it("S5: a file that cannot be removed after a delete is logged without its name and swept later", async () => {
+    await setup();
+    const warnings: string[] = [];
+    harness.photos.warn = (message) => {
+      warnings.push(message);
+    };
+    // A directory where a photo file should be: unlink fails with a non-ENOENT error.
+    const name = "11111111-2222-4333-8444-555555555555.jpg";
+    mkdirSync(join(harness.photos.dir, name));
+    harness.photos.removeAfterCommit([name]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).not.toContain(name);
+  });
+});
+
+describe("a full Gemma queue refuses the photo before anything changes (503)", () => {
+  it("answers 503 problem+json 'Gemma is busy' and stores nothing", async () => {
+    await setup();
+    const cardId = await newCard();
+    vi.spyOn(harness.core.gemma, "full", "get").mockReturnValue(true);
+    const response = await uploadPhoto(harness, cardId, await syntheticPhoto());
+    expect(response.statusCode).toBe(503);
+    expect(response.json<{ title: string }>().title).toBe("Gemma is busy");
+    expect(photoFiles()).toEqual([]);
+    expect(tableCount("photos")).toBe(0);
   });
 });

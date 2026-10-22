@@ -57,6 +57,26 @@ export function currentObservations(
     : undefined;
 }
 
+/**
+ * The quote that stood on the card without the photo: the latest quote made without a photo
+ * (before `beforeQuoteId`, when given), preferring Gemma's over the rule's. The rule quote that a
+ * photo answer adds when Gemma moves the settle time is newer than Gemma's first answer but is
+ * not "the odds before the photo" (AC-005.3, AC-005.5); the rule quote is used only when Gemma
+ * never answered without the photo.
+ */
+export function withoutPhotoQuote(
+  db: Pick<Db, "prepare">,
+  cardId: number,
+  beforeQuoteId: number | null,
+): QuoteRow | undefined {
+  return db
+    .prepare<[number, number | null, number | null], QuoteRow>(
+      `SELECT * FROM quotes WHERE card_id = ? AND with_photo = 0 AND (? IS NULL OR id < ?)
+       ORDER BY (source = 'gemma') DESC, id DESC LIMIT 1`,
+    )
+    .get(cardId, beforeQuoteId, beforeQuoteId);
+}
+
 function percent(odds: number): string {
   return `${odds}%`;
 }
@@ -67,7 +87,7 @@ function percent(odds: number): string {
  * before photo.
  */
 export function cardPhotoView(db: Pick<Db, "prepare">, card: CardRow, table: BandTable) {
-  const photo = currentPhoto(db, card.id);
+  const photo = card.kind === "weather" ? currentPhoto(db, card.id) : undefined;
   if (photo === undefined) {
     return null;
   }
@@ -78,14 +98,7 @@ export function cardPhotoView(db: Pick<Db, "prepare">, card: CardRow, table: Ban
       "SELECT * FROM quotes WHERE photo_id = ? AND with_photo = 1 ORDER BY id DESC LIMIT 1",
     )
     .get(photo.id);
-  const before =
-    after === undefined
-      ? undefined
-      : db
-          .prepare<[number, number], QuoteRow>(
-            "SELECT * FROM quotes WHERE card_id = ? AND with_photo = 0 AND id < ? ORDER BY id DESC LIMIT 1",
-          )
-          .get(card.id, after.id);
+  const before = after === undefined ? undefined : withoutPhotoQuote(db, card.id, after.id);
   let note: string | null = null;
   if (state === "inspecting") {
     note = "Gemma is looking at your photo.";

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { JobQueueFullError } from "../src/server/gemma/runner.js";
 import type { ChatRequest, ChatResponse } from "../src/server/model/client.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
@@ -7,7 +8,7 @@ import { recoverInspections } from "../src/server/ledger/photo-odds.js";
 import { judgeScenarioFromAnswer } from "../src/server/fakes.js";
 
 import { createCoreHarness, pair, uploadPhoto, type CoreHarness } from "./core-helpers.js";
-import { HoldableModel, type BetJson, type CardJson } from "./gemma-support.js";
+import { GatedModel, HoldableModel, type BetJson, type CardJson } from "./gemma-support.js";
 import { syntheticPhoto } from "./support/photos.js";
 
 type PhotoCard = CardJson & {
@@ -308,8 +309,9 @@ describe("REQ-005: one 45 s deadline for the inspector and the bookmaker", () =>
     const card = await cardAt35(h, model);
     model.setScenario("bookmaker", "ok");
     await sendPhoto(h, card.id);
+    // The calls of the photo's bookmaker run are the ones whose data block holds the observations.
     const timeouts = callsOf(model, "bookmaker")
-      .slice(2)
+      .filter((call) => (call.messages[1]?.content ?? "").includes("photo_observations"))
       .map((call) => call.timeoutMs);
     expect(callsOf(model, "inspector")[0]?.timeoutMs).toBe(30_000);
     expect(Math.max(...timeouts)).toBeLessThanOrEqual(15_000);
@@ -375,5 +377,185 @@ describe("REQ-005: the bet stores the band with and without the photo", () => {
     expect(view.quote).toMatchObject({ odds: 50 });
     expect(bet.odds).toBe(50);
     expect((await uploadPhoto(h, card.id, await syntheticPhoto())).statusCode).toBe(409);
+  });
+});
+
+describe("review fixes: which odds count as 'without the photo' (B3)", () => {
+  it("B3: a photo answer that moves the settle time still shows Gemma's earlier odds as 'before'", async () => {
+    const { h, model } = await setup();
+    // Gemma's first answer: toss-up (50%); the rule says unlikely (35%).
+    model.setScenario("bookmaker", "ok");
+    const created = await h.post("/api/cards/quick", { chore_type: "plants" });
+    await h.idle();
+    const card = created.json<PhotoCard>();
+    // With the photo: unlikely (35%) and a different settle time, so a rule quote is added too.
+    model.setScenario("bookmaker", "unlikely-late");
+    await sendPhoto(h, card.id);
+    const rows = h.db
+      .prepare<[], { source: string; with_photo: number; band: number }>(
+        "SELECT source, with_photo, band FROM quotes ORDER BY id",
+      )
+      .all();
+    // The rule quote for the new window sits between Gemma's first answer and the photo's.
+    const kinds = rows.map((row) => `${row.source}${row.with_photo === 1 ? "+photo" : ""}`);
+    expect(kinds.slice(-2)).toEqual(["rule", "gemma+photo"]);
+    expect(kinds.filter((kind) => kind === "gemma")).toHaveLength(1);
+    const view = await getCard(h, card.id);
+    expect(view.photo?.odds_change).toMatchObject({ before: 50, after: 35, text: "50% → 35%" });
+    const bet = await h.post("/api/bets", {
+      card_id: card.id,
+      quote_id: view.quote!.id,
+      kind: "do_nothing",
+    });
+    expect(bet.statusCode).toBe(201);
+    expect(h.db.prepare("SELECT band, band_without_photo FROM bets").get()).toEqual({
+      band: 1,
+      band_without_photo: 2,
+    });
+  });
+
+  it("B3: with no Gemma answer without the photo, the rule quote is the 'before'", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "offline");
+    const card = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<PhotoCard>();
+    await h.idle();
+    model.setScenario("bookmaker", "ok");
+    await sendPhoto(h, card.id);
+    expect((await getCard(h, card.id)).photo?.odds_change).toMatchObject({ before: 35, after: 50 });
+  });
+});
+
+describe("review fixes: Retry, answers, safety and bets while a photo is inspected", () => {
+  it("S2: Retry and a tap on Gemma's question are refused while the photo is inspected", async () => {
+    const model = new GatedModel();
+    const { h } = await setup(model);
+    model.setScenario("bookmaker", "ok");
+    const created = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<PhotoCard>();
+    await h.idle();
+    model.gate("inspector");
+    expect((await uploadPhoto(h, created.id, await syntheticPhoto())).statusCode).toBe(201);
+    await model.waitForArrivals("inspector", 1);
+    // The card would offer Retry only when offline: force both states to prove the guard.
+    h.db.prepare("UPDATE cards SET gemma_state = 'offline' WHERE id = ?").run(created.id);
+    expect((await h.post(`/api/cards/${created.id}/retry`, {})).statusCode).toBe(409);
+    h.db
+      .prepare("UPDATE cards SET gemma_state = 'question', gemma_question = 'Roof?' WHERE id = ?")
+      .run(created.id);
+    expect((await h.post(`/api/cards/${created.id}/answer`, { yes: true })).statusCode).toBe(409);
+    model.openAll();
+    await h.idle();
+  });
+
+  it("N6, AC-012.1: heat inside the window the photo's answer settles on turns the card into an alert", async () => {
+    const { h, model } = await setup();
+    const card = await cardAt35(h, model);
+    const real = h.weather.getForecast.bind(h.weather);
+    // Safe until 23 h from now; 40 °C in the hour before the 24 h settle time.
+    h.weather.getForecast = async (request) => {
+      const forecast = await real(request);
+      return {
+        ...forecast,
+        hours: forecast.hours.map((hour) =>
+          hour.startsAt >= h.clock.now() + 23 * 3_600_000 ? { ...hour, temperatureC: 40 } : hour,
+        ),
+      };
+    };
+    model.setScenario("bookmaker", "unlikely-24h");
+    await sendPhoto(h, card.id);
+    const view = (await h.get(`/api/cards/${card.id}`)).json<{
+      kind: string;
+      quote: unknown;
+      photo: unknown;
+    }>();
+    expect(view).toMatchObject({ kind: "alert", quote: null, photo: null });
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM quotes WHERE with_photo = 1").get()).toEqual({
+      n: 0,
+    });
+    const bet = await h.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote!.id,
+      kind: "do_nothing",
+    });
+    expect(bet.statusCode).toBe(409);
+  });
+
+  it("AC-006.2: a bet placed while the bookmaker reads the photo is not touched; the photo says so", async () => {
+    const model = new GatedModel();
+    const { h } = await setup(model);
+    model.setScenario("bookmaker", "ok");
+    const created = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<PhotoCard>();
+    await h.idle();
+    model.gate("bookmaker");
+    expect((await uploadPhoto(h, created.id, await syntheticPhoto())).statusCode).toBe(201);
+    await model.waitForArrivals("bookmaker", 1);
+    const bet = await h.post("/api/bets", {
+      card_id: created.id,
+      quote_id: (await getCard(h, created.id)).quote!.id,
+      kind: "do_nothing",
+    });
+    expect(bet.statusCode).toBe(201);
+    model.openAll();
+    await h.idle();
+    const view = await getCard(h, created.id);
+    expect(view.photo).toMatchObject({ state: "seen", odds_change: null });
+    expect(view.photo?.note).toBe(
+      "Your bet was placed before Gemma answered. The odds stay as they were.",
+    );
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM quotes WHERE with_photo = 1").get()).toEqual({
+      n: 0,
+    });
+    expect(h.db.prepare("SELECT odds FROM bets").get()).toEqual({ odds: 50 });
+  });
+
+  it("a full Gemma queue during the photo's jobs keeps the odds and says Gemma is busy", async () => {
+    const { h, model } = await setup();
+    const card = await cardAt35(h, model);
+    const original = h.core.gemma.run.bind(h.core.gemma);
+    let runs = 0;
+    vi.spyOn(h.core.gemma, "run").mockImplementation((request) => {
+      runs += 1;
+      return runs === 1 ? original(request) : Promise.reject(new JobQueueFullError("full"));
+    });
+    await sendPhoto(h, card.id);
+    const view = await getCard(h, card.id);
+    expect(view.photo).toMatchObject({ state: "seen", odds_change: null });
+    expect(view.photo?.note).toBe("Gemma is busy with other requests. The odds stay as they were.");
+    expect(view.quote).toMatchObject({ odds: 35 });
+  });
+});
+
+describe("review fixes: an unexpected error keeps what was already read (S4)", () => {
+  function failJob(h: CoreHarness, job: string): void {
+    const original = h.core.gemma.run.bind(h.core.gemma);
+    vi.spyOn(h.core.gemma, "run").mockImplementation((request) =>
+      request.job === job ? Promise.reject(new Error("boom")) : original(request),
+    );
+  }
+
+  it("S4: an error before the inspector read anything marks the photo failed (internal), odds untouched", async () => {
+    const { h, model } = await setup();
+    const card = await cardAt35(h, model);
+    failJob(h, "inspector");
+    await sendPhoto(h, card.id);
+    const view = await getCard(h, card.id);
+    expect(view.photo).toMatchObject({ state: "failed", saw: [], odds_change: null });
+    expect(view.photo?.note).toBe(
+      "Something went wrong inside the app. The odds stay as they were.",
+    );
+    expect(view.quote).toMatchObject({ id: card.quote!.id });
+  });
+
+  it("S4: an error after the inspector read the photo keeps 'seen' and What Gemma saw", async () => {
+    const { h, model } = await setup();
+    const card = await cardAt35(h, model);
+    failJob(h, "bookmaker");
+    await sendPhoto(h, card.id);
+    const view = await getCard(h, card.id);
+    expect(view.photo?.state).toBe("seen");
+    expect(view.photo?.saw).toHaveLength(4);
+    expect(view.photo?.note).toBe(
+      "Something went wrong inside the app. The odds stay as they were.",
+    );
+    expect(view.quote).toMatchObject({ id: card.quote!.id });
   });
 });

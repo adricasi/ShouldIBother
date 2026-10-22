@@ -1,0 +1,17 @@
+{
+  "description": "Hand-written synthetic bookmaker answer: calls get_forecast, then says unlikely (35%) and asks to settle 26 h from now, so the settle time moves.",
+  "steps": [
+    {
+      "toolCalls": [{ "name": "get_forecast", "arguments": { "hours_ahead": 30 } }],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "unlikely",
+        "reason": "The photo shows dry soil and little rain is coming.",
+        "settle_in_hours": 26
+      }
+    }
+  ]
+}
