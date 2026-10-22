@@ -2,17 +2,10 @@ import { z } from "zod";
 
 import type { ChoreSpec } from "../../domain/chores.js";
 import type { DoNothingVerdict } from "../../domain/points.js";
-import {
-  ModelTimeoutError,
-  ModelUnavailableError,
-  type ChatRequest,
-  type ModelClient,
-} from "../model/client.js";
 
 import { loadPrompt } from "./prompts.js";
-
-/** 30 s per model call (requirements.md, fixed values). */
-export const MODEL_CALL_TIMEOUT_MS = 30_000;
+import type { JobFailure, JobRunner } from "./runner.js";
+import { untrustedBlock } from "./untrusted.js";
 
 export const JUDGE_PROMPT = loadPrompt("judge", 1);
 
@@ -36,125 +29,83 @@ export interface JudgeInput {
   readonly odds: number;
   /** Id of the tapped answer; one of the chore's `tapAnswers`. */
   readonly answerId: string;
+  readonly betId?: number;
+  readonly cardId?: number;
+}
+
+interface JudgeFacts {
+  readonly raw: string | undefined;
+  readonly model: string;
+  readonly modelDigest: string | undefined;
+  readonly latencyMs: number;
+  /** The `gemma_decisions` row the runner wrote for this job. */
+  readonly decisionId: number;
 }
 
 export type JudgeResult =
-  | {
+  | (JudgeFacts & {
       readonly ok: true;
       readonly verdict: DoNothingVerdict;
       readonly reason: string;
       readonly evidence: readonly string[];
       readonly raw: string;
-      readonly model: string;
-      readonly modelDigest: string | undefined;
-      readonly latencyMs: number;
-    }
-  | {
+    })
+  | (JudgeFacts & {
       readonly ok: false;
-      readonly failure: "unavailable" | "timeout" | "invalid" | "unsure";
+      readonly failure: JobFailure | "unsure";
       readonly error: string;
-      readonly raw: string | undefined;
-      readonly model: string;
-      readonly modelDigest: string | undefined;
-      readonly latencyMs: number;
-    };
+    });
 
 /** The data block the prompt calls untrusted: only enums and fixed chore text go in. */
 function userMessage(input: JudgeInput): string {
-  const data = {
+  return untrustedBlock({
     chore: input.chore.judgeName,
     odds_that_doing_nothing_works_pct: input.odds,
     evidence_kind: "one tap",
     person_answered: input.chore.tapAnswers.find((answer) => answer.id === input.answerId)?.label,
     recorded_weather: null,
-  };
-  return `<untrusted_data>\n${JSON.stringify(data)}\n</untrusted_data>`;
+  });
 }
 
 /**
- * Asks the judge for a verdict on a do-nothing bet settled by one tap. One call, validated with
- * the schema; the retry budget, tool loop and deadline of the job runner arrive with T-006 and
- * T-009. A failure never produces a verdict: the caller keeps the bet waiting (AC-008.8).
+ * Asks the judge for a verdict on a do-nothing bet settled by one tap, through the job runner
+ * (queue, deadline, retry once with the validation error, decision log). A failure never
+ * produces a verdict: the caller keeps the bet waiting (AC-008.8).
  */
-export async function judgeBet(model: ModelClient, input: JudgeInput): Promise<JudgeResult> {
-  const request: ChatRequest = {
+export async function judgeBet(runner: JobRunner, input: JudgeInput): Promise<JudgeResult> {
+  const result = await runner.run({
     job: "judge",
-    messages: [
-      { role: "system", content: JUDGE_PROMPT.text },
-      { role: "user", content: userMessage(input) },
-    ],
-    schema: z.toJSONSchema(judgeOutputSchema),
-    timeoutMs: MODEL_CALL_TIMEOUT_MS,
+    prompt: JUDGE_PROMPT,
+    user: userMessage(input),
+    schema: judgeOutputSchema,
+    check: (output) =>
+      output.status === "ok" && output.verdict === undefined
+        ? 'status "ok" needs a verdict'
+        : undefined,
+    ...(input.betId === undefined ? {} : { betId: input.betId }),
+    ...(input.cardId === undefined ? {} : { cardId: input.cardId }),
+    inputSummary: `${input.chore.judgeName} bet at ${input.odds}%, answer ${input.answerId}`,
+  });
+  const facts: JudgeFacts = {
+    raw: result.raw,
+    model: result.model,
+    modelDigest: result.modelDigest,
+    latencyMs: result.latencyMs,
+    decisionId: result.decisionId,
   };
-  const started = performance.now();
-  const elapsed = (): number => Math.round(performance.now() - started);
-
-  let response;
-  try {
-    response = await model.chat(request);
-  } catch (error) {
-    if (error instanceof ModelTimeoutError || error instanceof ModelUnavailableError) {
-      return {
-        ok: false,
-        failure: error instanceof ModelTimeoutError ? "timeout" : "unavailable",
-        error: error.message,
-        raw: undefined,
-        model: "unknown",
-        modelDigest: undefined,
-        latencyMs: elapsed(),
-      };
-    }
-    throw error;
+  if (!result.ok) {
+    return { ...facts, ok: false, failure: result.failure, error: result.error };
   }
-
-  const base = { model: response.model, modelDigest: response.modelDigest, latencyMs: elapsed() };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(response.content);
-  } catch {
-    return {
-      ok: false,
-      failure: "invalid",
-      error: "Answer is not JSON",
-      raw: response.content,
-      ...base,
-    };
-  }
-  const result = judgeOutputSchema.safeParse(parsed);
-  if (!result.success) {
-    return {
-      ok: false,
-      failure: "invalid",
-      error: result.error.message,
-      raw: response.content,
-      ...base,
-    };
-  }
-  const output = result.data;
-  if (output.status === "unsure") {
-    return {
-      ok: false,
-      failure: "unsure",
-      error: output.question ?? "unsure",
-      raw: response.content,
-      ...base,
-    };
-  }
-  if (output.verdict === undefined) {
-    return {
-      ok: false,
-      failure: "invalid",
-      error: "Missing verdict",
-      raw: response.content,
-      ...base,
-    };
+  const { output } = result;
+  if (output.status === "unsure" || output.verdict === undefined) {
+    return { ...facts, ok: false, failure: "unsure", error: output.question ?? "unsure" };
   }
   return {
+    ...facts,
     ok: true,
     verdict: output.verdict,
     reason: output.reason,
     evidence: output.evidence,
-    raw: response.content,
-    ...base,
+    raw: result.raw,
   };
 }

@@ -1,0 +1,32 @@
+{
+  "description": "The first attempt skips get_forecast; the retry calls it and answers.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

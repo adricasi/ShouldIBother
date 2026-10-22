@@ -1,0 +1,13 @@
+{
+  "description": "One call: the app already passed get_forecast as a tool result; Gemma answers.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "band": "toss_up",
+        "reason": "Showers are possible overnight, so the pots may stay moist enough.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

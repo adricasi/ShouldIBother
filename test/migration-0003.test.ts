@@ -56,7 +56,7 @@ function seed(db: Db): void {
 
 describe("migration 0003: locked bet columns and the state machine", () => {
   it("is number 3", () => {
-    expect(MIGRATIONS.map((migration) => migration.id)).toEqual([1, 2, 3]);
+    expect(MIGRATIONS.map((migration) => migration.id).slice(0, 3)).toEqual([1, 2, 3]);
   });
 
   it("NFR-003: applies to a seeded database of 0002 and keeps every row", () => {
@@ -68,14 +68,14 @@ describe("migration 0003: locked bet columns and the state machine", () => {
     ).run();
     const before = db.prepare("SELECT * FROM bets ORDER BY id").all();
 
-    expect(migrate(db, MIGRATIONS)).toEqual([3]);
+    expect(migrate(db, MIGRATIONS.slice(0, 3))).toEqual([3]);
 
     expect(db.prepare("SELECT * FROM bets ORDER BY id").all()).toEqual(before);
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 2 });
     expect(db.prepare("SELECT COUNT(*) AS n FROM settlements").get()).toEqual({ n: 1 });
     expect(db.prepare("SELECT id_hash FROM sessions").all()).toEqual([{ id_hash: "h" }]);
     // Running it again is a no-op.
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, MIGRATIONS.slice(0, 3))).toEqual([]);
   });
 
   it.each(LOCKED)("AC-006.2: the locked column %s cannot be updated after insert", (column) => {

@@ -1,0 +1,15 @@
+{
+  "description": "Two plants chores in one sentence.",
+  "content": {
+    "chores": [
+      {
+        "label": "water the tomatoes",
+        "chore_type": "plants"
+      },
+      {
+        "label": "water the herbs",
+        "chore_type": "plants"
+      }
+    ]
+  }
+}

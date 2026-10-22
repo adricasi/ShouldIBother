@@ -8,6 +8,12 @@ export interface CardRow {
   kind: "weather" | "not_weather" | "coming_later" | "alert";
   alert_reason: string | null;
   created_at: number;
+  /** Null on cards from before migration 0005 (read as "Gemma offline"). */
+  gemma_state: "thinking" | "answered" | "question" | "offline" | null;
+  gemma_failure: string | null;
+  gemma_question: string | null;
+  /** JSON list of `{question, yes}`: what Gemma asked and the taps that answered. */
+  gemma_answers: string;
 }
 
 export interface QuoteRow {

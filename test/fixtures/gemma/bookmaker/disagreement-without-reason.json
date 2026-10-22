@@ -1,0 +1,43 @@
+{
+  "description": "A band two or more bands from the rule band with no explanation and no question, twice.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "Heavy rain is forecast overnight, so the pots will be watered.",
+        "settle_in_hours": 24
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "Heavy rain is forecast overnight, so the pots will be watered.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}

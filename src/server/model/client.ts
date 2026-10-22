@@ -23,6 +23,11 @@ export interface ToolCall {
 export interface ChatRequest {
   /** The Gemma job asking (judge, bookmaker, ...). The fake picks its fixture folder from it. */
   readonly job: string;
+  /**
+   * Which run of the job this call belongs to (1, 2, ...). Runtimes ignore it; the fake plays a
+   * scripted fixture once per run, so several jobs in one test each get the whole script.
+   */
+  readonly run?: number;
   readonly messages: readonly ChatMessage[];
   readonly images?: readonly Uint8Array[];
   readonly tools?: readonly ToolDefinition[];
@@ -52,9 +57,23 @@ export class ModelTimeoutError extends Error {
 }
 
 /**
- * The seam between the jobs and the runtime (design.md, ModelClient). Implementations: Ollama and
- * llama.cpp (T-010), and `FakeModelClient`, which CI uses.
+ * Whether the runtime can take a call: `waking` while the model loads (the warm-up call at start),
+ * `offline` when the runtime does not answer or does not have the model (AC-013.5).
+ */
+export type ModelState = "online" | "waking" | "offline";
+
+export interface ModelHealth {
+  readonly state: ModelState;
+  /** Short plain text for the console and logs; never user data. */
+  readonly detail?: string;
+}
+
+/**
+ * The seam between the jobs and the runtime (design.md, ModelClient). Implementations: Ollama
+ * (`OllamaClient`), llama.cpp (audio, T-027) and `FakeModelClient`, which CI uses.
  */
 export interface ModelClient {
   chat(request: ChatRequest): Promise<ChatResponse>;
+  /** A cheap check that never loads the model or runs a generation; it must not throw. */
+  health(): Promise<ModelHealth>;
 }

@@ -29,19 +29,47 @@ export function payoutsAt(odds: number): Payouts {
   };
 }
 
+/** Where a weather card stands with Gemma (stored on the card, migration 0005). */
+export type GemmaState = "thinking" | "answered" | "question" | "offline";
+
+/** A card that predates the Gemma states has no stored state: it has rule odds and Retry. */
+export function gemmaStateOf(card: CardRow): GemmaState {
+  return card.gemma_state ?? "offline";
+}
+
 /**
- * The label above the odds (AC-013.1). A rule quote is provisional while Gemma may still
- * answer; this build has no bookmaker job yet (T-006), so it stays provisional.
+ * The label above the odds (AC-013.1, AC-013.2, AC-013.3). Gemma's quote is "Gemma's odds"; a
+ * rule quote says why it is still the one shown.
  */
-export function quoteLabel(source: "rule" | "gemma", provisional: boolean): string {
+export function quoteLabel(source: "rule" | "gemma", state: GemmaState): string {
   if (source === "gemma") {
     return "Gemma's odds";
   }
-  return provisional ? "Gemma is thinking · rule odds" : "Rule odds";
+  switch (state) {
+    case "thinking":
+      return "Gemma is thinking · rule odds";
+    case "question":
+      return "Gemma has a question · rule odds";
+    case "answered":
+    case "offline":
+      return "Gemma offline · rule odds";
+  }
 }
 
-export function quoteView(quote: QuoteRow, table: BandTable) {
-  const provisional = quote.source === "rule";
+/** Plain words for why Gemma has no answer, by failure code (AC-003.4, AC-013.3). */
+const FAILURE_NOTES: Readonly<Record<string, string>> = {
+  unavailable: "Gemma is not running.",
+  timeout: "Gemma took too long to answer.",
+  deadline: "Gemma did not finish in time.",
+  invalid: "Gemma's answer did not pass the checks.",
+  tool_missed: "Gemma answered without looking at the forecast.",
+  tool_error: "The forecast was not available to Gemma.",
+  weather: "The forecast was not available.",
+  restart: "The app restarted while Gemma was thinking.",
+};
+
+export function quoteView(quote: QuoteRow, table: BandTable, state: GemmaState) {
+  const provisional = quote.source === "rule" && (state === "thinking" || state === "question");
   return {
     id: quote.id,
     source: quote.source,
@@ -50,7 +78,7 @@ export function quoteView(quote: QuoteRow, table: BandTable) {
     odds: quote.odds,
     reason: quote.reason,
     settle_at: new Date(quote.settle_at).toISOString(),
-    label: quoteLabel(quote.source, provisional),
+    label: quoteLabel(quote.source, state),
     provisional,
     payouts: payoutsAt(quote.odds),
   };
@@ -87,15 +115,41 @@ export function betView(bet: BetRow, card: CardRow, table: BandTable, nowMs: num
 
 export type BetView = ReturnType<typeof betView>;
 
-export function cardView(card: CardRow, quote: QuoteRow, table: BandTable) {
+function gemmaView(card: CardRow) {
+  if (card.kind !== "weather") {
+    return null;
+  }
+  const state = gemmaStateOf(card);
+  return {
+    state,
+    /** Gemma's yes/no question, answered with two taps (AC-003.3). */
+    question: state === "question" ? card.gemma_question : null,
+    note:
+      state === "offline"
+        ? (FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? FAILURE_NOTES["unavailable"]!)
+        : null,
+    /** Retry is offered whenever the card shows rule odds because Gemma did not answer (AC-013.3). */
+    can_retry: state === "offline",
+  };
+}
+
+/** Plain words on a card that has no odds (AC-002.2, AC-002.3). */
+const NO_ODDS_NOTICES: Readonly<Record<string, string>> = {
+  not_weather: "Not a weather chore",
+  coming_later: "Coming later",
+};
+
+export function cardView(card: CardRow, quote: QuoteRow | undefined, table: BandTable) {
   const chore = isChoreType(card.chore_type) ? CHORES[card.chore_type] : undefined;
   return {
     id: card.id,
     chore_type: card.chore_type,
     kind: card.kind,
-    title: chore?.title ?? card.chore_type,
+    title: chore?.title ?? card.input_text,
+    notice: NO_ODDS_NOTICES[card.kind] ?? null,
     created_at: new Date(card.created_at).toISOString(),
-    quote: quoteView(quote, table),
+    quote: quote === undefined ? null : quoteView(quote, table, gemmaStateOf(card)),
+    gemma: gemmaView(card),
   };
 }
 

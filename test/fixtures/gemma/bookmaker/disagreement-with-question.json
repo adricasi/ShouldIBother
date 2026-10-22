@@ -1,0 +1,25 @@
+{
+  "description": "A band far from the rule band with a yes/no question and no explanation.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "very_likely",
+        "reason": "Heavy rain is forecast overnight, so the pots will be watered.",
+        "settle_in_hours": 24,
+        "question": "Is the balcony covered?"
+      }
+    }
+  ]
+}

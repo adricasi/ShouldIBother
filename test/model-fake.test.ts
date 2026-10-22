@@ -13,6 +13,16 @@ import {
   type ChatRequest,
 } from "../src/server/model/client.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
+import { JobRunner } from "../src/server/gemma/runner.js";
+import { migrate, openDatabase } from "../src/server/db.js";
+import { MIGRATIONS } from "../src/server/migrations/index.js";
+
+/** The judge runs on the job runner: a fake model and an in-memory database for the decision log. */
+function runnerOn(fake: FakeModelClient): JobRunner {
+  const db = openDatabase(":memory:");
+  migrate(db, MIGRATIONS);
+  return new JobRunner({ model: fake, db, now: Date.now });
+}
 
 const request = (job: string): ChatRequest => ({
   job,
@@ -166,7 +176,7 @@ describe("judge job on the committed synthetic fixtures", () => {
       "offline",
     ]) {
       fake.setScenario("judge", scenario);
-      const result = await judgeBet(fake, input);
+      const result = await judgeBet(runnerOn(fake), input);
       outcomes[scenario] = result.ok ? result.verdict : result.failure;
     }
     expect(outcomes).toEqual({
@@ -184,7 +194,7 @@ describe("judge job on the committed synthetic fixtures", () => {
 
   it("puts the chore and the tapped answer in a delimited data block and sends a JSON schema", async () => {
     const fake = new FakeModelClient();
-    await judgeBet(fake, input);
+    await judgeBet(runnerOn(fake), input);
     const [call] = fake.calls;
     expect(call?.timeoutMs).toBe(30_000);
     expect(call?.schema).toMatchObject({ type: "object" });

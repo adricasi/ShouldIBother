@@ -1,0 +1,18 @@
+{
+  "description": "The first answer is not JSON; the retry is correct.",
+  "steps": [
+    {
+      "content": "oops"
+    },
+    {
+      "content": {
+        "chores": [
+          {
+            "label": "water the plants",
+            "chore_type": "plants"
+          }
+        ]
+      }
+    }
+  ]
+}

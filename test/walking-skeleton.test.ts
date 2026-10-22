@@ -105,7 +105,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
       provisional: true,
       label: "Gemma is thinking · rule odds",
     });
-    expect(harness.model.calls).toHaveLength(0);
+    expect(harness.model.calls.filter((call) => call.job === "listener")).toHaveLength(0);
     expect((await today()).cards.map((c) => c.id)).toEqual([card.id]);
 
     // AC-006.1: the bet locks what the card showed.
@@ -225,7 +225,9 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect((await today()).due_bets.map((b) => b.id)).toEqual([bet.id]);
 
     // The failure is logged for the evaluation; Gemma comes back and the same bet settles.
-    expect(harness.db.prepare("SELECT job, valid, error FROM gemma_decisions").all()).toEqual([
+    expect(
+      harness.db.prepare("SELECT job, valid, error FROM gemma_decisions WHERE job = 'judge'").all(),
+    ).toEqual([
       { job: "judge", valid: 0, error: expect.stringContaining("unavailable") as unknown },
     ]);
     harness.model.setScenario("judge", "ok");
@@ -253,7 +255,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     reachSettleTime(bet);
     await harness.post(`/api/bets/${bet.id}/settle`, { answer: "dry" });
     const decision = harness.db
-      .prepare<[], Record<string, unknown>>("SELECT * FROM gemma_decisions")
+      .prepare<[], Record<string, unknown>>("SELECT * FROM gemma_decisions WHERE job = 'judge'")
       .get();
     expect(decision).toMatchObject({
       job: "judge",

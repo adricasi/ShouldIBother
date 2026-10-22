@@ -1,0 +1,33 @@
+{
+  "description": "Calls get_forecast, then answers with text that is not JSON, twice (first attempt and retry).",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": "not json at all"
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": "still {not json"
+    }
+  ]
+}

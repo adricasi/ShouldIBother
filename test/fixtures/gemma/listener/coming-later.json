@@ -1,0 +1,11 @@
+{
+  "description": "A chore outside this version's list.",
+  "content": {
+    "chores": [
+      {
+        "label": "wash the car",
+        "chore_type": "other_weather"
+      }
+    ]
+  }
+}
