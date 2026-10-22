@@ -1,0 +1,15 @@
+{
+  "finetunedBookmaker": false,
+  "safetyGuard": false,
+  "laundryTonight": false,
+  "score": false,
+  "stampAnimation": false,
+  "laundryPlanner": false,
+  "rescue": false,
+  "appeals": false,
+  "onboarding": false,
+  "ranks": false,
+  "heater": false,
+  "splitFlap": false,
+  "voice": false
+}

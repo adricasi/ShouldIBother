@@ -1,0 +1,75 @@
+{
+  "_comment": "Final values for this version (design.md, Rule baseline and safety backstop). No tuning: the rule stays an untuned baseline. Bands are ordinal 0 (very unlikely) to 4 (very likely). Rows are evaluated top to bottom, first match wins; intervals are half-open (lower bound included).",
+  "version": 1,
+  "timeZone": "Europe/Madrid",
+  "bandNames": ["very unlikely", "unlikely", "toss-up", "likely", "very likely"],
+  "bandOdds": [15, 35, 50, 70, 85],
+  "wetHourMm": 0.2,
+  "dryingIndex": {
+    "windWeight": 0.5,
+    "windCapKmh": 30,
+    "humidityWeight": 0.3,
+    "sunshineWeight": 0.2,
+    "sunshineSecondsPerHour": 3600
+  },
+  "chores": {
+    "plants": {
+      "window": "now to settle",
+      "rows": [
+        { "rainMmAtLeast": 5, "band": 4 },
+        { "rainMmAtLeast": 2, "band": 3 },
+        { "anyOf": { "rainMmAtLeast": 0.5, "maxHourlyProbabilityPctAtLeast": 60 }, "band": 2 },
+        { "maxTempCBelow": 26, "band": 1 }
+      ],
+      "otherwiseBand": 0
+    },
+    "lineDry": {
+      "window": "now to 18:00",
+      "anyWetHourBand": 0,
+      "meanDryingIndexRows": [
+        { "atLeast": 0.6, "band": 4 },
+        { "atLeast": 0.45, "band": 3 },
+        { "atLeast": 0.3, "band": 2 },
+        { "atLeast": 0.15, "band": 1 }
+      ],
+      "otherwiseBand": 0
+    },
+    "laundryTonight": {
+      "window": "sunset to 08:00",
+      "anyWetHourBand": 0,
+      "dew": { "tempMinusDewPointCAtMost": 2, "hoursAtLeast": 3, "band": 1 },
+      "meanDryingIndexRows": [
+        { "atLeast": 0.45, "band": 3 },
+        { "atLeast": 0.3, "band": 2 }
+      ],
+      "otherwiseBand": 1
+    },
+    "ac": {
+      "window": "22:00 to 07:00",
+      "nightMinCRows": [
+        { "below": 21, "band": 4 },
+        { "below": 23, "band": 3 },
+        { "below": 25, "band": 2 },
+        { "below": 27, "band": 1 }
+      ],
+      "otherwiseBand": 0,
+      "windLift": { "meanWindKmhAtLeast": 10, "bands": 1, "maxBand": 4 }
+    },
+    "heater": {
+      "window": "08:00 to 22:00",
+      "rows": [
+        { "dayMaxCAtLeast": 20, "sunshineHoursAtLeast": 5, "band": 4 },
+        { "dayMaxCAtLeast": 18, "band": 3 },
+        { "dayMaxCAtLeast": 15, "band": 2 },
+        { "dayMaxCAtLeast": 12, "band": 1 }
+      ],
+      "otherwiseBand": 0
+    }
+  },
+  "safetyBackstop": {
+    "heatMaxCAtLeast": 35,
+    "frostMinCAtMost": 2,
+    "stormGustKmhAtLeast": 70,
+    "stormWmoCodes": [95, 96, 97, 98, 99]
+  }
+}

@@ -30,3 +30,9 @@ coverage/
 .agents/
 CLAUDE.md
 .mcp.json
+
+# --- household-private data (NFR-002): database, photos, logs, snapshots ---
+# The default data folder is ~/.should-i-bother/ (outside the repo); these cover SIB_DATA_DIR
+# pointed inside the checkout.
+data/
+.should-i-bother/
