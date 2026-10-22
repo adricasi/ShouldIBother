@@ -1,12 +1,16 @@
-export type Route = "today" | "slips";
+export type Route = "today" | "slips" | "score";
 
 export function routeOf(hash: string): Route {
-  return hash === "#/slips" ? "slips" : "today";
+  if (hash === "#/slips") {
+    return "slips";
+  }
+  return hash === "#/score" ? "score" : "today";
 }
 
 export const ROUTE_TITLES: Readonly<Record<Route, string>> = {
   today: "Today · Should I Bother?",
   slips: "Slips · Should I Bother?",
+  score: "Score · Should I Bother?",
 };
 
 /** The part of `document` that announcing a screen change needs; a test passes a fake. */

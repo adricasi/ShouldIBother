@@ -217,6 +217,45 @@ export const slipsSchema = z.object({
   ),
 });
 
+const calibrationBandSchema = z.object({
+  band: z.number(),
+  name: z.string(),
+  /** The odds the band stands for, in percent. */
+  predicted_pct: z.number(),
+  n: z.number(),
+  wins: z.number(),
+  /** Share of the band's bets where doing nothing worked; null with no bets. */
+  actual_pct: z.number().nullable(),
+  too_few: z.boolean(),
+});
+
+/** The Score screen: points, savings, judge overrule rate and band calibration (REQ-020). */
+export const scoreSchema = z.object({
+  now: z.string(),
+  points: z.object({ total: z.number() }),
+  savings: savingsTotalsSchema,
+  judge: z.discriminatedUnion("appeals", [
+    z.object({ appeals: z.literal("off") }),
+    z.object({
+      appeals: z.literal("on"),
+      n: z.number(),
+      overruled: z.number(),
+      rate_pct: z.number().nullable(),
+    }),
+  ]),
+  calibration: z.object({
+    /** Settled do-nothing bets; zero shows the empty state (AC-020.4). */
+    settled: z.number(),
+    gemma: z.array(calibrationBandSchema),
+    rule: z.array(calibrationBandSchema),
+    lucky_wins: z.object({
+      wins_labelled: z.number(),
+      lucky_wins: z.number(),
+      share: z.number().nullable(),
+    }),
+  }),
+});
+
 /** What a settle request returns: a verdict, the judge's question, or a saved answer waiting. */
 export const settleResultSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("settled"), receipt: receiptSchema }),
@@ -226,6 +265,8 @@ export const settleResultSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("answer_needed"), note: z.string() }),
 ]);
 
+export type Score = z.infer<typeof scoreSchema>;
+export type CalibrationBand = z.infer<typeof calibrationBandSchema>;
 export type Card = z.infer<typeof cardSchema>;
 export type CardPhoto = z.infer<typeof photoSchema>;
 export type Bet = z.infer<typeof betSchema>;
@@ -332,6 +373,8 @@ export const uploadPhoto = (cardId: number, file: File): Promise<Card> => {
 /** Deletes a photo and what was derived from it (AC-015.2). */
 export const deletePhoto = (photoId: string): Promise<undefined> =>
   request(`/api/photos/${photoId}`, z.undefined(), { method: "DELETE" });
+
+export const fetchScore = (): Promise<Score> => request("/api/score", scoreSchema);
 
 export const fetchSlips = (): Promise<Slips> => request("/api/slips", slipsSchema);
 
