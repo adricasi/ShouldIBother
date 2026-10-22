@@ -44,3 +44,50 @@ export function loadHousehold(configDir: string = CONFIG_DIR): Household {
   }
   return result.data;
 }
+
+/** A `config.publicOrigins` entry: an http(s) origin with no credentials, path, query or fragment. */
+const originSchema = z.string().transform((value, ctx) => {
+  try {
+    const url = new URL(value);
+    const bare = url.pathname === "/" && url.search === "" && url.hash === "";
+    if (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.username === "" &&
+      url.password === "" &&
+      bare
+    ) {
+      return url.origin;
+    }
+  } catch {
+    // reported below
+  }
+  ctx.addIssue({ code: "custom", message: `not an http(s) origin: ${JSON.stringify(value)}` });
+  return z.NEVER;
+});
+
+/** A `config.allowedHosts` entry: `host` or `host:port`; no scheme, path or whitespace. */
+const hostSchema = z.string().regex(/^[A-Za-z0-9.\-:[\]]+$/, "expected host or host:port");
+
+const serverConfigSchema = z
+  .object({
+    /** HTTPS (or other) origins that reach this app, e.g. a Tailscale Serve URL. */
+    publicOrigins: z.array(originSchema).default([]),
+    /** Extra Host values to accept, e.g. the Windows LAN IP behind a netsh portproxy. */
+    allowedHosts: z.array(hostSchema).default([]),
+  })
+  .strict();
+export type ServerConfig = z.infer<typeof serverConfigSchema>;
+
+/**
+ * `config/server.json` (git-ignored: it names the machine) overrides the committed
+ * `server.example.json`, which has no public origins and no extra hosts.
+ */
+export function loadServerConfig(configDir: string = CONFIG_DIR): ServerConfig {
+  const real = `${configDir}server.json`;
+  const path = existsSync(real) ? real : `${configDir}server.example.json`;
+  const result = serverConfigSchema.safeParse(readJsonFile(path));
+  if (!result.success) {
+    throw new Error(`Invalid server config ${path}: ${result.error.message}`);
+  }
+  return result.data;
+}

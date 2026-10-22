@@ -4,8 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildApp, type FeaturePlugins } from "../src/server/app.js";
+import type { FeaturePlugins } from "../src/server/app.js";
 import { FLAG_NAMES, loadFlags, parseFlags } from "../src/server/flags.js";
+
+import { createHarness, type Harness } from "./helpers.js";
 
 describe("feature flags", () => {
   it("AC-029.1: config/flags.json lists every flag", () => {
@@ -52,31 +54,52 @@ describe("flagged routes", () => {
     },
   };
 
+  /** A paired app with the given flags; the access control itself is tested in pairing.test.ts. */
+  async function pairedApp(
+    flags: Record<string, boolean>,
+  ): Promise<{ harness: Harness; cookie: string }> {
+    const harness = await createHarness({ flags, features: featurePlugins });
+    return { harness, cookie: await harness.pairDevice() };
+  }
+
   it("AC-029.2: a flag that is off registers no route", async () => {
-    const app = await buildApp({ flags: parseFlags({ score: false }), features: featurePlugins });
-    const response = await app.inject({ method: "GET", url: "/api/score" });
+    const { harness, cookie } = await pairedApp({ score: false });
+    const response = await harness.request({
+      method: "GET",
+      url: "/api/score",
+      headers: { cookie },
+    });
     expect(response.statusCode).toBe(404);
-    await app.close();
+    await harness.close();
   });
 
   it("AC-029.2: a flag that is missing from the file registers no route", async () => {
-    const app = await buildApp({ flags: parseFlags({}), features: featurePlugins });
-    const response = await app.inject({ method: "GET", url: "/api/score" });
+    const { harness, cookie } = await pairedApp({});
+    const response = await harness.request({
+      method: "GET",
+      url: "/api/score",
+      headers: { cookie },
+    });
     expect(response.statusCode).toBe(404);
-    await app.close();
+    await harness.close();
   });
 
   it("AC-029.2: the same route is served once its flag is on", async () => {
-    const app = await buildApp({ flags: parseFlags({ score: true }), features: featurePlugins });
-    const response = await app.inject({ method: "GET", url: "/api/score" });
+    const { harness, cookie } = await pairedApp({ score: true });
+    const response = await harness.request({
+      method: "GET",
+      url: "/api/score",
+      headers: { cookie },
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ points: 0 });
-    await app.close();
+    await harness.close();
   });
 
   it("AC-029.2: switching one flag off leaves the unflagged routes untouched", async () => {
-    const app = await buildApp({ flags: parseFlags({ score: false }), features: featurePlugins });
-    expect((await app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
-    await app.close();
+    const { harness, cookie } = await pairedApp({ score: false });
+    const response = await harness.request({ method: "GET", url: "/healthz", headers: { cookie } });
+    expect(response.statusCode).toBe(200);
+    await harness.close();
   });
 });

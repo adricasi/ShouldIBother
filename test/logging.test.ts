@@ -14,9 +14,9 @@ describe("request logging", () => {
         done();
       },
     });
-    // Same options as the Fastify logger; plain pino has no `req` serializer that would
-    // drop the headers before redaction, so this exercises the redact paths themselves.
-    pino(LOGGER_OPTIONS, stream).info({
+    // Same redact paths as the Fastify logger, without its `req` serializer (which already
+    // drops the headers), so this exercises the redact paths themselves.
+    pino({ ...LOGGER_OPTIONS, serializers: {} }, stream).info({
       req: { headers: { cookie: "sid=SECRET-SESSION", authorization: "Bearer SECRET-TOKEN" } },
     });
     const output = lines.join("");

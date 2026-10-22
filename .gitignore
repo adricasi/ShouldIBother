@@ -56,3 +56,6 @@ adapters/
 
 # --- real household baseline (the committed fallback is config/household.example.json) ---
 config/household.json
+
+# --- real server config (publicOrigins name the machine; the committed fallback is config/server.example.json) ---
+config/server.json
