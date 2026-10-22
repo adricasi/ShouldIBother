@@ -389,6 +389,23 @@ export function deleteBetData(deps: Pick<LedgerDeps, "db" | "photos">, betId: nu
  * and photo files no `photos` row names (AC-015.2: nothing of a deleted photo stays on disk).
  */
 export function sweepOrphanPhotos(deps: Pick<LedgerDeps, "db" | "photos">): number {
+  // An after photo whose file is gone can never be judged: drop its row (and with it the saved
+  // answer, migration 0007), so the bet asks again or settles from the weather record.
+  const lost = deps.db
+    .prepare<[], PhotoRow>("SELECT * FROM photos WHERE role = 'after'")
+    .all()
+    .filter((photo) => !deps.photos.exists(photo.file));
+  if (lost.length > 0) {
+    deps.db
+      .transaction(() => {
+        removePhotoRows(
+          deps.db,
+          lost.map((photo) => photo.id),
+        );
+      })
+      .immediate();
+    checkpointAfterDelete(deps);
+  }
   const known = new Set(
     deps.db
       .prepare<[], { file: string }>("SELECT file FROM photos")

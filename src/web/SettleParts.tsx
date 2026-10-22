@@ -134,8 +134,8 @@ export function ReceiptCard({ receipt }: { receipt: Receipt }) {
           <p>{receipt.gemma_read.reason}</p>
           {receipt.gemma_read.evidence.length === 0 ? null : (
             <ul>
-              {receipt.gemma_read.evidence.map((line) => (
-                <li key={line}>{line}</li>
+              {receipt.gemma_read.evidence.map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
               ))}
             </ul>
           )}
@@ -147,7 +147,7 @@ export function ReceiptCard({ receipt }: { receipt: Receipt }) {
         </p>
       ) : null}
       {receipt.message === null ? null : <p className="loss-copy">{receipt.message}</p>}
-      {receipt.multiplier < 1 && paid ? (
+      {receipt.multiplier < 1 && paid && !receipt.multiplier_capped ? (
         <p className="meta">A photo would have paid in full; a tap or no answer pays half.</p>
       ) : null}
       <p className="meta">Settled {formatSettleTime(receipt.settled_at)}</p>

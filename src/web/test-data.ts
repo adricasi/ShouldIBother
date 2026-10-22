@@ -55,6 +55,7 @@ export const winReceipt: Receipt = {
   points: 15,
   total_points: 15,
   multiplier: 0.5,
+  multiplier_capped: false,
   evidence: { kind: "tap", text: "One tap, paid at half" },
   answer: "Still moist, all fine",
   weather: { label: weatherRecord.label, digest: weatherRecord.digest },

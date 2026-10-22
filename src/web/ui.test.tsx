@@ -189,6 +189,23 @@ describe("Today screen", () => {
     expect(html).toContain("Gemma could not judge this bet yet");
   });
 
+  it("AC-008.8: a win capped at half because Gemma judged it 24 h late is explained, not blamed on a tap", () => {
+    const html = screen(emptyToday, {
+      results: {
+        8: {
+          ...winReceipt,
+          evidence: {
+            kind: "photo",
+            text: "After photo, paid at half: settled 24 hours or more after the settle time",
+          },
+          multiplier_capped: true,
+        },
+      },
+    });
+    expect(html).toContain("settled 24 hours or more after the settle time");
+    expect(html).not.toContain("A photo would have paid in full");
+  });
+
   it("AC-010.2: a loss shows the points, the reason and the fixed copy, without the stamp", () => {
     const html = screen(emptyToday, { results: { 9: lossReceipt } });
     expect(html).toContain("Loss · −50");

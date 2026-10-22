@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -152,6 +153,16 @@ export class PhotoStore {
         this.warn("Could not remove a temporary photo file; the next start removes it");
       }
     }
+  }
+
+  /** Whether the photo file is on the disk (a name that is not a photo file is not). */
+  exists(file: string): boolean {
+    return FILE_NAME.test(file) && existsSync(join(this.dir, file));
+  }
+
+  /** The path of a photo file, for copying it out (the name must be one this store wrote). */
+  pathFor(file: string): string {
+    return this.pathOf(file);
   }
 
   private pathOf(file: string): string {

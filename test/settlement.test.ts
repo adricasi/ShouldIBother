@@ -1,10 +1,16 @@
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import sharp from "sharp";
 
 import { ANSWER_WINDOW_MS, GEMMA_RETRY_MS } from "../src/domain/settlement.js";
 import { LOSS_COPY, PAID_OUT_STAMP } from "../src/domain/settle-copy.js";
+import { madridWallTimeToEpochMs } from "../src/domain/time.js";
+import { JobQueueFullError } from "../src/server/gemma/runner.js";
+import { luckyWinShare } from "../src/server/ledger/lucky.js";
+import { WeatherUnavailableError } from "../src/server/weather/client.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { createCoreHarness, pair, uploadPhoto, type CoreHarness } from "./core-helpers.js";
@@ -15,6 +21,7 @@ import {
   HOUR,
   MINUTE,
   judgeCalls,
+  makeSettler,
   seedBet,
   settlementCount,
   settlementOf,
@@ -425,10 +432,10 @@ describe("Gemma offline (AC-008.8)", () => {
     expect(statusOf(harness, betId)).toBe("awaiting_gemma");
   });
 
-  it("AC-008.8: an unanswered bet 24 h late with Gemma offline stays unsettled; a photo answer given in time keeps x1.0 when Gemma returns late", async () => {
+  it("AC-008.8: an unanswered bet 24 h late with Gemma offline stays unsettled; a photo answered at 23 h and judged at 30 h pays x0.5 (the cap), the evidence kept", async () => {
     await setup();
     const waiting = seedBet(harness, { settleOffsetMs: -ANSWER_WINDOW_MS - MINUTE });
-    const answered = seedBet(harness, { band: 3 });
+    const answered = seedBet(harness, { band: 3, settleOffsetMs: -23 * HOUR });
     harness.model.setScenario("judge", "offline");
     expect((await sendAfterPhoto(answered, await syntheticPhoto())).status).toBe(202);
     expect(await harness.core.scheduler.tickSettlement()).toBe(0);
@@ -436,10 +443,48 @@ describe("Gemma offline (AC-008.8)", () => {
     expect(settlementCount(harness)).toBe(0);
 
     harness.model.setScenario("judge", "ok");
-    harness.clock.advance(2 * ANSWER_WINDOW_MS);
+    harness.clock.advance(7 * HOUR); // 30 h after the answered bet's settle time
     expect(await harness.core.scheduler.tickSettlement()).toBe(2);
     expect(settlementOf(harness, waiting)).toMatchObject({ evidence: "auto", multiplier: 0.5 });
-    expect(settlementOf(harness, answered)).toMatchObject({ evidence: "photo", multiplier: 1 });
+    // Half of (100 - 70), not 30: the judge came back after the 24 h limit.
+    expect(settlementOf(harness, answered)).toMatchObject({
+      evidence: "photo",
+      multiplier: 0.5,
+      multiplier_capped: 1,
+      points: 15,
+    });
+    const receipt = (await harness.get(`/api/bets/${answered}/receipt`)).json<
+      NonNullable<SettleBody["receipt"]>
+    >();
+    expect(receipt).toMatchObject({ multiplier_capped: true, points: 15 });
+    expect(receipt.evidence.text).toContain("paid at half");
+  });
+
+  it("AC-008.8: a verdict committed before the 24 h limit keeps the multiplier of its evidence", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 3, settleOffsetMs: -23 * HOUR });
+    expect((await sendAfterPhoto(betId, await syntheticPhoto())).status).toBe(200);
+    expect(settlementOf(harness, betId)).toMatchObject({
+      evidence: "photo",
+      multiplier: 1,
+      multiplier_capped: 0,
+      points: 30,
+    });
+  });
+
+  it("AC-008.8: a loss is the same at 24 h or more; only a win is capped", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 3, settleOffsetMs: -23 * HOUR });
+    harness.model.setScenario("judge", "offline");
+    await tap(harness, betId, "dry");
+    harness.model.setScenario("judge", "normal-loss");
+    harness.clock.advance(7 * HOUR);
+    await harness.core.scheduler.tickSettlement();
+    expect(settlementOf(harness, betId)).toMatchObject({
+      verdict: "normal_loss",
+      points: -50,
+      evidence: "tap",
+    });
   });
 
   it.each(["invalid-json", "invalid-schema", "timeout", "wrong-kind"])(
@@ -729,3 +774,282 @@ describe("receipt and loss screen (REQ-010, AC-028.1)", () => {
     expect(settlementCount(harness)).toBe(1);
   });
 });
+
+describe("fix round 1: the settlement never gets stuck", () => {
+  it("C1: a question left open for 24 h is cleared and the judge decides (x0.5, the cap)", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 3 });
+    harness.model.setScenario("judge", "unsure");
+    expect((await sendAfterPhoto(betId, await syntheticPhoto())).body.state).toBe("question");
+    harness.model.setScenario("judge", "ok");
+    harness.clock.advance(ANSWER_WINDOW_MS - 2 * MINUTE);
+    // Still within the 24 h: the bet keeps waiting for the person's yes or no.
+    expect(await harness.core.scheduler.tickSettlement()).toBe(0);
+    expect(progressOf(betId)?.["question"]).not.toBeNull();
+
+    harness.clock.advance(3 * MINUTE);
+    expect(await harness.core.scheduler.tickSettlement()).toBe(1);
+    const last = judgeCalls(harness).at(-1);
+    expect(last?.data["can_ask"]).toBe(false);
+    expect(progressOf(betId)?.["question"]).toBeNull();
+    expect(settlementOf(harness, betId)).toMatchObject({
+      evidence: "photo",
+      multiplier: 0.5,
+      multiplier_capped: 1,
+      points: 15,
+    });
+  });
+
+  it("C1: the settle screen stops showing the question once the 24 h have passed", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    harness.model.setScenario("judge", "unsure");
+    await tap(harness, betId, "moist");
+    harness.clock.advance(ANSWER_WINDOW_MS);
+    const slips = (await harness.get("/api/slips")).json<{
+      settle_now: { id: number; settle: { state: string } }[];
+    }>();
+    expect(slips.settle_now.find((bet) => bet.id === betId)?.settle.state).toBe("waiting_gemma");
+  });
+
+  it("C2: a queue that fills after the answer is stored gives awaiting_gemma, not an error, and the scheduler finishes it", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 3 });
+    const original = harness.core.gemma.run.bind(harness.core.gemma);
+    harness.core.gemma.run = () => Promise.reject(new JobQueueFullError("full"));
+    const response = await harness.post(`/api/bets/${betId}/settle`, { answer: "moist" });
+    expect(response.statusCode).toBe(202);
+    expect(response.json<SettleBody>().state).toBe("awaiting_gemma");
+    expect(progressOf(betId)).toMatchObject({ evidence: "tap", answer_id: "moist" });
+    expect(settlementCount(harness)).toBe(0);
+
+    harness.core.gemma.run = original;
+    expect(await harness.core.scheduler.tickSettlement()).toBe(1);
+    expect(settlementOf(harness, betId)).toMatchObject({ evidence: "tap", points: 15 });
+  });
+
+  it("C2: a judge call that finds the bet busy returns awaiting_gemma instead of throwing", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    const { settler } = makeSettler(harness);
+    (settler as unknown as { busy: Set<number> }).busy.add(betId);
+    const outcome = await (
+      settler as unknown as { judge(id: number): Promise<{ state: string; failure: string }> }
+    ).judge(betId);
+    expect(outcome).toEqual({ state: "awaiting_gemma", failure: "busy" });
+  });
+
+  it("C2: a refusal before the write (full queue) changes nothing", async () => {
+    await setup({ runner: { maxQueued: 0 } });
+    const betId = seedBet(harness);
+    expect((await sendAfterPhoto(betId, await syntheticPhoto())).status).toBe(503);
+    expect(progressOf(betId)).toBeUndefined();
+    expect(photoFiles()).toEqual([]);
+  });
+
+  it("C3: an after photo whose file is gone is dropped with its answer; the bet asks again", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    harness.model.setScenario("judge", "offline");
+    expect((await sendAfterPhoto(betId, await syntheticPhoto())).status).toBe(202);
+    for (const file of photoFiles()) {
+      rmSync(join(harness.photos.dir, file));
+    }
+    harness.model.setScenario("judge", "ok");
+    harness.clock.advance(GEMMA_RETRY_MS);
+    expect(await harness.core.scheduler.tickSettlement()).toBe(0);
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+    expect(progressOf(betId)?.["evidence"] ?? null).toBeNull();
+    const slips = (await harness.get("/api/slips")).json<{
+      settle_now: { id: number; settle: { state: string } }[];
+    }>();
+    expect(slips.settle_now.find((bet) => bet.id === betId)?.settle.state).toBe("answer_needed");
+    // The person answers again with a tap and the bet settles.
+    expect((await tap(harness, betId, "moist")).body.state).toBe("settled");
+  });
+
+  it("C3: past 24 h the same bet settles from the weather record instead", async () => {
+    await setup();
+    const betId = seedBet(harness, { settleOffsetMs: -23 * HOUR });
+    harness.model.setScenario("judge", "offline");
+    await sendAfterPhoto(betId, await syntheticPhoto());
+    for (const file of photoFiles()) {
+      rmSync(join(harness.photos.dir, file));
+    }
+    harness.model.setScenario("judge", "ok");
+    harness.clock.advance(2 * HOUR);
+    expect(await harness.core.scheduler.tickSettlement()).toBe(1);
+    expect(settlementOf(harness, betId)).toMatchObject({ evidence: "auto", multiplier: 0.5 });
+  });
+
+  it("C3: at start, an after photo row whose file is missing is dropped with the saved answer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-sweep-"));
+    try {
+      const dbPath = join(dir, "sib.db");
+      const photosDir = join(dir, "photos");
+      harness = await createCoreHarness({ dbPath, photosDir });
+      const betId = seedBet(harness);
+      harness.model.setScenario("judge", "offline");
+      await sendAfterPhoto(betId, await syntheticPhoto());
+      for (const file of readdirSync(photosDir)) {
+        rmSync(join(photosDir, file));
+      }
+      await harness.close();
+
+      harness = await createCoreHarness({ dbPath, photosDir });
+      expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+      expect(progressOf(betId)?.["evidence"] ?? null).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("C3: logs the lost photo with the bet id only", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    const { settler, logs } = makeSettler(harness);
+    harness.model.setScenario("judge", "offline");
+    await settler.submitPhoto(betId, await syntheticPhoto());
+    for (const file of photoFiles()) {
+      rmSync(join(harness.photos.dir, file));
+    }
+    harness.clock.advance(GEMMA_RETRY_MS);
+    await settler.runPass();
+    expect(logs).toEqual([{ event: "settle-photo-missing", bet_id: betId }]);
+  });
+
+  it("C4: a photo whose decoding crosses the 24 h limit is refused, its file cleaned, nothing stored", async () => {
+    await setup();
+    const betId = seedBet(harness, { settleOffsetMs: -ANSWER_WINDOW_MS + 5_000 });
+    const stage = harness.photos.stage.bind(harness.photos);
+    harness.photos.stage = async (bytes) => {
+      const staged = await stage(bytes);
+      harness.clock.advance(10_000); // the limit passes while the photo is being decoded
+      return staged;
+    };
+    const { status } = await sendAfterPhoto(betId, await syntheticPhoto());
+    expect(status).toBe(409);
+    expect(photoFiles()).toEqual([]);
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+    expect(progressOf(betId)?.["evidence"] ?? null).toBeNull();
+    expect(judgeCalls(harness)).toHaveLength(0);
+  });
+
+  it("C4: the status is checked again inside the write (a bet settled meanwhile takes no answer)", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    const stage = harness.photos.stage.bind(harness.photos);
+    harness.photos.stage = async (bytes) => {
+      const staged = await stage(bytes);
+      harness.db.prepare("UPDATE bets SET status = 'settled' WHERE id = ?").run(betId);
+      return staged;
+    };
+    expect((await sendAfterPhoto(betId, await syntheticPhoto())).status).toBe(409);
+    expect(photoFiles()).toEqual([]);
+  });
+
+  it("a third unsure after the questions are used up is logged without content", async () => {
+    await setup();
+    const betId = seedBet(harness);
+    const { settler, logs } = makeSettler(harness);
+    harness.model.setScenario("judge", "unsure");
+    await settler.submitTap(betId, "moist");
+    await settler.answerQuestion(betId, true);
+    await settler.answerQuestion(betId, false);
+    expect(logs).toEqual([{ event: "settle-judge-unsure-after-cap", bet_id: betId }]);
+  });
+
+  it("the judge never sees the odds of the bet", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 1 });
+    await tap(harness, betId, "moist");
+    expect(judgeCalls(harness)[0]?.user).not.toMatch(/odds|35/);
+  });
+
+  it("do-it decisions rejected for a wrong kind of verdict wait, then settle together in one pass", async () => {
+    await setup();
+    const stuck = seedBet(harness, { kind: "do_it" });
+    const fine = seedBet(harness, { kind: "do_it" });
+    harness.model.setScenario("judge", "ok"); // a "win" is no verdict for a do-it decision
+    await harness.core.scheduler.tickSettlement();
+    expect(settlementCount(harness)).toBe(0);
+    harness.model.setScenario("judge", "do-it-would-not");
+    harness.clock.advance(GEMMA_RETRY_MS);
+    expect(await harness.core.scheduler.tickSettlement()).toBe(2);
+    expect(statusOf(harness, stuck)).toBe("settled");
+    expect(statusOf(harness, fine)).toBe("settled");
+  });
+});
+
+describe("lucky win on the full outcome window (R2)", () => {
+  it("R2: a line-dry bet placed at 13:00 is labelled on 10:00 to 18:00, not on the 5 hours it was open", async () => {
+    // Dry air, a light breeze, sun: D = 0.5 an hour. 10:00 to 18:00 gives 4.0 (delivered, so not
+    // lucky); the 5 hours after 13:00 would give only 2.5 (below 3.0: a lucky win).
+    await setup({
+      weatherProfile: {
+        temperatureC: 22,
+        dryProbabilityPct: 0,
+        windKmh: 15,
+        relativeHumidityPct: 50,
+        sunshineSeconds: 1800,
+      },
+    });
+    harness.clock.current = madridMs("2026-10-22", "18:01");
+    const betId = seedBet(harness, { chore: "laundry_line", openHours: 5 });
+    const placed = harness.db
+      .prepare<[number], { placed_at: number }>("SELECT placed_at FROM bets WHERE id = ?")
+      .get(betId)!.placed_at;
+    expect(placed).toBe(madridMs("2026-10-22", "13:00"));
+    const { body } = await tap(harness, betId, "line_dry");
+    expect(body.receipt).toMatchObject({ verdict: "win", lucky_win: false });
+    expect(harness.weather.recordedRequests.at(-1)).toEqual({
+      fromMs: madridMs("2026-10-22", "10:00"),
+      toMs: madridMs("2026-10-22", "18:00"),
+    });
+  });
+
+  it("R2: when the earlier hours cannot be fetched the label falls back to the hours the bet was open", async () => {
+    await setup({
+      weatherProfile: {
+        temperatureC: 22,
+        dryProbabilityPct: 0,
+        windKmh: 15,
+        relativeHumidityPct: 50,
+        sunshineSeconds: 1800,
+      },
+    });
+    harness.clock.current = madridMs("2026-10-22", "18:01");
+    const betId = seedBet(harness, { chore: "laundry_line", openHours: 5 });
+    const original = harness.weather.getRecorded.bind(harness.weather);
+    let calls = 0;
+    harness.weather.getRecorded = (request) => {
+      calls += 1;
+      return calls === 1 ? original(request) : Promise.reject(new WeatherUnavailableError("down"));
+    };
+    const { body } = await tap(harness, betId, "line_dry");
+    expect(body.receipt?.lucky_win).toBe(true);
+  });
+
+  it("R3: the lucky share leaves wins with no flag out of both numbers", async () => {
+    await setup();
+    const make = (lucky: number | null, verdict = "win"): void => {
+      const id = seedBet(harness, { status: "settled" });
+      harness.db
+        .prepare(
+          `INSERT INTO settlements (bet_id, evidence, multiplier, verdict, lucky_win, points, settled_at, final)
+           VALUES (?, 'tap', 0.5, ?, ?, 15, 1, 1)`,
+        )
+        .run(id, verdict, lucky);
+    };
+    make(1);
+    make(0);
+    make(0);
+    make(null);
+    make(null, "normal_loss");
+    expect(luckyWinShare(harness.db)).toEqual({ wins_labelled: 3, lucky_wins: 1, share: 1 / 3 });
+  });
+});
+
+function madridMs(date: string, time: string): number {
+  return madridWallTimeToEpochMs(date, time);
+}

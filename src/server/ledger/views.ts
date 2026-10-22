@@ -113,7 +113,8 @@ export function settleView(bet: BetRow, progress: ProgressRow | undefined, nowMs
   const answered = progress?.evidence ?? null;
   const deadline = bet.settle_at + ANSWER_WINDOW_MS;
   const snapshot = parseWeatherSnapshot(progress?.weather ?? null);
-  const pendingQuestion = progress?.question ?? null;
+  // After 24 h the judge decides without asking, so an old question is no longer shown.
+  const pendingQuestion = nowMs < deadline ? (progress?.question ?? null) : null;
   const waiting = bet.status === "awaiting_weather" ? "waiting_weather" : "waiting_gemma";
   let state: SettleState;
   let note: string | null;

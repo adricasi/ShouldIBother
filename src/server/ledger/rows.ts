@@ -62,6 +62,8 @@ export interface SettlementRow {
   bet_id: number;
   evidence: "photo" | "tap" | "auto";
   multiplier: number;
+  /** 1 when a settlement 24 h or more after the settle time capped the win at x0.5 (AC-008.8). */
+  multiplier_capped: number;
   verdict: string;
   lucky_win: number | null;
   weather: string | null;

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { APP_SECONDS_PER_BET, parseSnapshot, totalSavings } from "../src/domain/savings.js";
 import { madridWeekOf } from "../src/domain/week.js";
 import { backfillSavingsSnapshots, savingsTotals } from "../src/server/ledger/savings.js";
-import { loadSavings } from "../src/server/savings.js";
+import { DEFAULT_SAVINGS_PATH, loadSavings } from "../src/server/savings.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { EXAMPLE_HOUSEHOLD, createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
@@ -68,6 +68,20 @@ describe("savings catalogue (REQ-011)", () => {
       expect(figure.basis === "sourced").toBe(figure.source !== undefined);
     }
     expect(catalogue.plants.basis).toBe("typical estimate");
+  });
+
+  it("AC-011.4: a catalogue that gives line-dry minutes is refused at load", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-savings-"));
+    cleanups.push(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const catalogue = JSON.parse(readFileSync(DEFAULT_SAVINGS_PATH, "utf8")) as {
+      laundry_line: Record<string, { time_min: number }>;
+    };
+    catalogue.laundry_line["vented"]!.time_min = 5;
+    const path = join(dir, "savings.json");
+    writeFileSync(path, JSON.stringify(catalogue));
+    expect(() => loadSavings(path)).toThrow(/time_min must be 0/);
   });
 
   it("AC-011.4: line-dry saves electricity only, 0 minutes, whatever the dryer", () => {

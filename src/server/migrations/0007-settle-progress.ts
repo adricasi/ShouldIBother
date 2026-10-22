@@ -14,8 +14,12 @@ import type { Migration } from "../db.js";
  * The after photo's row goes with the photo (a pending answer whose photo was deleted is gone and
  * can be given again); the before photo may go without losing the answer.
  *
- * Adds a table only: the existing bets, settlements and the bet triggers of migration 0003 are
- * untouched, and every status change the settlement needs is already an arrow of the machine.
+ * `settlements.multiplier_capped` marks a settlement committed 24 h or more after the settle time,
+ * whose win multiplier was capped at x0.5 whatever the evidence (AC-008.8); the evidence stays.
+ *
+ * Adds a table and one defaulted column: existing bets and settlements keep their values (capped =
+ * 0), the bet triggers of migration 0003 are untouched, and every status change the settlement
+ * needs is already an arrow of the machine.
  */
 export const settleProgress: Migration = {
   id: 7,
@@ -39,6 +43,8 @@ CREATE TABLE settle_progress (
     OR (evidence = 'photo' AND photo_id IS NOT NULL AND answer_id IS NULL AND answered_at IS NOT NULL)
   )
 );
+ALTER TABLE settlements ADD COLUMN multiplier_capped INTEGER NOT NULL DEFAULT 0
+  CHECK (multiplier_capped IN (0, 1));
 CREATE INDEX settle_progress_photo_id ON settle_progress (photo_id);
 CREATE INDEX settle_progress_before_photo_id ON settle_progress (before_photo_id);
 `,

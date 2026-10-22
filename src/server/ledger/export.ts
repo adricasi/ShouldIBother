@@ -10,6 +10,8 @@ import { parseFollowups } from "./settle-progress.js";
 
 /** Version of the export file's shape. */
 export const EXPORT_VERSION = 1;
+/** The folder of the export that holds the photo files. */
+export const EXPORT_PHOTOS_DIR = "photos";
 
 interface PhotoExportRow {
   id: string;
@@ -28,7 +30,7 @@ const iso = (ms: number): string => new Date(ms).toISOString();
  * Everything the app keeps about the household's bets, as one JSON document (AC-015.4): cards,
  * quotes, bets with their savings snapshot, settlements with their verdicts and the recorded
  * weather, the person's answers, every Gemma decision, and the totals. Photo files are copied next
- * to it by the command; the file names here are the names inside the export's `photos/` folder.
+ * to it by the command, into the export's `photos/` folder (`photos_dir`); `file` is the bare name.
  * Sessions, pairing tokens and the weather cache are not exported: they are not household data.
  */
 export function buildExport(db: Db, nowMs: number) {
@@ -58,12 +60,13 @@ export function buildExport(db: Db, nowMs: number) {
       followups: parseFollowups(progress.followups),
     })),
     decisions: all<Record<string, unknown>>("SELECT * FROM gemma_decisions ORDER BY id"),
+    photos_dir: EXPORT_PHOTOS_DIR,
     photos: all<PhotoExportRow>("SELECT * FROM photos ORDER BY received_at, id").map((photo) => ({
       id: photo.id,
       card_id: photo.card_id,
       bet_id: photo.bet_id,
       role: photo.role,
-      file: `photos/${photo.file}`,
+      file: photo.file,
       width: photo.width,
       height: photo.height,
       received_at: iso(photo.received_at),

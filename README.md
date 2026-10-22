@@ -77,11 +77,12 @@ source or "typical estimate") and your dryer in `config/household.json`; the fig
 the bet when it is placed. Today shows the week's net time back (time saved minus 30 s per bet),
 water and electricity, Monday to Sunday in Madrid time, each with its assumption.
 
-Your data (stop the app first):
+Your data (these commands refuse to run while the app is running, so stop it first; they touch only
+the files the app owns in the data folder, and `config/household.json` is never touched):
 ```bash
 npm run sib -- export ~/sib-export         # export.json (bets, decisions, verdicts, totals) + photos/
 npm run sib -- delete-photos               # asks first; removes every photo and what Gemma read from it
-npm run sib -- delete-photos --all-data    # asks first; also removes the database, WAL files and logs
+npm run sib -- delete-photos --all-data    # asks first; also removes the database and its WAL files
 ```
 The export folder holds household data: keep it out of the repository.
 

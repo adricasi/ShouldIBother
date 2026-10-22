@@ -137,6 +137,7 @@ export const receiptSchema = z.object({
   points: z.number(),
   total_points: z.number(),
   multiplier: z.number(),
+  multiplier_capped: z.boolean(),
   evidence: z.object({ kind: z.enum(["photo", "tap", "auto"]), text: z.string() }),
   answer: z.string().nullable(),
   weather: weatherSchema.omit({ from: true, to: true }).nullable(),
@@ -222,6 +223,7 @@ export const settleResultSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("question"), question: z.string() }),
   z.object({ state: z.literal("awaiting_weather"), note: z.string() }),
   z.object({ state: z.literal("awaiting_gemma"), note: z.string() }),
+  z.object({ state: z.literal("answer_needed"), note: z.string() }),
 ]);
 
 export type Card = z.infer<typeof cardSchema>;

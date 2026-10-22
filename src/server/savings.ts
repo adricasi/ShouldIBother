@@ -32,7 +32,12 @@ const catalogueSchema = z
     ac: figureSchema,
     heater: figureSchema,
   })
-  .strict();
+  .strict()
+  // Hanging laundry instead of the dryer replaces a step: time counts skipped steps only (AC-011.4).
+  .refine((catalogue) => Object.values(catalogue.laundry_line).every((f) => f.time_min === 0), {
+    message: "line-dry saves electricity only: time_min must be 0 (AC-011.4)",
+    path: ["laundry_line"],
+  });
 
 export const DEFAULT_SAVINGS_PATH = `${CONFIG_DIR}savings.json`;
 

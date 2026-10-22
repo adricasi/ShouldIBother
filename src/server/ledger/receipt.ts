@@ -23,6 +23,12 @@ const EVIDENCE_TEXT = {
   auto: "Weather record only, paid at half",
 } as const;
 
+const EVIDENCE_LABEL = {
+  photo: "After photo",
+  tap: "One tap",
+  auto: "Weather record only",
+} as const;
+
 /** What the person gets to read after a bet is settled: PAID OUT receipt or loss screen. */
 export interface Receipt {
   readonly bet_id: number;
@@ -39,6 +45,8 @@ export interface Receipt {
   readonly points: number;
   readonly total_points: number;
   readonly multiplier: number;
+  /** True when the win was capped at half points because it was settled 24 h or more late. */
+  readonly multiplier_capped: boolean;
   readonly evidence: { readonly kind: "photo" | "tap" | "auto"; readonly text: string };
   /** The tap the person gave, in the chore's words. */
   readonly answer: string | null;
@@ -117,9 +125,15 @@ export function receiptOf(
     points: settlement.points,
     total_points: pointsTotal(deps),
     multiplier: settlement.multiplier,
+    multiplier_capped: settlement.multiplier_capped === 1,
     evidence: {
       kind: settlement.evidence,
-      text: bet.kind === "do_it" ? "Recorded weather" : EVIDENCE_TEXT[settlement.evidence],
+      text:
+        bet.kind === "do_it"
+          ? "Recorded weather"
+          : settlement.multiplier_capped === 1 && verdict === "win"
+            ? `${EVIDENCE_LABEL[settlement.evidence]}, paid at half: settled 24 hours or more after the settle time`
+            : EVIDENCE_TEXT[settlement.evidence],
     },
     answer: answerLabel,
     weather:

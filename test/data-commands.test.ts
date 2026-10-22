@@ -6,6 +6,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -142,7 +143,7 @@ describe("sib delete-photos (AC-015.3)", () => {
     after.db.close();
   });
 
-  it("AC-015.3: --all-data asks for a stronger confirmation, then removes the database, WAL files, photos and logs", async () => {
+  it("AC-015.3: --all-data asks for a stronger confirmation, then removes the database, WAL files and photos, and nothing else", async () => {
     await liveWeek();
     mkdirSync(join(dataDir, "logs"));
     writeFileSync(join(dataDir, "logs", "app.json"), "{}");
@@ -163,8 +164,29 @@ describe("sib delete-photos (AC-015.3)", () => {
         { confirm: answering("delete everything"), print },
       ),
     ).toBe(true);
-    expect(readdirSync(dataDir).sort()).toEqual(["notes.txt"]);
+    // Only what the app owns goes: logs go to stdout, and other files in the folder are not ours.
+    expect(readdirSync(dataDir).sort()).toEqual(["app.log", "logs", "notes.txt"]);
+    expect(readFileSync(join(dataDir, "notes.txt"), "utf8")).toBe("mine");
     expect(printed.at(-1)).toContain("weather cache");
+  });
+
+  it("AC-015.3: the --all-data prompt says what stays: household.json is outside the data folder", async () => {
+    await liveWeek();
+    const questions: string[] = [];
+    await deletePhotosCommand(
+      runtime(),
+      { allData: true },
+      {
+        confirm: (question) => {
+          questions.push(question);
+          return Promise.resolve(false);
+        },
+        print,
+      },
+    );
+    expect(questions[0]).toContain("config/household.json");
+    expect(questions[0]).toContain("kept");
+    expect(questions[0]).toContain("delete everything");
   });
 
   it("AC-015.3: the freed pages are overwritten: text of a deleted decision is not left in the database files", async () => {
@@ -199,6 +221,7 @@ describe("sib export <dir> (AC-015.4)", () => {
       verdicts: { bet_id: number; verdict: string; points: number; weather: { digest: object } }[];
       decisions: { job: string }[];
       answers: { bet_id: number; evidence: string }[];
+      photos_dir: string;
       photos: { file: string; role: string }[];
       totals: { points: number; savings: { wins: number; water_l: number } };
     };
@@ -216,7 +239,9 @@ describe("sib export <dir> (AC-015.4)", () => {
     expect(document.decisions.some((decision) => decision.job === "judge")).toBe(true);
     expect(document.photos.map((photo) => photo.role).sort()).toEqual(["after", "before"]);
     for (const photo of document.photos) {
-      expect(existsSync(join(target, photo.file))).toBe(true);
+      // A bare file name; the files are in the export's photos folder.
+      expect(photo.file).toMatch(/^[0-9a-f-]{36}\.jpg$/);
+      expect(existsSync(join(target, document.photos_dir, photo.file))).toBe(true);
     }
     expect(document.totals).toMatchObject({ points: 63, savings: { wins: 2, water_l: 8 } });
     // Sessions and tokens are not household data.
@@ -231,6 +256,85 @@ describe("sib export <dir> (AC-015.4)", () => {
     writeFileSync(join(target, "something.txt"), "x");
     expect(() => {
       exportCommand(runtime(), target, print);
-    }).toThrow(/not an empty folder/);
+    }).toThrow(/not a new or empty folder/);
+  });
+});
+
+describe("the app must not be running (C5, Sec-S1)", () => {
+  it.each([
+    ["delete-photos", false],
+    ["delete-photos --all-data", true],
+  ])(
+    "%s refuses while another connection has the database open, and deletes nothing",
+    async (_name, allData) => {
+      await liveWeek();
+      const app = runtime(); // stands in for the running app
+      const before = readdirSync(join(dataDir, "photos"));
+      await expect(
+        deletePhotosCommand(
+          runtime(),
+          { allData },
+          { confirm: answering("delete everything"), print },
+        ),
+      ).rejects.toThrow(/Stop the app first/);
+      expect(readdirSync(join(dataDir, "photos"))).toEqual(before);
+      expect(existsSync(join(dataDir, "sib.db"))).toBe(true);
+      expect(count(app, "photos")).toBe(2);
+      app.db.close();
+    },
+  );
+
+  it("export refuses while another connection has the database open, and writes nothing", async () => {
+    await liveWeek();
+    const app = runtime();
+    const target = join(root, "out");
+    expect(() => {
+      exportCommand(runtime(), target, print);
+    }).toThrow(/Stop the app first/);
+    expect(existsSync(target)).toBe(false);
+    app.db.close();
+  });
+
+  it("works again once the app has stopped", async () => {
+    await liveWeek();
+    const app = runtime();
+    app.db.close();
+    expect(
+      await deletePhotosCommand(
+        runtime(),
+        { allData: false },
+        { confirm: answering("yes"), print },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("the export folder (Sec-S3)", () => {
+  it("refuses a symlink as the target, also to an empty folder, and writes nothing through it", async () => {
+    await liveWeek();
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere);
+    const link = join(root, "link");
+    symlinkSync(elsewhere, link);
+    expect(() => {
+      exportCommand(runtime(), link, print);
+    }).toThrow(/links are refused/);
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it("creates the folder owner-only, never overwrites a file, and says how many photo files were missing", async () => {
+    await liveWeek();
+    const photo = readdirSync(join(dataDir, "photos"))[0]!;
+    rmSync(join(dataDir, "photos", photo));
+    const target = join(root, "fresh", "out");
+    exportCommand(runtime(), target, print);
+    expect(statSync(target).mode & 0o777).toBe(0o700);
+    expect(statSync(join(target, "export.json")).mode & 0o777).toBe(0o600);
+    expect(readdirSync(join(target, "photos")).length).toBe(1);
+    expect(printed.join("\n")).toContain("1 photo file was missing");
+    // Exporting again into the same, now non-empty, folder is refused.
+    expect(() => {
+      exportCommand(runtime(), target, print);
+    }).toThrow(/not a new or empty folder/);
   });
 });

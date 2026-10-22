@@ -9,18 +9,30 @@ import {
 } from "./outcomes.js";
 import { madridDateOf } from "./time.js";
 
+interface BetTimes {
+  readonly placedAt: number;
+  readonly settleAt: number;
+}
+
 /**
- * The window the outcome label is applied to for a live bet: the chore's fixed window on the day
- * the bet was placed (design.md, Outcome labels), cut to the time the bet was actually open. The
- * recorded weather only covers `[placedAt, settleAt)`, so a bet placed at 22:00 cannot be judged
- * on a plants window that starts at 19:00. When the two do not overlap (an AC night placed after
- * midnight) the bet's own window is used. Laundry tonight starts at sunset, which a bet does not
- * store; the moment it was placed stands in for it.
+ * The window the outcome label is applied to for a live bet (design.md, Outcome labels): the
+ * chore's full fixed window on the day the bet was placed (line-dry 10:00 to 18:00, plants 19:00 to
+ * 10:00 next day). The hours before the bet was placed have been recorded too, so the window is
+ * not cut at the start. It is cut at the end only where the hours are not there yet: at `nowMs`.
+ * Laundry tonight starts at sunset, which a bet does not store; the moment it was placed stands in
+ * for it (T-013 owns that chore's settlement).
  */
-export function labelWindowOf(
-  chore: ChoreType,
-  bet: { readonly placedAt: number; readonly settleAt: number },
-): TimeWindow {
+export function labelWindowOf(chore: ChoreType, bet: BetTimes, nowMs: number): TimeWindow {
+  const fixed = outcomeWindow(chore, madridDateOf(bet.placedAt), bet.placedAt);
+  return { startMs: fixed.startMs, endMs: Math.min(fixed.endMs, nowMs) };
+}
+
+/**
+ * The fallback when the hours before the bet cannot be fetched: the fixed window cut to the time
+ * the bet was open, which is all the settle snapshot covers. When the two do not overlap (an AC
+ * night placed after midnight) the bet's own window is used.
+ */
+export function cutWindowOf(chore: ChoreType, bet: BetTimes): TimeWindow {
   const own: TimeWindow = { startMs: bet.placedAt, endMs: bet.settleAt };
   const fixed = outcomeWindow(chore, madridDateOf(bet.placedAt), bet.placedAt);
   const clipped: TimeWindow = {
@@ -37,11 +49,11 @@ export function labelWindowOf(
  */
 export function luckyWinOf(
   chore: ChoreType,
-  bet: { readonly placedAt: number; readonly settleAt: number },
+  window: TimeWindow,
   hours: readonly HourlyWeather[],
 ): boolean | null {
   try {
-    return isLuckyWin(outcomeLabel(chore, hours, labelWindowOf(chore, bet)));
+    return isLuckyWin(outcomeLabel(chore, hours, window));
   } catch (error) {
     if (error instanceof IncompleteWeatherError) {
       return null;

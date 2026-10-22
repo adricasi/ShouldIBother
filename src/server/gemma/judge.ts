@@ -18,8 +18,9 @@ export const judgeOutputSchema = z
   .object({
     status: z.enum(["ok", "unsure"]),
     verdict: z.enum([...DO_NOTHING_VERDICTS, ...DO_IT_VERDICTS]).optional(),
-    reason: z.string().max(200),
-    evidence: z.array(z.string().max(120)).max(5).default([]),
+    // The prompt asks for at most 140 characters and three phrases: the schema holds the same.
+    reason: z.string().max(140),
+    evidence: z.array(z.string().max(120)).max(3).default([]),
     question: z.string().max(200).optional(),
   })
   .strict();
@@ -84,6 +85,9 @@ export type JudgeResult =
       readonly question?: string;
     });
 
+/** What the check says to a judge that was unsure when it may not ask (also how the log spots it). */
+export const CANNOT_ASK_MESSAGE = "you cannot ask a question now";
+
 const EVIDENCE_TEXT = {
   tap: "one tap",
   photo: "after photo",
@@ -96,7 +100,6 @@ function userMessage(input: JudgeInput): string {
   return untrustedBlock({
     bet: input.kind,
     chore: input.chore.judgeName,
-    odds_that_doing_nothing_works_pct: input.odds,
     evidence: EVIDENCE_TEXT[evidence.kind],
     person_answered:
       evidence.kind === "tap"
@@ -163,7 +166,7 @@ export async function judgeBet(runner: JobRunner, input: JudgeInput): Promise<Ju
           : `for a bet of kind "${input.kind}" the verdict must be one of ${allowed.join(", ")}`;
       }
       if (!input.canAsk) {
-        return 'you cannot ask a question now: answer with status "ok" and a verdict';
+        return `${CANNOT_ASK_MESSAGE}: answer with status "ok" and a verdict`;
       }
       return (output.question ?? "").trim() === ""
         ? 'status "unsure" needs a yes/no question'

@@ -257,6 +257,11 @@ export function createCore(deps: CoreDeps): Core {
             state: "awaiting_gemma",
             note: "Your answer is saved. It settles when Gemma is back.",
           });
+        case "answer_needed":
+          return reply.code(202).send({
+            state: "answer_needed",
+            note: "Your photo is no longer there. Please answer again.",
+          });
       }
     };
 
@@ -264,6 +269,8 @@ export function createCore(deps: CoreDeps): Core {
     app.post("/api/bets/:id/settle", async (request, reply) => {
       const { id } = parse(idParams, request.params);
       if (request.isMultipart()) {
+        // Refuse a bet that cannot take an answer before the upload is buffered.
+        settler.checkPhotoAnswer(id);
         const bytes = await readUploadedPhoto(request);
         return outcomeResponse(await settler.submitPhoto(id, bytes), reply);
       }

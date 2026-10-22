@@ -1,6 +1,10 @@
 import { expect } from "vitest";
 
 import type { Band } from "../../src/domain/bands.js";
+import { parseFlags } from "../../src/server/flags.js";
+import { BackgroundTasks, type LedgerDeps } from "../../src/server/ledger/deps.js";
+import { Settler } from "../../src/server/ledger/settle.js";
+import { loadRules } from "../../src/server/rules.js";
 import { savingsSnapshotText } from "../../src/server/ledger/savings.js";
 import { loadSavings } from "../../src/server/savings.js";
 import { EXAMPLE_HOUSEHOLD, type CoreHarness } from "../core-helpers.js";
@@ -142,4 +146,27 @@ export function statusOf(harness: CoreHarness, betId: number): string {
 
 export function settlementCount(harness: CoreHarness): number {
   return harness.db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM settlements").get()!.n;
+}
+
+/** A second Settler on the harness's database and Gemma queue, with its log lines captured. */
+export function makeSettler(harness: CoreHarness): {
+  settler: Settler;
+  logs: Record<string, unknown>[];
+  deps: LedgerDeps;
+} {
+  const logs: Record<string, unknown>[] = [];
+  const deps: LedgerDeps = {
+    db: harness.db,
+    now: harness.clock.now,
+    weather: harness.weather,
+    gemma: harness.core.gemma,
+    rules: loadRules(),
+    household: EXAMPLE_HOUSEHOLD,
+    flags: parseFlags({}),
+    savings: loadSavings(),
+    photos: harness.photos,
+    background: new BackgroundTasks(() => undefined),
+    log: (entry) => logs.push({ ...entry }),
+  };
+  return { settler: new Settler(deps), logs, deps };
 }

@@ -48,6 +48,22 @@ describe("migration 0007: what a bet knows while it settles (NFR-003)", () => {
     db.close();
   });
 
+  it("adds settlements.multiplier_capped, 0 on every existing settlement, and accepts only 0 or 1", () => {
+    const db = openDatabase(":memory:");
+    seedLiveDatabase(db);
+    db.exec(`
+      UPDATE bets SET status = 'settled' WHERE id = 2;
+      INSERT INTO settlements (bet_id, evidence, multiplier, verdict, points, settled_at)
+        VALUES (2, 'tap', 0.5, 'win', 33, 40);
+    `);
+    migrate(db, MIGRATIONS);
+    expect(
+      db.prepare("SELECT multiplier, multiplier_capped, points FROM settlements").all(),
+    ).toEqual([{ multiplier: 0.5, multiplier_capped: 0, points: 33 }]);
+    expect(() => db.prepare("UPDATE settlements SET multiplier_capped = 2").run()).toThrow();
+    db.close();
+  });
+
   it("settles the seeded open bets with the bet triggers of migration 0003 still in force", () => {
     const db = openDatabase(":memory:");
     seedLiveDatabase(db);
