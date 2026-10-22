@@ -1,5 +1,5 @@
 {
-  "description": "Calls get_forecast with hours_ahead 99; the app answers with an error and Gemma still answers.",
+  "description": "Calls get_forecast with hours_ahead 99 (not a use of the tool, so the answer is not asked for); the retry calls it correctly and answers.",
   "steps": [
     {
       "toolCalls": [
@@ -7,6 +7,17 @@
           "name": "get_forecast",
           "arguments": {
             "hours_ahead": 99
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 30
           }
         }
       ],

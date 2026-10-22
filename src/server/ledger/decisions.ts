@@ -20,7 +20,11 @@ export interface DecisionInput {
   readonly createdAt: number;
 }
 
-/** Records one Gemma job in `gemma_decisions` for the evaluation (REQ-028); returns its id. */
+/**
+ * Records one Gemma job in `gemma_decisions` for the evaluation (REQ-028); returns its id.
+ * Evaluation queries (calibration, tool-call miss rate, valid-JSON rate) must exclude decisions
+ * made by the fake model: `WHERE model NOT LIKE 'fake%'` (the fixtures say `fake-gemma`).
+ */
 export function logDecision(db: Db, input: DecisionInput): number {
   const result = db
     .prepare(

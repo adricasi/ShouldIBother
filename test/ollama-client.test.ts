@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ModelTimeoutError, ModelUnavailableError } from "../src/server/model/client.js";
 import { parseModelsConfig, primaryModelTag } from "../src/server/model/config.js";
-import { OllamaClient } from "../src/server/model/ollama.js";
+import { MAX_RESPONSE_BYTES, OllamaClient } from "../src/server/model/ollama.js";
 import { selectModel } from "../src/server/model/select.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
 
@@ -104,7 +104,6 @@ describe("OllamaClient (request format against a fake server)", () => {
       content: '{"a":1}',
       toolCalls: [],
       model: TAG,
-      modelDigest: "sha256:synthetic0042",
     });
   });
 
@@ -194,19 +193,32 @@ describe("OllamaClient (request format against a fake server)", () => {
     expect(body.messages[1]?.images).toEqual([Buffer.from([1, 2, 3]).toString("base64")]);
   });
 
-  it("looks the digest up once and remembers it", async () => {
+  it("a chat makes no extra request; the digest comes from the health check and is remembered", async () => {
     const { url, seen } = await fakeOllama((req, res) =>
       req.url === "/api/tags"
         ? json(res, 200, TAGS)
         : json(res, 200, { message: { content: "{}" } }),
     );
     const client = ollama(url);
-    await client.chat(request);
-    await client.chat(request);
+    expect((await client.chat(request)).modelDigest).toBeUndefined();
+    expect(seen.map((entry) => entry.url)).toEqual(["/api/chat"]);
+    await client.health();
+    expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
     expect(seen.filter((entry) => entry.url === "/api/tags")).toHaveLength(1);
   });
 
-  it("still answers when the digest cannot be read", async () => {
+  it("the warm-up also takes the digest", async () => {
+    const { url } = await fakeOllama((req, res) =>
+      req.url === "/api/tags"
+        ? json(res, 200, TAGS)
+        : json(res, 200, { model: TAG, message: { content: "{}" }, done: true }),
+    );
+    const client = ollama(url);
+    await client.warmUp();
+    expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
+  });
+
+  it("still answers when no digest is known", async () => {
     const { url } = await fakeOllama((req, res) =>
       req.url === "/api/tags"
         ? json(res, 500, { error: "x" })
@@ -240,6 +252,24 @@ describe("OllamaClient (failures become the errors the jobs understand)", () => 
     await expect(ollama(url).chat(request)).rejects.toThrow(/404.*not found/);
   });
 
+  it("refuses a redirect instead of following it off 127.0.0.1", async () => {
+    const { url, seen } = await fakeOllama((_req, res) => {
+      res.writeHead(307, { location: "http://127.0.0.1:9/api/chat" });
+      res.end();
+    });
+    await expect(ollama(url).chat(request)).rejects.toBeInstanceOf(ModelUnavailableError);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("refuses an answer over 1 MB, declared or streamed", async () => {
+    const { url } = await fakeOllama((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write(`{"message":{"content":"${"x".repeat(MAX_RESPONSE_BYTES)}`);
+      res.end(`"}}`);
+    });
+    await expect(ollama(url).chat(request)).rejects.toThrow(/too large/);
+  });
+
   it("an answer that is not the expected shape is ModelUnavailableError", async () => {
     const { url } = await fakeOllama((_req, res) => json(res, 200, { unexpected: true }));
     await expect(ollama(url).chat(request)).rejects.toBeInstanceOf(ModelUnavailableError);
@@ -254,6 +284,16 @@ describe("OllamaClient health and warm-up", () => {
     expect(await ollama(url, { model: "gemma4:e2b" }).health()).toMatchObject({
       state: "offline",
       detail: expect.stringContaining("not pulled") as unknown,
+    });
+  });
+
+  it("matches the model name with :latest normalised", async () => {
+    const { url } = await fakeOllama((_req, res) =>
+      json(res, 200, { models: [{ name: "gemma4:latest", digest: "sha256:l" }] }),
+    );
+    expect(await ollama(url, { model: "gemma4" }).health()).toMatchObject({ state: "online" });
+    expect(await ollama(url, { model: "gemma4:latest" }).health()).toMatchObject({
+      state: "online",
     });
   });
 
@@ -306,40 +346,62 @@ describe("config/models.json and the startup choice", () => {
   });
 
   it("NFR-001: refuses an Ollama address that is not loopback", () => {
-    for (const baseUrl of ["http://192.168.1.5:11434", "http://example.com", "https://127.0.0.1"]) {
+    for (const baseUrl of [
+      "http://192.168.1.5:11434",
+      "http://example.com",
+      "https://127.0.0.1",
+      "http://localhost:11434",
+    ]) {
       expect(() => config({}, { ollama: { baseUrl } })).toThrow(/127\.0\.0\.1/);
     }
-    expect(() => config({}, { ollama: { baseUrl: "http://localhost:11434" } })).not.toThrow();
+    expect(() => config({}, { ollama: { baseUrl: "http://[::1]:11434" } })).not.toThrow();
   });
 
   it("rejects unknown keys", () => {
     expect(() => config({}, { surprise: true })).toThrow();
   });
 
-  it("uses the fake model, with a clear notice, when no model is named", async () => {
-    const fake = new FakeModelClient();
-    const selection = await selectModel(parseModelsConfig({}), { fake: () => fake });
-    expect(selection.model).toBe(fake);
-    expect(selection.mode).toBe("fake");
-    expect(selection.notice).toContain("FAKE MODEL");
+  it("refuses to start without a model tag, saying how to set it", async () => {
+    await expect(
+      selectModel(parseModelsConfig({}), { useFake: false, fake: () => new FakeModelClient() }),
+    ).rejects.toThrow(/config\/models\.json.*models\.e4b\.tag.*SIB_FAKE_MODEL=1/);
   });
 
-  it("uses the fake model, with a clear notice, when Ollama does not answer", async () => {
-    const fake = new FakeModelClient();
-    const selection = await selectModel(
+  it("never builds the fake model unless SIB_FAKE_MODEL=1 asked for it", async () => {
+    let built = 0;
+    const fake = (): FakeModelClient => {
+      built += 1;
+      return new FakeModelClient();
+    };
+    // No tag: error. Tag but Ollama down: Ollama client, offline. Neither builds the fake.
+    await expect(selectModel(parseModelsConfig({}), { useFake: false, fake })).rejects.toThrow();
+    const down = await selectModel(
       config({ e4b: { tag: TAG } }, { ollama: { baseUrl: "http://127.0.0.1:9" } }),
-      { fake: () => fake },
+      { useFake: false, fake },
     );
+    expect(built).toBe(0);
+    expect(down.mode).toBe("ollama");
+    expect(down.model).toBeInstanceOf(OllamaClient);
+    await expect(down.model.health()).resolves.toMatchObject({ state: "offline" });
+    expect(down.notice).not.toContain("FAKE");
+    expect(down.notice).toContain("not usable yet");
+  });
+
+  it("SIB_FAKE_MODEL=1 uses the fake model with a loud banner, even with no tag", async () => {
+    const fake = new FakeModelClient();
+    const selection = await selectModel(parseModelsConfig({}), { useFake: true, fake: () => fake });
+    expect(selection.model).toBe(fake);
     expect(selection.mode).toBe("fake");
-    expect(selection.notice).toContain("FAKE MODEL");
-    expect(selection.notice).toContain(TAG);
+    expect(selection.notice).toContain("!!! FAKE MODEL");
+    expect(selection.notice).toContain("NOT from Gemma");
+    expect(await selection.model.health()).toMatchObject({ detail: "fake model" });
   });
 
   it("uses OllamaClient when the model is named and Ollama answers with it", async () => {
     const { url } = await fakeOllama((_req, res) => json(res, 200, TAGS));
     const selection = await selectModel(
       config({ e4b: { tag: TAG } }, { ollama: { baseUrl: url } }),
-      { fake: () => new FakeModelClient() },
+      { useFake: false, fake: () => new FakeModelClient() },
     );
     expect(selection.mode).toBe("ollama");
     expect(selection.model).toBeInstanceOf(OllamaClient);

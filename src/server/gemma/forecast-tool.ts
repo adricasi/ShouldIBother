@@ -4,7 +4,7 @@ import { madridParts } from "../../domain/time.js";
 import type { ForecastHour } from "../../domain/weather.js";
 import type { ToolDefinition } from "../model/client.js";
 
-import { JobToolError, type JobTool } from "./runner.js";
+import { JobToolArgumentError, JobToolError, type JobTool } from "./runner.js";
 
 export const MAX_HOURS_AHEAD = 48;
 
@@ -93,7 +93,9 @@ export function createForecastTool(read: ForecastReader, options: ForecastToolOp
     async execute(args) {
       const parsed = argumentsSchema.safeParse(args);
       if (!parsed.success) {
-        return `Invalid arguments: hours_ahead must be a whole number from 1 to ${MAX_HOURS_AHEAD}.`;
+        throw new JobToolArgumentError(
+          `Invalid arguments: hours_ahead must be a whole number from 1 to ${MAX_HOURS_AHEAD}.`,
+        );
       }
       let hours: readonly ForecastHour[];
       try {

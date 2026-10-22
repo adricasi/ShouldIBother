@@ -14,6 +14,7 @@ import {
 
 import { jobJsonSchema } from "./json-schema.js";
 import type { Prompt } from "./prompts.js";
+import { untrustedBlock } from "./untrusted.js";
 
 /** 30 s per model call (requirements.md, fixed values). */
 export const MODEL_CALL_TIMEOUT_MS = 30_000;
@@ -59,6 +60,22 @@ export class JobToolError extends Error {
   override readonly name = "JobToolError";
 }
 
+/**
+ * The model gave the tool arguments it cannot use. The message goes back to the model as the
+ * tool result, but the call does not count as the tool having been used (AC-003.6).
+ */
+export class JobToolArgumentError extends Error {
+  override readonly name = "JobToolArgumentError";
+}
+
+/** More jobs are waiting for Gemma than the queue allows; the caller answers "busy". */
+export class JobQueueFullError extends Error {
+  override readonly name = "JobQueueFullError";
+}
+
+/** Jobs queued or running above which a new one is refused (about 8, one household). */
+export const MAX_QUEUED_JOBS = 8;
+
 export interface JobRequest<T> {
   readonly job: string;
   readonly prompt: Prompt;
@@ -80,7 +97,7 @@ export interface JobRequest<T> {
 }
 
 export type JobFailure =
-  "unavailable" | "timeout" | "deadline" | "invalid" | "tool_missed" | "tool_error";
+  "internal" | "unavailable" | "timeout" | "deadline" | "invalid" | "tool_missed" | "tool_error";
 
 interface JobFacts {
   /** Id of the `gemma_decisions` row written for this job. */
@@ -114,6 +131,7 @@ export interface RunnerOptions {
   readonly now: () => number;
   readonly callTimeoutMs?: number;
   readonly deadlineMs?: number;
+  readonly maxQueued?: number;
   readonly toolUse?: ToolUseMode;
   readonly answerMode?: AnswerMode;
 }
@@ -160,6 +178,18 @@ function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+/** Longest stretch of the rejected answer that is quoted back on the retry. */
+const QUOTED_ANSWER_CHARS = 300;
+
+/** The retry prompt: what was wrong, and the (truncated) answer that was wrong. */
+function retryMessage(error: string, previous: string | undefined): string {
+  const quoted =
+    previous === undefined || previous === ""
+      ? ""
+      : `\nYour previous answer, cut to ${QUOTED_ANSWER_CHARS} characters:\n${untrustedBlock({ previous_answer: previous.slice(0, QUOTED_ANSWER_CHARS) })}`;
+  return `Your previous answer was rejected: ${error}.${quoted}\nAnswer again and fix this.`;
+}
+
 class Stop extends Error {
   constructor(
     readonly failure: JobFailure,
@@ -181,6 +211,7 @@ export class JobRunner {
   private readonly now: () => number;
   private readonly callTimeoutMs: number;
   private readonly deadlineMs: number;
+  private readonly maxQueued: number;
   private readonly toolUse: ToolUseMode;
   private readonly answerMode: AnswerMode;
   private tail: Promise<unknown> = Promise.resolve();
@@ -194,6 +225,7 @@ export class JobRunner {
     this.now = options.now;
     this.callTimeoutMs = options.callTimeoutMs ?? MODEL_CALL_TIMEOUT_MS;
     this.deadlineMs = options.deadlineMs ?? JOB_DEADLINE_MS;
+    this.maxQueued = options.maxQueued ?? MAX_QUEUED_JOBS;
     this.toolUse = options.toolUse ?? "native";
     this.answerMode = options.answerMode ?? "single_call";
   }
@@ -215,8 +247,20 @@ export class JobRunner {
     }
   }
 
-  /** Queues a job; the deadline starts now unless the request says otherwise. */
+  /** True when a new job would be refused (the queue holds `maxQueued` jobs already). */
+  get full(): boolean {
+    return this.pending >= this.maxQueued;
+  }
+
+  /**
+   * Queues a job; the deadline starts now unless the request says otherwise. Rejects with
+   * `JobQueueFullError` when the queue is full, so a burst of requests cannot pile up work that
+   * would all miss its deadline.
+   */
   run<T>(request: JobRequest<T>): Promise<JobResult<T>> {
+    if (this.full) {
+      return Promise.reject(new JobQueueFullError("Too many Gemma jobs are waiting"));
+    }
     const enqueuedAt = request.enqueuedAt ?? this.now();
     this.pending += 1;
     const result = this.tail.then(() => this.execute(request, enqueuedAt));
@@ -252,6 +296,7 @@ export class JobRunner {
       withTools: boolean,
       withSchema: boolean,
     ): Promise<ChatResponse> => {
+      // Defensive: two attempts of at most two calls each can not reach this by construction.
       if (state.calls >= MAX_MODEL_CALLS) {
         throw new Stop("invalid", "The retry budget of 4 model calls is used up");
       }
@@ -294,12 +339,22 @@ export class JobRunner {
       }
     };
 
-    const runTool = async (tool: JobTool, toolCall: ToolCall): Promise<string> => {
+    /** Runs one tool call; `ok` is true only for a valid call to the right tool that ran. */
+    const runTool = async (
+      tool: JobTool,
+      toolCall: ToolCall,
+    ): Promise<{ text: string; ok: boolean }> => {
       if (toolCall.name !== tool.definition.name) {
-        return `Unknown tool ${toolCall.name}. The only tool is ${tool.definition.name}.`;
+        return {
+          text: `Unknown tool ${toolCall.name}. The only tool is ${tool.definition.name}.`,
+          ok: false,
+        };
       }
       if (state.toolCalls >= MAX_TOOL_CALLS) {
-        return `Too many tool calls: at most ${MAX_TOOL_CALLS} per job. Answer with what you have.`;
+        return {
+          text: `Too many tool calls: at most ${MAX_TOOL_CALLS} per job. Answer with what you have.`,
+          ok: false,
+        };
       }
       state.toolCalls += 1;
       const remaining = deadlineAt - this.now();
@@ -307,10 +362,13 @@ export class JobRunner {
         throw new Stop("deadline", "The 45 s job deadline passed");
       }
       try {
-        return await raceTimeout(tool.execute(toolCall.arguments), remaining);
+        return { text: await raceTimeout(tool.execute(toolCall.arguments), remaining), ok: true };
       } catch (error) {
         if (error instanceof ModelTimeoutError) {
           throw new Stop("deadline", "The 45 s job deadline passed during a tool call");
+        }
+        if (error instanceof JobToolArgumentError) {
+          return { text: error.message, ok: false };
         }
         if (error instanceof JobToolError) {
           throw new Stop("tool_error", error.message);
@@ -329,10 +387,16 @@ export class JobRunner {
       }
       if (this.toolUse === "injected") {
         // The app makes the call and passes the result as the tool result (T-001 fallback).
-        state.injectedResult ??= await runTool(tool, {
-          name: tool.definition.name,
-          arguments: tool.injectedArguments,
-        });
+        if (state.injectedResult === undefined) {
+          const injected = await runTool(tool, {
+            name: tool.definition.name,
+            arguments: tool.injectedArguments,
+          });
+          if (!injected.ok) {
+            throw new Stop("tool_error", "The app could not make the forecast call");
+          }
+          state.injectedResult = injected.text;
+        }
         state.toolMode = "injected";
         const messages: ChatMessage[] = [
           ...base,
@@ -347,28 +411,33 @@ export class JobRunner {
       }
 
       const first = await call(base, true, this.answerMode === "single_call");
-      if (first.toolCalls.length === 0) {
+      const messages: ChatMessage[] = [...base];
+      let valid = 0;
+      if (first.toolCalls.length > 0) {
+        messages.push({ role: "assistant", content: first.content, toolCalls: first.toolCalls });
+        for (const toolCall of first.toolCalls) {
+          const result = await runTool(tool, toolCall);
+          valid += result.ok ? 1 : 0;
+          messages.push({ role: "tool", content: result.text, toolName: toolCall.name });
+        }
+      }
+      // "called" means a valid call to the right tool that ran; anything else is a miss.
+      if (valid === 0 && (tool.required || first.toolCalls.length > 0)) {
+        state.toolMode = "missed";
+      } else if (valid > 0) {
+        state.toolMode = "called";
+      }
+      if (valid === 0) {
         if (tool.required) {
-          state.toolMode = "missed";
           return {
-            problem: `You must call the ${tool.definition.name} tool before you answer. Call it now.`,
+            problem: `You must call the ${tool.definition.name} tool with valid arguments before you answer. Call it now.`,
             failure: "tool_missed",
             raw: first.content,
           };
         }
-        return { answer: first.content };
-      }
-      state.toolMode = "called";
-      const messages: ChatMessage[] = [
-        ...base,
-        { role: "assistant", content: first.content, toolCalls: first.toolCalls },
-      ];
-      for (const toolCall of first.toolCalls) {
-        messages.push({
-          role: "tool",
-          content: await runTool(tool, toolCall),
-          toolName: toolCall.name,
-        });
+        if (first.toolCalls.length === 0) {
+          return { answer: first.content };
+        }
       }
       return { answer: (await call(messages, false, true)).content };
     };
@@ -387,7 +456,14 @@ export class JobRunner {
       if (error instanceof Stop) {
         outcome = { ok: false, failure: error.failure, error: error.message, raw: undefined };
       } else {
-        throw error;
+        // A bug or an exception in the model client, a `check` or a schema: still a decision row
+        // (REQ-028), and the caller takes the ordinary "Gemma offline" path, never a 500.
+        outcome = {
+          ok: false,
+          failure: "internal",
+          error: error instanceof Error ? error.message.slice(0, 300) : "unknown error",
+          raw: undefined,
+        };
       }
     }
 
@@ -462,7 +538,7 @@ export class JobRunner {
           ...base,
           {
             role: "user",
-            content: `Your previous answer was rejected: ${last?.error ?? "unknown"}. Answer again and fix this.`,
+            content: retryMessage(last?.error ?? "unknown", last?.raw),
           },
         ];
       }

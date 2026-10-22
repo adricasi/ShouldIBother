@@ -4,7 +4,8 @@ import { z } from "zod";
 
 import { CONFIG_DIR, readJsonFile } from "../config.js";
 
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+/** Literal loopback addresses only: a name like `localhost` can be pointed elsewhere. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]"]);
 
 /** Ollama stays on 127.0.0.1 (NFR-001, AGENTS.md): any other host in config is an error. */
 const ollamaUrl = z.string().transform((value, ctx) => {
@@ -18,7 +19,7 @@ const ollamaUrl = z.string().transform((value, ctx) => {
   }
   ctx.addIssue({
     code: "custom",
-    message: `Ollama must be an http URL on 127.0.0.1 or localhost, got ${JSON.stringify(value)}`,
+    message: `Ollama must be an http URL on 127.0.0.1 or [::1], got ${JSON.stringify(value)}`,
   });
   return z.NEVER;
 });
