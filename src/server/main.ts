@@ -1,9 +1,10 @@
 import { z } from "zod";
 
 import { buildApp } from "./app.js";
+import { DEFAULT_PORT } from "./config.js";
 import { loadFlags } from "./flags.js";
 
-const portSchema = z.coerce.number().int().min(1).max(65535).default(3000);
+const portSchema = z.coerce.number().int().min(1).max(65535).default(DEFAULT_PORT);
 
 /**
  * Starts the server on the loopback interface only. LAN binding, pairing and the session

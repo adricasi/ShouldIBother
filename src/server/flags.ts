@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { z } from "zod";
+
+import { CONFIG_DIR, readJsonFile } from "./config.js";
 
 /**
  * Feature flags (REQ-029). Every Should and Could feature has a flag that is off by default;
@@ -35,9 +34,7 @@ const flagsSchema = z
   )
   .strict();
 
-export const DEFAULT_FLAGS_PATH = fileURLToPath(
-  new URL("../../config/flags.json", import.meta.url),
-);
+export const DEFAULT_FLAGS_PATH = `${CONFIG_DIR}flags.json`;
 
 /** Parse untrusted flag data: unknown names and non-boolean values are errors, missing flags are off. */
 export function parseFlags(raw: unknown): Flags {
@@ -49,5 +46,5 @@ export function parseFlags(raw: unknown): Flags {
 }
 
 export function loadFlags(path: string = DEFAULT_FLAGS_PATH): Flags {
-  return parseFlags(JSON.parse(readFileSync(path, "utf8")) as unknown);
+  return parseFlags(readJsonFile(path));
 }

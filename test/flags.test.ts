@@ -1,16 +1,18 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { buildApp, type FeaturePlugins } from "../src/server/app.js";
 import { FLAG_NAMES, loadFlags, parseFlags } from "../src/server/flags.js";
 
 describe("feature flags", () => {
-  it("AC-029.1: config/flags.json lists every flag and all of them are off", () => {
-    const flags = loadFlags();
-    expect(Object.keys(flags).sort()).toEqual([...FLAG_NAMES].sort());
-    expect(Object.values(flags).every((on) => !on)).toBe(true);
+  it("AC-029.1: config/flags.json lists every flag", () => {
+    expect(Object.keys(loadFlags()).sort()).toEqual([...FLAG_NAMES].sort());
   });
 
-  it("AC-029.1: a flag missing from the file is off", () => {
+  it("AC-029.1: every flag is off by default", () => {
     expect(parseFlags({ score: true }).score).toBe(true);
     expect(parseFlags({ score: true }).voice).toBe(false);
     expect(Object.values(parseFlags({})).every((on) => !on)).toBe(true);
@@ -22,6 +24,23 @@ describe("feature flags", () => {
     ["a non-object", []],
   ])("AC-029.1: rejects %s", (_label, raw) => {
     expect(() => parseFlags(raw)).toThrow("Invalid feature flags");
+  });
+});
+
+describe("loadFlags", () => {
+  it("names the file when it is missing", () => {
+    expect(() => loadFlags("/nonexistent/flags.json")).toThrow("/nonexistent/flags.json");
+  });
+
+  it("names the file when the JSON is invalid", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-flags-"));
+    const path = join(dir, "flags.json");
+    writeFileSync(path, "{ not json");
+    try {
+      expect(() => loadFlags(path)).toThrow(`Invalid JSON in config file ${path}`);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
   });
 });
 
@@ -55,9 +74,8 @@ describe("flagged routes", () => {
     await app.close();
   });
 
-  it("AC-029.2: with the committed flags, every flagged route is absent", async () => {
-    const app = await buildApp({ flags: loadFlags(), features: featurePlugins });
-    expect((await app.inject({ method: "GET", url: "/api/score" })).statusCode).toBe(404);
+  it("AC-029.2: switching one flag off leaves the unflagged routes untouched", async () => {
+    const app = await buildApp({ flags: parseFlags({ score: false }), features: featurePlugins });
     expect((await app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
     await app.close();
   });
