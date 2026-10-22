@@ -1,0 +1,15 @@
+{
+  "description": "Hand-written synthetic planner answer: today is the best drying day, so wash today.",
+  "content": {
+    "status": "ok",
+    "state": "wash_today",
+    "best_day": "day_0",
+    "days": [
+      { "day": "day_0", "score": "very_likely" },
+      { "day": "day_1", "score": "toss_up" },
+      { "day": "day_2", "score": "unlikely" },
+      { "day": "day_3", "score": "unlikely" }
+    ],
+    "reason": "Breezy and dry today, then showers: today is the day to dry a load outside."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "description": "Hand-written synthetic planner answer: today is damp, day_2 is the best drying day, so skip today (day_2 is likely, day_0 unlikely).",
+  "content": {
+    "status": "ok",
+    "state": "skip_today",
+    "best_day": "day_2",
+    "days": [
+      { "day": "day_0", "score": "unlikely" },
+      { "day": "day_1", "score": "toss_up" },
+      { "day": "day_2", "score": "likely" },
+      { "day": "day_3", "score": "toss_up" }
+    ],
+    "reason": "Light wind and sun on day 3, while today stays damp: wait and dry it then."
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "description": "Hand-written synthetic planner answer: the planner cannot tell whether the line is under cover.",
+  "content": {
+    "status": "unsure",
+    "question": "Is your drying line under a roof?"
+  }
+}

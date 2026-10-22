@@ -1,0 +1,14 @@
+{
+  "description": "Hand-written synthetic planner answer: rain or damp air on all four days, so no good day.",
+  "content": {
+    "status": "ok",
+    "state": "no_good_day",
+    "days": [
+      { "day": "day_0", "score": "very_unlikely" },
+      { "day": "day_1", "score": "very_unlikely" },
+      { "day": "day_2", "score": "unlikely" },
+      { "day": "day_3", "score": "very_unlikely" }
+    ],
+    "reason": "Rain on three of the next four days and damp air on the other: dry it indoors."
+  }
+}

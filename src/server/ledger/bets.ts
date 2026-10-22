@@ -1,5 +1,5 @@
 import { canUndo, SETTLING_STATUSES, type BetStatus } from "../../domain/bet-state.js";
-import { UNDO_WINDOW_MS } from "../../domain/chores.js";
+import { LAUNDRY_PLAN, UNDO_WINDOW_MS } from "../../domain/chores.js";
 import { bandTable } from "../../domain/rules/index.js";
 import type { Db } from "../db.js";
 import { HttpError } from "../problem.js";
@@ -38,6 +38,11 @@ export function placeBet(
   }
   if (card.kind !== "weather") {
     throw new HttpError(409, "No bet on this card");
+  }
+  if (card.chore_type === LAUNDRY_PLAN && kind === "do_it") {
+    // Washing today is the planner's Wash today advice, followed from the card (AC-021.3), and
+    // never a decision that is scored against the weather.
+    throw new HttpError(409, 'No "I\'ll do it" on a Skip today bet', "Follow Wash today instead.");
   }
   const quote = latestQuote(deps, cardId);
   if (quote === undefined) {

@@ -39,6 +39,9 @@ describe("migration 0006: where a card's photo stands with the inspector (NFR-00
         photo_failure: null,
         sunset_at: null,
         safety_checked_at: null,
+        plan: null,
+        advice_followed_at: null,
+        advice_points: null,
       })),
     );
     expect(db.prepare("SELECT * FROM bets").all()).toEqual(betsBefore);

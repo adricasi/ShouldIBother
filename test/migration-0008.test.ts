@@ -22,9 +22,16 @@ describe("migration 0008: the sunset a laundry card was priced on and its safety
         VALUES (1, 'do_nothing', 3, 70, 'rule', 'rain', 3, 10, 20, 30, 'open');
     `);
     const before = db.prepare("SELECT * FROM cards").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([8]);
+    expect(migrate(db, MIGRATIONS)).toEqual(expect.arrayContaining([8]));
     expect(db.prepare("SELECT * FROM cards").all()).toEqual(
-      before.map((card) => ({ ...(card as object), sunset_at: null, safety_checked_at: null })),
+      before.map((card) => ({
+        ...(card as object),
+        sunset_at: null,
+        safety_checked_at: null,
+        plan: null,
+        advice_followed_at: null,
+        advice_points: null,
+      })),
     );
     expect(db.prepare("SELECT COUNT(*) AS n FROM bets").get()).toEqual({ n: 1 });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);

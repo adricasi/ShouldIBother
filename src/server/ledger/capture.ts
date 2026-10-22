@@ -1,10 +1,11 @@
-import { isChoreType } from "../../domain/chores.js";
+import { LAUNDRY_PLAN, isChoreType } from "../../domain/chores.js";
 import { MAX_CAPTURE_CHARS, runListener } from "../gemma/listener.js";
 import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
 import { createChoreCard, createUnbettableCard } from "./cards.js";
 import type { LedgerDeps } from "./deps.js";
+import { createPlannerCard } from "./laundry-plan.js";
 import { assertGemmaCapacity, gemmaBusy } from "./gemma-cards.js";
 import type { CardView } from "./views.js";
 
@@ -45,6 +46,9 @@ export async function captureText(deps: LedgerDeps, text: string): Promise<CardV
       cards.push(createUnbettableCard(deps, "not_weather", chore.chore_type, chore.label));
     } else if (isChoreType(chore.chore_type)) {
       cards.push(await createChoreCard(deps, chore.chore_type, chore.label));
+    } else if (chore.chore_type === LAUNDRY_PLAN && deps.flags.laundryPlanner) {
+      // REQ-021 (flag `laundryPlanner`): a laundry chore is planned over the next four days.
+      cards.push(createPlannerCard(deps, chore.label));
     } else {
       cards.push(createUnbettableCard(deps, "coming_later", chore.chore_type, chore.label));
     }

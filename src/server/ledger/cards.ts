@@ -16,6 +16,7 @@ import { WeatherUnavailableError } from "../weather/client.js";
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
 import { launchNewCardJobs } from "./gemma-cards.js";
+import { withPlan } from "./laundry-plan.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
@@ -290,11 +291,15 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
   }
   // An alert has no odds, even if it began as a weather card (its old rule quote stays stored).
   const table = bandTable(deps.rules);
-  return cardView(
+  return withPlan(
     card,
-    card.kind === "weather" ? quote : undefined,
+    cardView(
+      card,
+      card.kind === "weather" ? quote : undefined,
+      table,
+      cardPhotoView(deps.db, card, table),
+    ),
     table,
-    cardPhotoView(deps.db, card, table),
   );
 }
 
@@ -318,10 +323,12 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
     if (card.kind === "weather") {
       const quote = latestQuote(deps, card.id);
       if (quote !== undefined && quote.settle_at > now) {
-        views.push(cardView(card, quote, table, cardPhotoView(deps.db, card, table)));
+        views.push(
+          withPlan(card, cardView(card, quote, table, cardPhotoView(deps.db, card, table)), table),
+        );
       }
     } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
-      views.push(cardView(card, undefined, table));
+      views.push(withPlan(card, cardView(card, undefined, table), table));
     }
   }
   return views;
