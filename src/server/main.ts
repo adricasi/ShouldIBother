@@ -125,7 +125,11 @@ export async function startServer(
       auth: { store: runtime.store, allowlist: runtime.allowlist, print: output },
     });
     appRef = app;
-    app.addHook("onClose", () => {
+    app.addHook("onClose", async () => {
+      // A clean stop: no new scheduler ticks, and running Gemma jobs finish before the database
+      // closes (otherwise a late job step writes to a closed connection).
+      core.scheduler.stop();
+      await core.gemma.idle();
       runtime.db.close();
     });
     await listenLoopbackAndLan(app, { port: runtime.port, lanAddress: runtime.lanAddress });
