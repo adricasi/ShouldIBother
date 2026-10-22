@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   answerCard,
+  appealBet,
   answerPlanNeed,
   captureCards,
   createQuickCard,
@@ -27,6 +28,7 @@ import {
 } from "./api.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
+import { formatPoints } from "./format.js";
 import { createRefresher } from "./refresher.js";
 import { announceRoute, redirectFor, routeOf, type Route } from "./route.js";
 import { estimateServerNow, startPolling } from "./polling.js";
@@ -224,6 +226,18 @@ export function App() {
     });
   };
 
+  const onAppeal = (betId: number, file: File): void => {
+    void act(async () => {
+      const { receipt } = await appealBet(betId, file);
+      return {
+        kind: "info",
+        text: receipt.appeal?.changed
+          ? `Appeal decided: ${receipt.verdict_title}, ${formatPoints(receipt.points)} points. This verdict is final.`
+          : `Appeal decided: Gemma stands by ${receipt.verdict_title}. This verdict is final.`,
+      };
+    });
+  };
+
   const reload = (): void => {
     void act(() => Promise.resolve(undefined));
   };
@@ -253,6 +267,7 @@ export function App() {
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
         {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
+        {...(today?.flags["appeals"] === true ? { onAppeal } : {})}
         onReload={reload}
       />
     );

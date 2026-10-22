@@ -1,4 +1,5 @@
 import type { Bet, Receipt } from "./api.js";
+import { AppealAction } from "./AppealParts.js";
 import { PhotoPicker } from "./PhotoParts.js";
 import { RescuePanel } from "./RescueParts.js";
 import { ReceiptCard, WeatherLine } from "./SettleParts.js";
@@ -201,9 +202,14 @@ export function DueSlip({
 export function SettledLine({
   bet,
   animateStamp = false,
+  busy = false,
+  onAppeal,
 }: {
   bet: Bet & { result: { verdict: string; points: number; evidence: string }; receipt: Receipt };
   animateStamp?: boolean;
+  busy?: boolean;
+  /** Appeal the verdict with a new photo (REQ-023); given only where the `appeals` flag is on. */
+  onAppeal?: (betId: number, file: File) => void;
 }) {
   return (
     <li className="settled-line">
@@ -218,6 +224,9 @@ export function SettledLine({
         <details className="receipt-details">
           <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
           <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
+          {onAppeal === undefined ? null : (
+            <AppealAction receipt={bet.receipt} busy={busy} onAppeal={onAppeal} />
+          )}
         </details>
       </div>
       <span className={`line-points ${bet.result.points < 0 ? "minus" : "plus"}`}>

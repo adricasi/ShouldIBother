@@ -21,6 +21,8 @@ export interface SlipsScreenProps {
   readonly onUndo: (betId: number) => void;
   /** Cash out a waiting bet at -10 points; given only where the `rescue` flag is on (REQ-022). */
   readonly onCashOut?: (betId: number) => void;
+  /** Appeal a settled bet with a new photo; given only where the `appeals` flag is on (REQ-023). */
+  readonly onAppeal?: (betId: number, file: File) => void;
 
   /** Reload after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
@@ -120,6 +122,8 @@ export function SlipsScreen(props: SlipsScreenProps) {
                     <SettledLine
                       key={bet.id}
                       bet={bet}
+                      busy={busy}
+                      {...(props.onAppeal === undefined ? {} : { onAppeal: props.onAppeal })}
                       animateStamp={
                         isStampAnimated(props.flags) && isMadridToday(bet.receipt.settled_at, nowMs)
                       }
