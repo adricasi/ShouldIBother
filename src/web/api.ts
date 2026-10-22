@@ -210,6 +210,8 @@ export const receiptSchema = z.object({
     .optional(),
   /** Whether an appeal is offered on this bet; present only while `appeals` is on (AC-023.2). */
   can_appeal: z.boolean().optional(),
+  /** With `can_appeal`: an appeal now pays at most half points, being 24 h or more late (AC-008.8). */
+  appeal_pays_half: z.boolean().optional(),
 });
 
 /** The rescue alert and cash-out offer of a waiting bet; present only while `rescue` is on (REQ-022). */

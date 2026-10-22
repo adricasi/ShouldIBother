@@ -203,11 +203,14 @@ export function SettledLine({
   bet,
   animateStamp = false,
   busy = false,
+  appealing = false,
   onAppeal,
 }: {
   bet: Bet & { result: { verdict: string; points: number; evidence: string }; receipt: Receipt };
   animateStamp?: boolean;
   busy?: boolean;
+  /** This bet's appeal is being decided. */
+  appealing?: boolean;
   /** Appeal the verdict with a new photo (REQ-023); given only where the `appeals` flag is on. */
   onAppeal?: (betId: number, file: File) => void;
 }) {
@@ -225,7 +228,12 @@ export function SettledLine({
           <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
           <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
           {onAppeal === undefined ? null : (
-            <AppealAction receipt={bet.receipt} busy={busy} onAppeal={onAppeal} />
+            <AppealAction
+              receipt={bet.receipt}
+              busy={busy}
+              working={appealing}
+              onAppeal={onAppeal}
+            />
           )}
         </details>
       </div>

@@ -89,6 +89,8 @@ export function App() {
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const [results, setResults] = useState<Record<number, Receipt>>({});
   const [busy, setBusy] = useState(false);
+  /** The bet whose appeal Gemma is deciding; the Slips line says so while it runs. */
+  const [appealingBetId, setAppealingBetId] = useState<number | undefined>(undefined);
   const todayNow = useServerNow(today?.now);
   const slipsNow = useServerNow(slips?.now);
 
@@ -227,14 +229,19 @@ export function App() {
   };
 
   const onAppeal = (betId: number, file: File): void => {
+    setAppealingBetId(betId);
     void act(async () => {
-      const { receipt } = await appealBet(betId, file);
-      return {
-        kind: "info",
-        text: receipt.appeal?.changed
-          ? `Appeal decided: ${receipt.verdict_title}, ${formatPoints(receipt.points)} points. This verdict is final.`
-          : `Appeal decided: Gemma stands by ${receipt.verdict_title}. This verdict is final.`,
-      };
+      try {
+        const { receipt } = await appealBet(betId, file);
+        return {
+          kind: "info" as const,
+          text: receipt.appeal?.changed
+            ? `Appeal decided: ${receipt.verdict_title}, ${formatPoints(receipt.points)} points. This verdict is final.`
+            : `Appeal decided: Gemma stands by ${receipt.verdict_title}. This verdict is final.`,
+        };
+      } finally {
+        setAppealingBetId(undefined);
+      }
     });
   };
 
@@ -268,6 +275,7 @@ export function App() {
         onUndo={onUndo}
         {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
         {...(today?.flags["appeals"] === true ? { onAppeal } : {})}
+        {...(appealingBetId === undefined ? {} : { appealingBetId })}
         onReload={reload}
       />
     );

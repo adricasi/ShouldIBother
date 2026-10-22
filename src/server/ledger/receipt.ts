@@ -18,7 +18,7 @@ import {
 } from "../../domain/weather-digest.js";
 import { HttpError } from "../problem.js";
 
-import { canAppeal } from "./appeal-state.js";
+import { appealPaysHalf, canAppeal } from "./appeal-state.js";
 import type { LedgerDeps } from "./deps.js";
 import { pointsTotal } from "./points.js";
 import type { BetRow, CardRow, CashOutRow, ProgressRow, SettlementRow } from "./rows.js";
@@ -103,6 +103,11 @@ export interface Receipt {
    * on, so with it off the receipt is what it was before.
    */
   readonly can_appeal?: boolean;
+  /**
+   * With `can_appeal`: true when an appeal now would pay at most half points, because it comes 24 h
+   * or more after the settle time (AC-008.8). Present only while the `appeals` flag is on.
+   */
+  readonly appeal_pays_half?: boolean;
 }
 
 export function readOf(
@@ -160,7 +165,7 @@ function appealOf(
 }
 
 export function receiptOf(
-  deps: Pick<LedgerDeps, "db" | "rules" | "flags">,
+  deps: Pick<LedgerDeps, "db" | "rules" | "flags" | "now">,
   bet: BetRow,
   card: CardRow,
   settlement: SettlementRow,
@@ -224,7 +229,9 @@ export function receiptOf(
           },
     settled_at: new Date(settlement.settled_at).toISOString(),
     ...(appeal === undefined ? {} : { appeal }),
-    ...(deps.flags.appeals ? { can_appeal: canAppeal(deps.db, bet) } : {}),
+    ...(deps.flags.appeals
+      ? { can_appeal: canAppeal(deps.db, bet), appeal_pays_half: appealPaysHalf(bet, deps.now()) }
+      : {}),
   };
 }
 
@@ -266,7 +273,7 @@ export function cashOutReceiptOf(
 
 /** The receipt of a settled or cashed-out bet; 404 for an unknown bet, 409 while it is open. */
 export function getReceipt(
-  deps: Pick<LedgerDeps, "db" | "rules" | "flags">,
+  deps: Pick<LedgerDeps, "db" | "rules" | "flags" | "now">,
   betId: number,
 ): Receipt {
   const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);

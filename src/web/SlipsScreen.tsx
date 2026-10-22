@@ -23,6 +23,8 @@ export interface SlipsScreenProps {
   readonly onCashOut?: (betId: number) => void;
   /** Appeal a settled bet with a new photo; given only where the `appeals` flag is on (REQ-023). */
   readonly onAppeal?: (betId: number, file: File) => void;
+  /** The bet whose appeal Gemma is deciding now, if any. */
+  readonly appealingBetId?: number;
 
   /** Reload after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
@@ -123,6 +125,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
                       key={bet.id}
                       bet={bet}
                       busy={busy}
+                      appealing={props.appealingBetId === bet.id}
                       {...(props.onAppeal === undefined ? {} : { onAppeal: props.onAppeal })}
                       animateStamp={
                         isStampAnimated(props.flags) && isMadridToday(bet.receipt.settled_at, nowMs)

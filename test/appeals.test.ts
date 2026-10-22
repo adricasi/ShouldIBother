@@ -1,9 +1,11 @@
 import { readdirSync } from "node:fs";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ANSWER_WINDOW_MS } from "../src/domain/settlement.js";
+import { Appealer } from "../src/server/ledger/appeal.js";
 import { buildExport } from "../src/server/ledger/export.js";
+import { deleteBetData } from "../src/server/ledger/photos.js";
 import { pointsTotal } from "../src/server/ledger/points.js";
 import type { Receipt } from "../src/server/ledger/receipt.js";
 import type { Score } from "../src/server/ledger/score.js";
@@ -13,7 +15,7 @@ import { receiptSchema, slipsSchema } from "../src/web/api.js";
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 import { LOCAL_ORIGIN } from "./helpers.js";
 import { multipartBody, syntheticPhoto } from "./support/photos.js";
-import { HOUR, judgeCalls, seedBet, tap } from "./support/settle.js";
+import { HOUR, judgeCalls, makeSettler, seedBet, tap } from "./support/settle.js";
 
 let harness: CoreHarness;
 afterEach(async () => {
@@ -382,5 +384,193 @@ describe("REQ-023: appeal a verdict", () => {
     const { sweepOrphanPhotos } = await import("../src/server/ledger/photos.js");
     sweepOrphanPhotos({ db: harness.db, photos: harness.photos });
     expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+  });
+});
+
+/** Runs `action` the first time the judge is asked about an appeal, before it answers. */
+function onAppealJudgement(action: () => void): void {
+  const chat = harness.model.chat.bind(harness.model);
+  let done = false;
+  vi.spyOn(harness.model, "chat").mockImplementation((request) => {
+    const text = request.messages.map((message) => message.content).join("\n");
+    if (!done && request.job === "judge" && text.includes('"appeal":{')) {
+      done = true;
+      action();
+    }
+    return chat(request);
+  });
+}
+
+describe("REQ-023: the 24 h cap on appeals is visible", () => {
+  it("AC-023.1, AC-008.8: the receipt says whether an appeal now pays at most half points", async () => {
+    await setup();
+    const betId = await lostBet();
+    const fresh = (await harness.get(`/api/bets/${betId}/receipt`)).json<Receipt>();
+    expect(fresh).toMatchObject({ can_appeal: true, appeal_pays_half: false });
+    harness.clock.advance(ANSWER_WINDOW_MS + HOUR);
+    const late = (await harness.get(`/api/bets/${betId}/receipt`)).json<Receipt>();
+    expect(late).toMatchObject({ can_appeal: true, appeal_pays_half: true });
+    const slips = slipsSchema.parse((await harness.get("/api/slips")).json());
+    expect(slips.settled[0]!.receipt.appeal_pays_half).toBe(true);
+  });
+
+  it("AC-008.8, AC-023.1: a bet auto-settled after 24 h can be appealed, and the win pays at x0.5", async () => {
+    await setup();
+    const betId = seedBet(harness, { band: 3, settleOffsetMs: -(ANSWER_WINDOW_MS + HOUR) });
+    harness.model.setScenario("judge", "normal-loss");
+    await harness.core.scheduler.tickSettlement();
+    expect(settlementsOf(betId)).toEqual([
+      expect.objectContaining({
+        evidence: "auto",
+        verdict: "normal_loss",
+        points: -50,
+      }),
+    ]);
+    harness.model.setScenario("judge", "appeal-win");
+    const { status, body } = await appeal(betId);
+    expect(status).toBe(200);
+    expect(body.receipt).toMatchObject({
+      verdict: "win",
+      points: 15,
+      multiplier: 0.5,
+      multiplier_capped: true,
+      appeal_pays_half: true,
+      appeal: { first: { verdict: "normal_loss", points: -50 }, changed: true },
+    });
+    expect(judgeCalls(harness)[1]!.data).toMatchObject({
+      appeal: { first_evidence: "weather record only" },
+    });
+    expect(pointsTotal({ db: harness.db })).toBe(15);
+  });
+});
+
+describe("REQ-023: refusals and failures leave the bet as it was", () => {
+  it("a full Gemma queue answers 503 before the body is read: a broken upload is not buffered", async () => {
+    await setup();
+    const betId = await lostBet();
+    vi.spyOn(harness.core.gemma, "full", "get").mockReturnValue(true);
+    const response = await harness.request({
+      method: "POST",
+      url: `/api/bets/${betId}/appeal`,
+      payload: "this is not a multipart body",
+      headers: {
+        cookie: harness.cookie,
+        origin: LOCAL_ORIGIN,
+        "content-type": "multipart/form-data; boundary=nothing",
+      },
+    });
+    // Had the body been read first, the parser would have answered 400.
+    expect(response.statusCode).toBe(503);
+    expect(settlementsOf(betId)).toHaveLength(1);
+    expect(photoFiles()).toEqual([]);
+    expect(judgeCalls(harness)).toHaveLength(1);
+  });
+
+  it.each(["unsure", "invalid-json", "timeout"])(
+    "AC-023.1: a judge answer of %s changes nothing and the appeal can be sent again",
+    async (scenario) => {
+      await setup();
+      const betId = await lostBet();
+      harness.model.setScenario("judge", scenario);
+      expect((await appeal(betId)).status).toBe(503);
+      expect(settlementsOf(betId)).toEqual([expect.objectContaining({ final: 1, points: -50 })]);
+      expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+      expect(photoFiles()).toEqual([]);
+      expect(pointsTotal({ db: harness.db })).toBe(-50);
+      expect((await harness.get(`/api/bets/${betId}/receipt`)).json<Receipt>().can_appeal).toBe(
+        true,
+      );
+    },
+  );
+
+  it("the failed attempt is logged with ids only, because its decision row goes with the photo", async () => {
+    const logLines: string[] = [];
+    await setup({ logLines });
+    const betId = await lostBet();
+    harness.model.setScenario("judge", "invalid-json");
+    await appeal(betId);
+    const line = logLines.find((entry) => entry.includes("appeal-judge-failed"));
+    expect(line).toBeDefined();
+    expect(JSON.parse(line!)).toMatchObject({
+      event: "appeal-judge-failed",
+      bet_id: betId,
+      failure: "invalid",
+      decision_id: expect.any(Number) as unknown,
+    });
+  });
+
+  it("the bet's data deleted during the judge call: the person sees the 409, not a 404 from the cleanup", async () => {
+    const logLines: string[] = [];
+    await setup({ logLines });
+    const betId = await lostBet();
+    // After the judge answered and before the verdict is committed: the lucky-win label reads weather.
+    const getRecorded = harness.weather.getRecorded.bind(harness.weather);
+    vi.spyOn(harness.weather, "getRecorded").mockImplementation((range) => {
+      deleteBetData({ db: harness.db, photos: harness.photos }, betId);
+      return getRecorded(range);
+    });
+    const { status } = await appeal(betId);
+    expect(status).toBe(409);
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM settlements").get()).toEqual({ n: 0 });
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+    expect(photoFiles()).toEqual([]);
+    expect(logLines.some((entry) => entry.includes("appeal-photo-cleanup-failed"))).toBe(true);
+  });
+
+  it("a receipt that fails after the appeal was committed never deletes the appeal's photo or decision", async () => {
+    await setup();
+    const betId = await lostBet();
+    const appealer = new Appealer(makeSettler(harness).deps, () => {
+      throw new Error("receipt failed");
+    });
+    await expect(appealer.appeal(betId, await syntheticPhoto())).rejects.toThrow("receipt failed");
+    const rows = settlementsOf(betId);
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ final: 1, verdict: "win" });
+    const photo = harness.db
+      .prepare<[number], { id: string }>("SELECT id FROM photos WHERE bet_id = ?")
+      .get(betId);
+    expect(photo).toBeDefined();
+    expect(photoFiles()).toHaveLength(1);
+    expect(
+      harness.db
+        .prepare("SELECT COUNT(*) AS n FROM gemma_decisions WHERE id = ?")
+        .get(rows[1]!.decision_id),
+    ).toEqual({ n: 1 });
+  });
+
+  it("AC-023.2: an appeal row that got in first (another process) is refused with 409 by the unique index", async () => {
+    await setup();
+    const betId = await lostBet();
+    const [original] = settlementsOf(betId);
+    onAppealJudgement(() => {
+      harness.db
+        .prepare(
+          `INSERT INTO settlements (bet_id, evidence, multiplier, verdict, points, settled_at, appeal_of, final)
+           VALUES (?, 'photo', 1, 'win', 30, 1, ?, 0)`,
+        )
+        .run(betId, original!.id);
+    });
+    const response = await appeal(betId);
+    expect(response.status).toBe(409);
+    // The flip of the first row was rolled back with the failed insert; the new photo went.
+    expect(settlementsOf(betId).map((row) => row.final)).toEqual([1, 0]);
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+  });
+
+  it("the receipt offers no appeal that would get a 409: a bet without an original settlement is not offered one", async () => {
+    await setup();
+    const betId = await lostBet();
+    harness.db.prepare("DELETE FROM settlements WHERE bet_id = ?").run(betId);
+    harness.db
+      .prepare(
+        `INSERT INTO settlements (bet_id, evidence, multiplier, verdict, points, settled_at, appeal_of, final)
+         VALUES (?, 'tap', 0.5, 'win', 15, 1, NULL, 1)`,
+      )
+      .run(betId);
+    harness.db.prepare("UPDATE cards SET chore_type = 'unknown_chore'").run();
+    const receipt = (await harness.get(`/api/bets/${betId}/receipt`)).json<Receipt>();
+    expect(receipt.can_appeal).toBe(false);
+    expect((await appeal(betId)).status).toBe(409);
   });
 });

@@ -304,7 +304,12 @@ describe("NFR-009: core screens have no axe violations (jsdom)", () => {
         slips={{
           ...emptySlips,
           settled: [
-            settledBet(10, { ...lossReceipt, can_appeal: true }, "normal_loss", -50),
+            settledBet(
+              10,
+              { ...lossReceipt, can_appeal: true, appeal_pays_half: true },
+              "normal_loss",
+              -50,
+            ),
             settledBet(11, { ...winReceipt, can_appeal: false, appeal: appealed }, "win", 30),
           ],
         }}
@@ -315,11 +320,14 @@ describe("NFR-009: core screens have no axe violations (jsdom)", () => {
         onSettle={() => undefined}
         onUndo={() => undefined}
         onAppeal={() => undefined}
+        appealingBetId={10}
         onReload={() => undefined}
       />,
     );
     expect(html).toContain("Appeal with a new photo");
     expect(html).toContain("The second verdict is final.");
+    expect(html).toContain("Appeals now pay at most half points.");
+    expect(html).toContain("Gemma is re-judging…");
     expect(await violationsOf(html, "slips")).toEqual([]);
   });
 

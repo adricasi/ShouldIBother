@@ -1,12 +1,11 @@
 import { betChoreSpec, isChoreType, type ChoreType } from "../../domain/chores.js";
 import { MULTIPLIER, pointsFor, type Verdict } from "../../domain/points.js";
-import { ANSWER_WINDOW_MS } from "../../domain/settlement.js";
 import { parseWeatherSnapshot } from "../../domain/weather-digest.js";
 import { judgeBet, type JudgeEvidence } from "../gemma/judge.js";
 import { JobQueueFullError } from "../gemma/runner.js";
 import { HttpError } from "../problem.js";
 
-import { appealRefusal, originalSettlement } from "./appeal-state.js";
+import { appealPaysHalf, appealRefusal, originalSettlement } from "./appeal-state.js";
 import type { LedgerDeps } from "./deps.js";
 import { luckyFlagFor } from "./lucky-flag.js";
 import { addAfterPhoto, deletePhoto, type PhotoRow } from "./photos.js";
@@ -42,7 +41,11 @@ interface Appealable {
 export class Appealer {
   private readonly busy = new Set<number>();
 
-  constructor(private readonly deps: LedgerDeps) {}
+  /** `makeReceipt` is the receipt builder; a test passes one that fails to prove the cleanup rules. */
+  constructor(
+    private readonly deps: LedgerDeps,
+    private readonly makeReceipt: typeof receiptOf = receiptOf,
+  ) {}
 
   /**
    * Every refusal that needs no upload, so a refused request is not buffered first: unknown bet
@@ -62,6 +65,7 @@ export class Appealer {
     this.check(betId);
     this.busy.add(betId);
     let photo: PhotoRow | undefined;
+    let decided: { readonly target: Appealable; readonly settlement: SettlementRow };
     try {
       photo = await addAfterPhoto(
         this.deps,
@@ -73,15 +77,39 @@ export class Appealer {
         },
         "appeal",
       );
-      return await this.decide(this.target(betId), photo);
+      decided = await this.decide(this.target(betId), photo);
     } catch (error) {
+      // The first verdict stands: nothing keeps the new photo, so it is not left behind. This
+      // runs only while no appeal was committed; once it is, the photo and the decision belong to
+      // it and are never deleted here. A cleanup that fails (the bet or photo was deleted
+      // meanwhile) is logged and never replaces the error the person needs to see.
       if (photo !== undefined) {
-        // The first verdict stands: nothing keeps the new photo, so it is not left behind.
-        deletePhoto(this.deps, photo.id);
+        this.discard(photo);
       }
       throw error;
     } finally {
       this.busy.delete(betId);
+    }
+    // Outside the try that owns the cleanup: a failure here cannot delete a committed appeal's data.
+    const { target, settlement } = decided;
+    return this.makeReceipt(
+      this.deps,
+      target.bet,
+      target.card,
+      settlement,
+      getProgress(this.deps.db, betId),
+    );
+  }
+
+  private discard(photo: PhotoRow): void {
+    try {
+      deletePhoto(this.deps, photo.id);
+    } catch (error) {
+      this.deps.log({
+        event: "appeal-photo-cleanup-failed",
+        bet_id: photo.bet_id,
+        error: error instanceof Error ? error.name : "unknown",
+      });
     }
   }
 
@@ -119,7 +147,10 @@ export class Appealer {
     }
   }
 
-  private async decide(target: Appealable, photo: PhotoRow): Promise<Receipt> {
+  private async decide(
+    target: Appealable,
+    photo: PhotoRow,
+  ): Promise<{ readonly target: Appealable; readonly settlement: SettlementRow }> {
     const { db } = this.deps;
     const { bet, card, choreType, original } = target;
     const chore = betChoreSpec(card.chore_type)!;
@@ -166,7 +197,15 @@ export class Appealer {
       throw error;
     }
     if (!result.ok) {
-      this.deps.log({ event: "appeal-judge-failed", bet_id: bet.id, failure: result.failure });
+      // The failed attempt's decision row is deleted with the new photo (AC-015.2: a photo's
+      // decisions go with it), so the attempt is kept in the app log instead: ids and the failure
+      // code only, never content.
+      this.deps.log({
+        event: "appeal-judge-failed",
+        bet_id: bet.id,
+        decision_id: result.decisionId,
+        failure: result.failure,
+      });
       throw new HttpError(
         503,
         "Gemma could not look again",
@@ -175,8 +214,7 @@ export class Appealer {
     }
 
     const settledAt = this.deps.now();
-    const capped =
-      settledAt >= bet.settle_at + ANSWER_WINDOW_MS && MULTIPLIER.photo > MULTIPLIER.auto;
+    const capped = appealPaysHalf(bet, settledAt) && MULTIPLIER.photo > MULTIPLIER.auto;
     const evidenceUsed = capped ? "auto" : "photo";
     const points = pointsFor({
       kind: "do_nothing",
@@ -224,15 +262,18 @@ export class Appealer {
             ).lastInsertRowid,
         );
       } catch (error) {
-        if ((error as { code?: string }).code?.startsWith("SQLITE_CONSTRAINT") === true) {
+        const code = (error as { code?: string }).code;
+        if (code === "SQLITE_CONSTRAINT_UNIQUE") {
           // A second appeal got in first (migration 0012's unique index).
           throw new HttpError(409, "This bet was already appealed");
         }
+        // The trigger's ABORT or any other constraint is a bug, not a refusal: it surfaces as a
+        // 500 and leaves a line in the log (ids and the code only).
+        this.deps.log({ event: "appeal-constraint-violation", bet_id: bet.id, code });
         throw error;
       }
       return db.prepare<[number], SettlementRow>("SELECT * FROM settlements WHERE id = ?").get(id)!;
     });
-    const appealed = commit();
-    return receiptOf(this.deps, bet, card, appealed, getProgress(db, bet.id));
+    return { target, settlement: commit.immediate() };
   }
 }
