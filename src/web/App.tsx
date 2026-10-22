@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   answerCard,
+  answerPlanNeed,
   captureCards,
   createQuickCard,
   deletePhoto,
   fetchScore,
   fetchSlips,
   fetchToday,
+  followPlanAdvice,
   placeBet,
   retryCard,
   answerBetQuestion,
@@ -135,7 +137,10 @@ export function App() {
   // A card Gemma is still working on is polled faster than the 30 s default (design.md, Interfaces).
   const gemmaIsThinking =
     today?.cards.some(
-      (card) => card.gemma?.state === "thinking" || card.photo?.state === "inspecting",
+      (card) =>
+        card.gemma?.state === "thinking" ||
+        card.photo?.state === "inspecting" ||
+        card.laundry_plan?.stage === "thinking",
     ) ?? false;
   useEffect(() => {
     if (!gemmaIsThinking) {
@@ -273,6 +278,18 @@ export function App() {
         void act(async () => {
           await deletePhoto(photoId);
           return { kind: "info", text: "Photo deleted, with what Gemma read from it." };
+        });
+      }}
+      onPlanNeed={(cardId, needed) => {
+        void act(async () => {
+          await answerPlanNeed(cardId, needed);
+          return undefined;
+        });
+      }}
+      onPlanFollow={(cardId) => {
+        void act(async () => {
+          await followPlanAdvice(cardId);
+          return undefined;
         });
       }}
       onBet={(cardId, quoteId) => {
