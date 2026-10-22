@@ -3,6 +3,8 @@ import { MULTIPLIER, pointsFor } from "../../domain/points.js";
 import { judgeBet, JUDGE_PROMPT } from "../gemma/judge.js";
 import { HttpError } from "../problem.js";
 
+import { markDueBets } from "./bets.js";
+
 import type { LedgerDeps } from "./deps.js";
 import { logDecision } from "./decisions.js";
 import type { BetRow, CardRow } from "./rows.js";
@@ -38,15 +40,11 @@ export async function settleByTap(
   betId: number,
   answerId: string,
 ): Promise<Settled> {
+  // A tap right after the settle time must not wait for the next scheduler pass.
+  markDueBets(deps.db, deps.now());
   const bet = deps.db.prepare<[number], BetRow>("SELECT * FROM bets WHERE id = ?").get(betId);
   if (bet === undefined) {
     throw new HttpError(404, "Bet not found");
-  }
-  if (bet.status === "open" && bet.settle_at <= deps.now()) {
-    // Slips lists it under Settle now at read time (AC-007.2); the 60 s scheduler may not have
-    // marked it due yet, so the tap does it. The status guard makes this race-free.
-    deps.db.prepare("UPDATE bets SET status = 'due' WHERE id = ? AND status = 'open'").run(bet.id);
-    bet.status = "due";
   }
   if (bet.status !== "due") {
     throw new HttpError(

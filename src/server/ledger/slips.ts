@@ -1,5 +1,5 @@
+import { listSettlingBets, markDueBets, viewsOf } from "./bets.js";
 import type { LedgerDeps } from "./deps.js";
-import { listSettlingBets, viewsOf } from "./bets.js";
 import type { BetRow, SettlementRow } from "./rows.js";
 
 /** The most recent settled bets Slips lists; older ones stay in the database for Score. */
@@ -13,6 +13,8 @@ const MAX_SETTLED = 100;
  */
 export function getSlips(deps: LedgerDeps) {
   const now = deps.now();
+  // Due is decided at read time, like on Today, so the group below never lags the scheduler.
+  markDueBets(deps.db, now);
   const settling = listSettlingBets(deps);
   const isReady = (bet: BetRow): boolean => bet.settle_at <= now;
 

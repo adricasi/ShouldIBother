@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CHORE_TYPES } from "../domain/chores.js";
 
 import { FLAG_NAMES, type Flags } from "./flags.js";
-import { listBetsWithStatus, placeBet, undoBet } from "./ledger/bets.js";
+import { listBetsWithStatus, markDueBets, placeBet, undoBet } from "./ledger/bets.js";
 import { createQuickCard, getCardView, listOpenCards } from "./ledger/cards.js";
 import type { LedgerDeps } from "./ledger/deps.js";
 import { pointsTotal, settleByTap } from "./ledger/settle.js";
@@ -26,7 +26,11 @@ export interface Core {
 
 const quickCardBody = z.object({ chore_type: z.enum(CHORE_TYPES) }).strict();
 const placeBetBody = z
-  .object({ card_id: z.number().int().positive(), kind: z.enum(["do_nothing", "do_it"]) })
+  .object({
+    card_id: z.number().int().positive(),
+    quote_id: z.number().int().positive(),
+    kind: z.enum(["do_nothing", "do_it"]),
+  })
   .strict();
 const settleBody = z.object({ answer: z.string().min(1).max(40) }).strict();
 const idParams = z.object({ id: z.coerce.number().int().positive() });
@@ -76,14 +80,18 @@ export function createCore(deps: CoreDeps): Core {
       return sendProblem(reply, new HttpError(500, "Internal Server Error"));
     });
 
-    app.get("/api/today", () => ({
-      now: new Date(deps.now()).toISOString(),
-      flags: Object.fromEntries(FLAG_NAMES.map((name) => [name, deps.flags[name]])),
-      points: { total: pointsTotal(deps) },
-      cards: listOpenCards(deps),
-      open_bets: listBetsWithStatus(deps, "open"),
-      due_bets: listBetsWithStatus(deps, "due"),
-    }));
+    app.get("/api/today", () => {
+      // Due is decided at read time too, so a bet is never listed as waiting after its settle time.
+      markDueBets(deps.db, deps.now());
+      return {
+        now: new Date(deps.now()).toISOString(),
+        flags: Object.fromEntries(FLAG_NAMES.map((name) => [name, deps.flags[name]])),
+        points: { total: pointsTotal(deps) },
+        cards: listOpenCards(deps),
+        open_bets: listBetsWithStatus(deps, "open"),
+        due_bets: listBetsWithStatus(deps, "due"),
+      };
+    });
 
     app.post("/api/cards/quick", async (request, reply) => {
       const body = parse(quickCardBody, request.body);
@@ -94,7 +102,7 @@ export function createCore(deps: CoreDeps): Core {
 
     app.post("/api/bets", (request, reply) => {
       const body = parse(placeBetBody, request.body);
-      return reply.code(201).send(placeBet(deps, body.card_id, body.kind));
+      return reply.code(201).send(placeBet(deps, body.card_id, body.quote_id, body.kind));
     });
 
     app.delete("/api/bets/:id", (request) => undoBet(deps, parse(idParams, request.params).id));

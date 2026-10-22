@@ -24,6 +24,7 @@ interface Card {
   id: number;
   title: string;
   quote: {
+    id: number;
     source: string;
     band: number;
     band_name: string;
@@ -65,8 +66,12 @@ async function quickCard(): Promise<Card> {
   return response.json<Card>();
 }
 
-async function placeBet(cardId: number): Promise<Bet> {
-  const response = await harness.post("/api/bets", { card_id: cardId, kind: "do_nothing" });
+async function placeBet(card: Card): Promise<Bet> {
+  const response = await harness.post("/api/bets", {
+    card_id: card.id,
+    quote_id: card.quote.id,
+    kind: "do_nothing",
+  });
   expect(response.statusCode).toBe(201);
   return response.json<Bet>();
 }
@@ -104,7 +109,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect((await today()).cards.map((c) => c.id)).toEqual([card.id]);
 
     // AC-006.1: the bet locks what the card showed.
-    const bet = await placeBet(card.id);
+    const bet = await placeBet(card);
     expect(bet).toMatchObject({
       status: "open",
       odds: 70,
@@ -153,7 +158,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("AC-009.2: a wrong tap costs the loss points, whatever the odds", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     reachSettleTime(bet);
     const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "wilting" });
     expect(settled.json()).toMatchObject({
@@ -167,7 +172,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
     const results: number[] = [];
     for (const answer of ["moist", "dry", "wilting"]) {
-      const bet = await placeBet((await quickCard()).id);
+      const bet = await placeBet(await quickCard());
       reachSettleTime(bet);
       const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer });
       results.push(settled.json<{ points: number }>().points);
@@ -183,7 +188,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
   it("AC-006.2: a forecast change after the bet leaves the bet unchanged", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
     const card = await quickCard();
-    const bet = await placeBet(card.id);
+    const bet = await placeBet(card);
     harness.weather.setProfile(FAKE_WEATHER_PROFILES.hot);
     const second = await quickCard();
     expect(second.quote.band).toBe(0);
@@ -194,7 +199,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("AC-004.2, AC-013.4: a bet on rule odds stores odds_source = rule and the rule band", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.mild });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     const row = harness.db
       .prepare<[number], Record<string, unknown>>("SELECT * FROM bets WHERE id = ?")
       .get(bet.id);
@@ -211,7 +216,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("AC-008.8: when Gemma is offline the bet stays due and is never settled by the rule", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     reachSettleTime(bet);
     harness.model.setScenario("judge", "offline");
     const failed = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
@@ -232,7 +237,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     "a judge answer of kind %s never settles the bet",
     async (scenario) => {
       await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-      const bet = await placeBet((await quickCard()).id);
+      const bet = await placeBet(await quickCard());
       reachSettleTime(bet);
       harness.model.setScenario("judge", scenario);
       const response = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
@@ -244,7 +249,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("logs the judge decision with the bet, prompt version and model", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     reachSettleTime(bet);
     await harness.post(`/api/bets/${bet.id}/settle`, { answer: "dry" });
     const decision = harness.db
@@ -273,7 +278,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("settles a bet only once", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     reachSettleTime(bet);
     const first = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
     const second = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
@@ -284,17 +289,30 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
   it("refuses a second bet on the same card, an unknown card and an out-of-date card", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
     const card = await quickCard();
-    await placeBet(card.id);
+    await placeBet(card);
     expect(
-      (await harness.post("/api/bets", { card_id: card.id, kind: "do_nothing" })).statusCode,
+      (
+        await harness.post("/api/bets", {
+          card_id: card.id,
+          quote_id: card.quote.id,
+          kind: "do_nothing",
+        })
+      ).statusCode,
     ).toBe(409);
-    expect((await harness.post("/api/bets", { card_id: 999, kind: "do_nothing" })).statusCode).toBe(
-      404,
-    );
+    expect(
+      (await harness.post("/api/bets", { card_id: 999, quote_id: 1, kind: "do_nothing" }))
+        .statusCode,
+    ).toBe(404);
     const stale = await quickCard();
     harness.clock.current = Date.parse(stale.quote.settle_at) + MINUTE;
     expect(
-      (await harness.post("/api/bets", { card_id: stale.id, kind: "do_nothing" })).statusCode,
+      (
+        await harness.post("/api/bets", {
+          card_id: stale.id,
+          quote_id: stale.quote.id,
+          kind: "do_nothing",
+        })
+      ).statusCode,
     ).toBe(409);
     expect((await today()).cards).toEqual([]);
   });
@@ -304,7 +322,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     const invalid = [
       harness.post("/api/cards/quick", { chore_type: "car" }),
       harness.post("/api/cards/quick", {}),
-      harness.post("/api/bets", { card_id: 1, kind: "skip" }),
+      harness.post("/api/bets", { card_id: 1, quote_id: 1, kind: "skip" }),
       harness.post("/api/bets/1/settle", { answer: "" }),
     ];
     for (const response of await Promise.all(invalid)) {
@@ -322,7 +340,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
 
   it("rejects an answer that is not one of the chore's taps", async () => {
     await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
-    const bet = await placeBet((await quickCard()).id);
+    const bet = await placeBet(await quickCard());
     reachSettleTime(bet);
     expect((await harness.post(`/api/bets/${bet.id}/settle`, { answer: "great" })).statusCode).toBe(
       400,
@@ -359,6 +377,63 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
     expect(fetched.json()).toEqual(card);
     expect((await harness.get("/api/cards/999")).statusCode).toBe(404);
     expect((await harness.get("/api/cards/abc")).statusCode).toBe(400);
+  });
+
+  it("AC-006.1: the bet locks the quote the user saw; a quote that is not the latest is a 409", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
+    const card = await quickCard();
+    // A newer quote replaces the one on screen (what Gemma's answer will do in T-006).
+    harness.db
+      .prepare(
+        `INSERT INTO quotes (card_id, source, band, odds, reason, settle_at, created_at)
+         VALUES (?, 'gemma', 1, 35, 'Gemma says no', ?, ?)`,
+      )
+      .run(card.id, Date.parse(card.quote.settle_at), harness.clock.current);
+    const stale = await harness.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote.id,
+      kind: "do_nothing",
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM bets").get()).toEqual({ n: 0 });
+
+    const latest = harness.db.prepare<[], { id: number }>("SELECT MAX(id) AS id FROM quotes").get()!
+      .id;
+    const placed = await harness.post("/api/bets", {
+      card_id: card.id,
+      quote_id: latest,
+      kind: "do_nothing",
+    });
+    expect(placed.statusCode).toBe(201);
+    expect(placed.json()).toMatchObject({ odds: 35, band: 1, odds_source: "gemma" });
+    expect(harness.db.prepare("SELECT rule_band, gemma_band FROM bets").get()).toEqual({
+      rule_band: 3,
+      gemma_band: 1,
+    });
+  });
+
+  it("requires quote_id to place a bet", async () => {
+    await setup();
+    const card = await quickCard();
+    const response = await harness.post("/api/bets", { card_id: card.id, kind: "do_nothing" });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("a tap right after the settle time works without waiting for the scheduler", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
+    const bet = await placeBet(await quickCard());
+    harness.clock.current = Date.parse(bet.settle_at); // exactly the settle time, no tick
+    const settled = await harness.post(`/api/bets/${bet.id}/settle`, { answer: "moist" });
+    expect(settled.statusCode).toBe(200);
+  });
+
+  it("Today lists a bet as due as soon as its settle time has come, without a scheduler pass", async () => {
+    await setup({ weatherProfile: FAKE_WEATHER_PROFILES.rainy });
+    const bet = await placeBet(await quickCard());
+    harness.clock.current = Date.parse(bet.settle_at) + 1;
+    const view = await today();
+    expect(view.open_bets).toEqual([]);
+    expect(view.due_bets.map((b) => b.id)).toEqual([bet.id]);
   });
 
   it("serves API responses with no-store so household data is not cached", async () => {

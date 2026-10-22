@@ -19,19 +19,48 @@ export const FIXTURES_DIR = fileURLToPath(
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 
-const fixtureSchema = z
+const toolCallsSchema = z.array(
+  z.object({ name: z.string(), arguments: z.record(z.string(), z.unknown()) }),
+);
+
+const stepSchema = z
   .object({
-    description: z.string(),
     model: z.string().default("fake-gemma"),
-    toolCalls: z
-      .array(z.object({ name: z.string(), arguments: z.record(z.string(), z.unknown()) }))
-      .default([]),
+    toolCalls: toolCallsSchema.default([]),
     /** The answer: an object is sent as JSON, a string as written (for invalid-JSON fixtures). */
     content: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
     /** A runtime failure instead of an answer. */
     error: z.enum(["timeout", "unavailable"]).optional(),
   })
   .strict();
+
+type Step = z.infer<typeof stepSchema>;
+
+/**
+ * A fixture is one response (the step fields at the top level) or a script of `steps`, one per
+ * call of the job, so a tool call followed by an answer, or an invalid answer followed by a valid
+ * retry, can be replayed. A script that runs out is an error: the job made more calls than
+ * recorded.
+ */
+const fixtureSchema = z
+  .object({
+    description: z.string(),
+    steps: z.array(stepSchema).min(1).optional(),
+    model: z.string().optional(),
+    toolCalls: toolCallsSchema.optional(),
+    content: stepSchema.shape.content,
+    error: stepSchema.shape.error,
+  })
+  .strict()
+  .refine(
+    (fixture) =>
+      fixture.steps === undefined ||
+      (fixture.model === undefined &&
+        fixture.toolCalls === undefined &&
+        fixture.content === undefined &&
+        fixture.error === undefined),
+    "A fixture has either steps or a single response, not both",
+  );
 
 export type ScenarioSelector = (request: ChatRequest) => string;
 
@@ -51,6 +80,8 @@ export class FakeModelClient implements ModelClient {
   private readonly fixturesDir: string;
   private readonly defaultScenario: ScenarioSelector;
   private readonly overrides = new Map<string, string>();
+  /** Calls consumed so far per `job/scenario`, for scripted fixtures. */
+  private readonly consumed = new Map<string, number>();
 
   constructor(options: FakeModelOptions = {}) {
     this.fixturesDir = options.fixturesDir ?? FIXTURES_DIR;
@@ -60,6 +91,7 @@ export class FakeModelClient implements ModelClient {
   /** Makes every later call of `job` use `scenario` until changed. */
   setScenario(job: string, scenario: string): void {
     this.overrides.set(job, scenario);
+    this.consumed.delete(`${job}/${scenario}`);
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
@@ -78,14 +110,34 @@ export class FakeModelClient implements ModelClient {
       });
     }
     const fixture = fixtureSchema.parse(JSON.parse(text));
-    if (fixture.error === "timeout") {
-      throw new ModelTimeoutError(`Fixture ${request.job}/${scenario}: timeout`);
+    const key = `${request.job}/${scenario}`;
+    const index = this.consumed.get(key) ?? 0;
+    this.consumed.set(key, index + 1);
+    let step: Step;
+    if (fixture.steps === undefined) {
+      step = stepSchema.parse({
+        ...(fixture.model === undefined ? {} : { model: fixture.model }),
+        ...(fixture.toolCalls === undefined ? {} : { toolCalls: fixture.toolCalls }),
+        ...(fixture.content === undefined ? {} : { content: fixture.content }),
+        ...(fixture.error === undefined ? {} : { error: fixture.error }),
+      });
+    } else {
+      const scripted = fixture.steps[index];
+      if (scripted === undefined) {
+        throw new Error(
+          `Fixture ${key} has ${fixture.steps.length} steps; call ${index + 1} has none`,
+        );
+      }
+      step = scripted;
     }
-    if (fixture.error === "unavailable") {
-      throw new ModelUnavailableError(`Fixture ${request.job}/${scenario}: unavailable`);
+    if (step.error === "timeout") {
+      throw new ModelTimeoutError(`Fixture ${key}: timeout`);
+    }
+    if (step.error === "unavailable") {
+      throw new ModelUnavailableError(`Fixture ${key}: unavailable`);
     }
     const content =
-      typeof fixture.content === "string" ? fixture.content : JSON.stringify(fixture.content ?? {});
-    return { content, toolCalls: fixture.toolCalls, model: fixture.model };
+      typeof step.content === "string" ? step.content : JSON.stringify(step.content ?? {});
+    return { content, toolCalls: step.toolCalls, model: step.model };
   }
 }

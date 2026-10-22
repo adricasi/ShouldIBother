@@ -19,7 +19,7 @@ async function setup(options: Parameters<typeof createCoreHarness>[0] = {}): Pro
 
 interface Card {
   id: number;
-  quote: { band: number; odds: number; reason: string; settle_at: string };
+  quote: { id: number; band: number; odds: number; reason: string; settle_at: string };
 }
 interface Bet {
   id: number;
@@ -45,8 +45,16 @@ async function quickCard(): Promise<Card> {
   return (await harness.post("/api/cards/quick", { chore_type: "plants" })).json<Card>();
 }
 
+async function latestQuoteId(cardId: number): Promise<number> {
+  return (await harness.get(`/api/cards/${cardId}`)).json<Card>().quote.id;
+}
+
 async function place(cardId: number, kind: "do_nothing" | "do_it" = "do_nothing"): Promise<Bet> {
-  const response = await harness.post("/api/bets", { card_id: cardId, kind });
+  const response = await harness.post("/api/bets", {
+    card_id: cardId,
+    quote_id: await latestQuoteId(cardId),
+    kind,
+  });
   expect(response.statusCode).toBe(201);
   return response.json<Bet>();
 }
@@ -133,8 +141,31 @@ describe("REQ-006: bet, do it, or undo", () => {
     await setup();
     const card = await quickCard();
     await place(card.id, "do_it");
-    const second = await harness.post("/api/bets", { card_id: card.id, kind: "do_nothing" });
+    const second = await harness.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote.id,
+      kind: "do_nothing",
+    });
     expect(second.statusCode).toBe(409);
+  });
+
+  it("AC-006.3: I'll do it follows the same quote_id rule as a bet", async () => {
+    await setup();
+    const card = await quickCard();
+    harness.db
+      .prepare(
+        `INSERT INTO quotes (card_id, source, band, odds, with_photo, reason, settle_at, created_at)
+         VALUES (?, 'gemma', 0, 15, 0, 'Gemma changed its mind', ?, ?)`,
+      )
+      .run(card.id, Date.parse(card.quote.settle_at), harness.clock.now());
+    const stale = await harness.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote.id,
+      kind: "do_it",
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ title: "The odds changed" });
+    expect(harness.db.prepare("SELECT COUNT(*) AS n FROM bets").get()).toEqual({ n: 0 });
   });
 
   it.each(["do_nothing", "do_it"] as const)(
@@ -252,7 +283,11 @@ describe("REQ-012 AC-012.2: no bet on a card in alert state", () => {
     async (kind) => {
       await setup();
       const cardId = seedAlertCard();
-      const response = await harness.post("/api/bets", { card_id: cardId, kind });
+      const response = await harness.post("/api/bets", {
+        card_id: cardId,
+        quote_id: 1,
+        kind,
+      });
       expect(response.statusCode).toBe(409);
       expect(response.headers["content-type"]).toContain("application/problem+json");
       expect(response.json()).toMatchObject({

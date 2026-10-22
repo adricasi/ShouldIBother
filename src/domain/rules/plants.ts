@@ -1,5 +1,5 @@
 import type { Band } from "../bands.js";
-import { hoursInWindow, type ForecastHour } from "../weather.js";
+import { hoursInWindow, windowIsCovered, type ForecastHour } from "../weather.js";
 
 import type { PlantsRow, RulesConfig } from "./schema.js";
 
@@ -17,16 +17,19 @@ function roundTo(value: number, decimals: number): number {
   return Math.round(value * factor) / factor;
 }
 
-/** Reads the forecast over `[fromMs, toMs)`; null when the forecast has no hour in the window. */
+/**
+ * Reads the forecast over `[fromMs, toMs)`; null unless the forecast covers the whole window
+ * without a gap: a partly covered window would understate the rain and give false odds.
+ */
 export function plantsFacts(
   forecast: readonly ForecastHour[],
   fromMs: number,
   toMs: number,
 ): PlantsFacts | null {
-  const hours = hoursInWindow(forecast, fromMs, toMs);
-  if (hours.length === 0) {
+  if (!windowIsCovered(forecast, fromMs, toMs)) {
     return null;
   }
+  const hours = hoursInWindow(forecast, fromMs, toMs);
   return {
     rainMm: roundTo(
       hours.reduce((sum, hour) => sum + hour.precipitationMm, 0),

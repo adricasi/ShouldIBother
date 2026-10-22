@@ -56,17 +56,19 @@ describe("bet state machine (design.md, Data model)", () => {
   it("the trigger of migration 0003 allows exactly the arrows of the TypeScript table", () => {
     const db = openDatabase(":memory:");
     migrate(db, MIGRATIONS);
-    db.prepare(
+    const addCard = db.prepare(
       "INSERT INTO cards (input_text, chore_type, kind, created_at) VALUES ('x', 'plants', 'weather', 1)",
-    ).run();
+    );
     const insert = db.prepare(
       `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, rule_band, placed_at,
-         undo_until, settle_at, status) VALUES (1, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3, ?)`,
+         undo_until, settle_at, status) VALUES (?, 'do_nothing', 2, 50, 'rule', 'r', 2, 1, 2, 3, ?)`,
     );
     for (const from of BET_STATUSES) {
       for (const to of BET_STATUSES) {
         // Seeding a row in `from` goes through insert (no trigger on INSERT).
-        const id = Number(insert.run(from).lastInsertRowid);
+        // One active bet per card (unique index), so every row gets its own card.
+        const cardId = Number(addCard.run().lastInsertRowid);
+        const id = Number(insert.run(cardId, from).lastInsertRowid);
         const update = (): unknown =>
           db.prepare("UPDATE bets SET status = ? WHERE id = ?").run(to, id);
         if (from === to || canTransition(from, to)) {

@@ -13,11 +13,17 @@ export type BetKind = BetRow["kind"];
 
 /**
  * Places a bet on doing nothing, or records the "I'll do it" decision (REQ-006). Either way the
- * quote shown now is copied onto the bet and locked (AC-006.1, AC-006.3): later forecasts and
- * Gemma answers cannot reach it, and the database refuses updates to the locked columns
+ * quote the user saw, named by `quoteId`, is copied onto the bet and locked (AC-006.1, AC-006.3);
+ * it is refused when that is no longer the card's latest quote. Later forecasts and Gemma
+ * answers cannot reach the bet, and the database refuses updates to the locked columns
  * (migration 0003, AC-006.2). The rule band is stored next to it (AC-004.2).
  */
-export function placeBet(deps: LedgerDeps, cardId: number, kind: BetKind): BetView {
+export function placeBet(
+  deps: LedgerDeps,
+  cardId: number,
+  quoteId: number,
+  kind: BetKind,
+): BetView {
   const now = deps.now();
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId);
   if (card === undefined) {
@@ -33,6 +39,14 @@ export function placeBet(deps: LedgerDeps, cardId: number, kind: BetKind): BetVi
   const quote = latestQuote(deps, cardId);
   if (quote === undefined) {
     throw new HttpError(409, "No odds on this card yet");
+  }
+  if (quote.id !== quoteId) {
+    // The card moved on (Gemma's odds replaced the rule's, say): the bet locks only what was seen.
+    throw new HttpError(
+      409,
+      "The odds changed",
+      "Look at the card again and confirm the new odds.",
+    );
   }
   if (quote.settle_at <= now) {
     throw new HttpError(409, "These odds are out of date", "Create a new card.");

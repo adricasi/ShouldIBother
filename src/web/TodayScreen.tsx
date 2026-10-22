@@ -25,8 +25,8 @@ export interface TodayScreenProps {
   readonly onQuickCard: (choreType: string) => void;
   /** The server's clock estimated now, for the Undo countdown. */
   readonly nowMs: number;
-  readonly onBet: (cardId: number) => void;
-  readonly onDoIt: (cardId: number) => void;
+  readonly onBet: (cardId: number, quoteId: number) => void;
+  readonly onDoIt: (cardId: number, quoteId: number) => void;
   readonly onUndo: (betId: number) => void;
   readonly onSettle: (betId: number, answerId: string) => void;
 }
@@ -48,8 +48,8 @@ function CardSlip({
 }: {
   card: Card;
   busy: boolean;
-  onBet: (id: number) => void;
-  onDoIt: (id: number) => void;
+  onBet: (cardId: number, quoteId: number) => void;
+  onDoIt: (cardId: number, quoteId: number) => void;
 }) {
   const { quote } = card;
   return (
@@ -77,7 +77,7 @@ function CardSlip({
         className="button primary"
         disabled={busy}
         onClick={() => {
-          onBet(card.id);
+          onBet(card.id, quote.id);
         }}
       >
         Bet: do nothing
@@ -87,7 +87,7 @@ function CardSlip({
         className="button secondary"
         disabled={busy}
         onClick={() => {
-          onDoIt(card.id);
+          onDoIt(card.id, quote.id);
         }}
       >
         I&apos;ll do it

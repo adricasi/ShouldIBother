@@ -113,9 +113,9 @@ export function App() {
     [refresh],
   );
 
-  const place = (cardId: number, kind: BetKind): void => {
+  const place = (cardId: number, quoteId: number, kind: BetKind): void => {
     void act(async () => {
-      await placeBet(cardId, kind);
+      await placeBet(cardId, quoteId, kind);
       return {
         kind: "info",
         text:
@@ -167,11 +167,11 @@ export function App() {
           return undefined;
         });
       }}
-      onBet={(cardId) => {
-        place(cardId, "do_nothing");
+      onBet={(cardId, quoteId) => {
+        place(cardId, quoteId, "do_nothing");
       }}
-      onDoIt={(cardId) => {
-        place(cardId, "do_it");
+      onDoIt={(cardId, quoteId) => {
+        place(cardId, quoteId, "do_it");
       }}
       onSettle={onSettle}
       onUndo={onUndo}

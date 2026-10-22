@@ -155,8 +155,16 @@ export const createQuickCard = (choreType: string): Promise<Card> =>
 
 export const fetchSlips = (): Promise<Slips> => request("/api/slips", slipsSchema);
 
-export const placeBet = (cardId: number, kind: BetKind = "do_nothing"): Promise<Bet> =>
-  request("/api/bets", betSchema, { method: "POST", body: { card_id: cardId, kind } });
+/** `quoteId` is the quote the user is looking at; the server refuses if the card moved on. */
+export const placeBet = (
+  cardId: number,
+  quoteId: number,
+  kind: BetKind = "do_nothing",
+): Promise<Bet> =>
+  request("/api/bets", betSchema, {
+    method: "POST",
+    body: { card_id: cardId, quote_id: quoteId, kind },
+  });
 
 export const undoBet = (betId: number): Promise<Bet> =>
   request(`/api/bets/${betId}`, betSchema, { method: "DELETE" });

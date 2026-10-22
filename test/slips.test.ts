@@ -41,7 +41,9 @@ async function slips(): Promise<Slips> {
 }
 
 async function placeOn(cardId: number, kind: "do_nothing" | "do_it" = "do_nothing") {
-  const response = await harness.post("/api/bets", { card_id: cardId, kind });
+  const quoteId = (await harness.get(`/api/cards/${cardId}`)).json<{ quote: { id: number } }>()
+    .quote.id;
+  const response = await harness.post("/api/bets", { card_id: cardId, quote_id: quoteId, kind });
   expect(response.statusCode).toBe(201);
   return response.json<SlipBet>();
 }
@@ -98,7 +100,7 @@ describe("REQ-007: Slips with countdown", () => {
     harness.clock.current = Date.parse(bet.settle_at);
     const result = await slips();
     expect(result.waiting).toEqual([]);
-    expect(result.settle_now.map((b) => [b.id, b.status])).toEqual([[bet.id, "open"]]);
+    expect(result.settle_now.map((b) => [b.id, b.status])).toEqual([[bet.id, "due"]]);
     expect(result.settle_now[0]?.tap_answers.map((a) => a.id)).toEqual(["moist", "dry", "wilting"]);
   });
 
