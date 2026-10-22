@@ -51,24 +51,27 @@ export class FailureLimiter {
     this.evict(now);
   }
 
-  /** Drops idle entries first, then the least recently active ones, down to `maxTracked`. */
+  /**
+   * Keeps at most `maxTracked` clients: idle ones go first, then the least recently active
+   * unblocked ones, and a blocked client only as a last resort.
+   */
   private evict(now: number): void {
     if (this.entries.size <= this.options.maxTracked) {
       return;
     }
-    for (const [client, entry] of this.entries) {
-      const idle =
-        entry.blockedUntil <= now &&
-        entry.failures.every((at) => at <= now - this.options.windowMs);
-      if (idle) {
-        this.entries.delete(client);
+    const isBlocked = (entry: Entry): boolean => entry.blockedUntil > now;
+    const isIdle = (entry: Entry): boolean =>
+      !isBlocked(entry) && entry.failures.every((at) => at <= now - this.options.windowMs);
+    const passes = [isIdle, (entry: Entry) => !isBlocked(entry), () => true];
+    for (const qualifies of passes) {
+      for (const [client, entry] of this.entries) {
+        if (this.entries.size <= this.options.maxTracked) {
+          return;
+        }
+        if (qualifies(entry)) {
+          this.entries.delete(client);
+        }
       }
-    }
-    for (const client of this.entries.keys()) {
-      if (this.entries.size <= this.options.maxTracked) {
-        break;
-      }
-      this.entries.delete(client);
     }
   }
 }

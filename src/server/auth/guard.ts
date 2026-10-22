@@ -71,12 +71,28 @@ function problem(
   status: number,
   title: string,
   detail?: string,
+  headers: Record<string, string> = {},
 ): FastifyReply {
   return reply
     .code(status)
+    .headers(headers)
     .header("content-type", "application/problem+json")
     .header("cache-control", "no-store")
     .send({ type: "about:blank", title, status, ...(detail === undefined ? {} : { detail }) });
+}
+
+/**
+ * Errors Fastify raises before routing (a malformed URL) never reach the hooks. They get the
+ * same headers and problem body, and do not echo the URL back (it may carry a token).
+ */
+export function frameworkErrorHandler(
+  error: { statusCode?: number },
+  _request: FastifyRequest,
+  reply: FastifyReply,
+): void {
+  const status = error.statusCode !== undefined && error.statusCode >= 400 ? error.statusCode : 400;
+  void reply.headers(SECURITY_HEADERS);
+  void problem(reply, status, "Bad Request");
 }
 
 const PAIR_HINT = "Open the pairing link printed on the laptop, or run `sib pair` there.";
@@ -103,6 +119,9 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
   const isSecureHost = (request: FastifyRequest): boolean =>
     allowlist.secureHosts.has(request.headers.host?.toLowerCase() ?? "");
 
+  // The default 404 handler logs and echoes the requested URL, query string included.
+  app.setNotFoundHandler((_request, reply) => problem(reply, 404, "Not Found"));
+
   app.addHook("onRequest", async (request, reply) => {
     reply.headers(SECURITY_HEADERS);
 
@@ -115,7 +134,7 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
       const client = request.ip;
       if (limiter.isBlocked(client)) {
         request.log.warn({ clientAddress: client }, "unauthenticated client is rate limited");
-        return problem(reply, 429, "Too Many Requests").header("retry-after", "60");
+        return problem(reply, 429, "Too Many Requests", undefined, { "retry-after": "60" });
       }
       if (request.routeOptions.config?.public !== true) {
         limiter.recordFailure(client);

@@ -3,7 +3,7 @@ import type { Writable } from "node:stream";
 import Fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify";
 
 import type { Allowlist } from "./auth/allowlist.js";
-import { registerAuth } from "./auth/guard.js";
+import { frameworkErrorHandler, registerAuth } from "./auth/guard.js";
 import { FailureLimiter } from "./auth/rate-limit.js";
 import type { AuthStore } from "./auth/store.js";
 import { FLAG_NAMES, type FlagName, type Flags } from "./flags.js";
@@ -80,6 +80,7 @@ export const LOGGER_OPTIONS = {
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const now = options.auth.now ?? Date.now;
   const app = Fastify({
+    frameworkErrors: frameworkErrorHandler,
     logger: options.logger
       ? {
           ...LOGGER_OPTIONS,
