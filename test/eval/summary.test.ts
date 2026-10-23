@@ -128,16 +128,45 @@ describe("NFR-004: the summary maths of sib eval", () => {
     expect(missed.latencyMs).toEqual({ p50: 15000, p95: 15001, max: 15001 });
   });
 
-  it("a photo case whose inspector asks a question did not judge the photo in time", () => {
-    const records = Array.from({ length: 20 }, (_unused, index) =>
-      index === 0
-        ? record("c", [step("inspector", { status: "unsure" })], "inspector")
-        : record("c", [step("inspector"), step("bookmaker")], "inspector"),
-    );
-    expect(summarize(records, EVAL_JOB_SPECS.inspector)).toMatchObject({
+  it("NFR-004: an inspector that asks a question ends the photo flow, and that counts when it is in time", () => {
+    const chain = (index: number, askMs: number) =>
+      index < 6
+        ? record("ask", [step("inspector", { status: "unsure", latencyMs: askMs })], "inspector")
+        : record("c", [step("inspector"), step("bookmaker")], "inspector");
+    const make = (askMs: number) =>
+      Array.from({ length: 20 }, (_unused, index) => chain(index, askMs));
+    // Six of 20 cases end with a question: a perfect run still meets the target.
+    expect(summarize(make(4000), EVAL_JOB_SPECS.inspector)).toMatchObject({
       primaryValid: 20,
+      unsure: 6,
+      withinPhotoBudget: 20,
+      targetMet: true,
+    });
+  });
+
+  it("NFR-004: a question that took longer than 15 s misses the budget like any other case", () => {
+    const make = (slowAsks: number) =>
+      Array.from({ length: 20 }, (_unused, index) =>
+        index < 6
+          ? record(
+              "ask",
+              [
+                step("inspector", {
+                  status: "unsure",
+                  latencyMs: index < slowAsks ? 15_001 : 3000,
+                }),
+              ],
+              "inspector",
+            )
+          : record("c", [step("inspector"), step("bookmaker")], "inspector"),
+      );
+    expect(summarize(make(1), EVAL_JOB_SPECS.inspector)).toMatchObject({
       withinPhotoBudget: 19,
       targetMet: true,
+    });
+    expect(summarize(make(2), EVAL_JOB_SPECS.inspector)).toMatchObject({
+      withinPhotoBudget: 18,
+      targetMet: false,
     });
   });
 

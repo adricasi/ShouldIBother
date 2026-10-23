@@ -3,7 +3,7 @@ import type { CaseRecord } from "./types.js";
 
 /** The target of every eval: at least 19 of 20 (NFR-004), kept as a ratio for sets of other sizes. */
 export const TARGET = { numerator: 19, denominator: 20 } as const;
-/** Photo judgement, inspector plus bookmaker, within 15 s (NFR-004). */
+/** The photo flow, inspector plus the bookmaker when one ran, within 15 s (NFR-004). */
 export const PHOTO_JUDGEMENT_BUDGET_MS = 15_000;
 
 /** How many of `total` must pass: 19 of 20, and the same share of a set of another size. */
@@ -50,7 +50,7 @@ export interface Summary {
     readonly firstAnswerWithTool: number;
   } | null;
   readonly latencyMs: { readonly p50: number; readonly p95: number; readonly max: number };
-  /** Photo judgement within 15 s; null for jobs without a photo budget. */
+  /** Cases whose valid photo flow took at most 15 s; null for jobs without a photo budget. */
   readonly withinPhotoBudget: number | null;
   readonly expectation: { readonly matched: number; readonly total: number } | null;
   readonly criteria: readonly Criterion[];
@@ -82,12 +82,11 @@ export function summarize(records: readonly CaseRecord[], spec: EvalJobSpec): Su
         };
   const times = records.map((record) => record.latencyMs).sort((a, b) => a - b);
   const withinPhotoBudget = spec.photoBudget
-    ? records.filter(
-        (record) =>
-          record.valid &&
-          record.steps.some((step) => step.job === "bookmaker") &&
-          record.latencyMs <= PHOTO_JUDGEMENT_BUDGET_MS,
-      ).length
+    ? // NFR-004: the photo flow is the inspector plus the bookmaker when one ran. A case counts when
+      // the whole flow is valid (a question from the inspector ends it without a bookmaker) and
+      // took at most 15 s. The denominator is every case.
+      records.filter((record) => record.valid && record.latencyMs <= PHOTO_JUDGEMENT_BUDGET_MS)
+        .length
     : null;
   const primaryValid = records.filter((record) => record.primaryValid).length;
 
@@ -103,7 +102,7 @@ export function summarize(records: readonly CaseRecord[], spec: EvalJobSpec): Su
     criteria.push(
       criterion(
         "photo_judgement_15s",
-        "Photo judgement (inspector + bookmaker) within 15 s",
+        "Photo flow (inspector, then bookmaker if it ran) valid within 15 s",
         withinPhotoBudget,
         total,
       ),

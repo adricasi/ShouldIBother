@@ -146,7 +146,7 @@ export function summaryLines(meta: ReportMeta, summary: Summary): string[] {
   );
   if (summary.withinPhotoBudget !== null) {
     lines.push(
-      `Photo judgement within ${PHOTO_JUDGEMENT_BUDGET_MS / 1000} s: ${summary.withinPhotoBudget}/${summary.cases}`,
+      `Photo flow valid within ${PHOTO_JUDGEMENT_BUDGET_MS / 1000} s (inspector, then the bookmaker if it ran; a question from the inspector ends it): ${summary.withinPhotoBudget}/${summary.cases}`,
     );
   }
   if (summary.expectation !== null) {

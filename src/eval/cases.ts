@@ -107,10 +107,16 @@ const judgeEvidenceSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("photo"),
       before: photoName.optional(),
+      /** What to stage for the before photo; required with `before`. */
+      beforeStaging: z.string().min(1).max(300).optional(),
       after: photoName,
+      /** What to stage for the after photo. */
       staging: z.string().min(1).max(300),
     })
-    .strict(),
+    .strict()
+    .refine((value) => (value.before === undefined) === (value.beforeStaging === undefined), {
+      message: '"before" and "beforeStaging" go together',
+    }),
 ]);
 
 export const judgeCaseSchema = z

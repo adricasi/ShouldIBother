@@ -62,4 +62,16 @@ describe("T-010/T-030: the committed eval sets", () => {
     expect(ids("listener").join(" ")).toMatch(/injection/);
     expect(ids("safety").join(" ")).toMatch(/injection/);
   });
+
+  it("a judge case with a before photo says what to stage for each photo", () => {
+    const cases = EVAL_JOB_SPECS.judge.prepare(join(EVALS_DIR, "judge", "photo-cases.json"));
+    const withBefore = cases.filter((entry) => entry.photos.length === 2);
+    expect(withBefore.length).toBeGreaterThan(10);
+    for (const entry of withBefore) {
+      const [before, after] = entry.photos;
+      expect(before?.name).toContain("-before-");
+      expect(after?.name).toContain("-after-");
+      expect(before?.staging).not.toBe(after?.staging);
+    }
+  });
 });

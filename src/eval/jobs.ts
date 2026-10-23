@@ -364,7 +364,12 @@ const judgeJob: EvalJobSpec = {
             ? [
                 ...(evidence.before === undefined
                   ? []
-                  : [{ name: evidence.before, staging: evidence.staging }]),
+                  : [
+                      {
+                        name: evidence.before,
+                        staging: evidence.beforeStaging ?? evidence.staging,
+                      },
+                    ]),
                 { name: evidence.after, staging: evidence.staging },
               ]
             : [],

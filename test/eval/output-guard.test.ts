@@ -57,4 +57,30 @@ describe("NFR-002: eval output never lands where it could be committed", () => {
     expect(isInside(join(root, "ab"), join(root, "a"))).toBe(false);
     expect(isInside(root, join(root, "a"))).toBe(false);
   });
+
+  it("without git installed, a folder outside every repository is still fine", () => {
+    const outside = tempDir();
+    const saved = process.env["PATH"];
+    process.env["PATH"] = "";
+    try {
+      expect(() => {
+        assertNotCommittable([join(outside, "report.json")]);
+      }).not.toThrow();
+    } finally {
+      process.env["PATH"] = saved;
+    }
+  });
+
+  it("without git installed, a folder inside a .git tree is refused (fail closed)", () => {
+    const root = repo();
+    const saved = process.env["PATH"];
+    process.env["PATH"] = "";
+    try {
+      expect(() => {
+        assertNotCommittable([join(root, "reports", "report.json")]);
+      }).toThrow(OutputGuardError);
+    } finally {
+      process.env["PATH"] = saved;
+    }
+  });
 });

@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join, basename, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import { MADRID_TIME_ZONE, madridDateOf, madridParts } from "../domain/time.js";
 import { parseRulesConfig, type RulesConfig } from "../domain/rules/index.js";
 import { CONFIG_DIR, readJsonFile } from "../server/config.js";
 import { resolveDataDir } from "../server/data-dir.js";
@@ -30,7 +31,7 @@ import {
 import { CaseFileError, EVAL_JOBS, defaultCasesPath, isEvalJob } from "./cases.js";
 import { EVAL_JOB_SPECS, EvalCaseError } from "./jobs.js";
 import { assertNotCommittable, OutputGuardError } from "./output-guard.js";
-import { writeCandidateFixtures } from "./record-fixtures.js";
+import { assertCandidateFolder, recordedJobs, writeCandidateFixtures } from "./record-fixtures.js";
 import {
   buildReport,
   columnWidths,
@@ -89,8 +90,18 @@ export interface EvalDeps {
   readonly deadlineMs?: number;
 }
 
-function stamp(epochMs: number): string {
-  return new Date(epochMs).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+const two = (value: number): string => String(value).padStart(2, "0");
+
+/** `2026-10-23 14:00:00 Europe/Madrid`: all times in the app are Madrid time. */
+function madridStamp(epochMs: number): string {
+  const t = madridParts(epochMs);
+  return `${madridDateOf(epochMs)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)} ${MADRID_TIME_ZONE}`;
+}
+
+/** `20261023-140000`, for the default report folder. */
+function folderStamp(epochMs: number): string {
+  const t = madridParts(epochMs);
+  return `${madridDateOf(epochMs).replaceAll("-", "")}-${two(t.hour)}${two(t.minute)}${two(t.second)}`;
 }
 
 /** The staged photos, through the app's own photo pipeline; every problem is named before any model call. */
@@ -115,23 +126,36 @@ async function loadPhotos(
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     throw new UsageError(`--photos ${dir} is not a folder`);
   }
-  const missing = needed.filter((photo) => !existsSync(join(dir, photo.name)));
+  const names = [...new Map(needed.map((photo) => [photo.name, photo])).values()];
+  const missing = names.filter((photo) => !existsSync(join(dir, photo.name)));
   if (missing.length > 0) {
     throw new UsageError(
       `${missing.length} staged photo(s) missing in ${dir}:\n` +
         missing.map((photo) => `  ${photo.name}: ${photo.staging}`).join("\n"),
     );
   }
-  for (const photo of needed) {
-    if (photos.has(photo.name)) {
-      continue;
-    }
+  for (const photo of names) {
     const path = join(dir, photo.name);
-    if (statSync(path).size > MAX_UPLOAD_BYTES) {
-      throw new UsageError(`${path} is larger than the 10 MB upload limit`);
+    let bytes: Buffer;
+    try {
+      // A folder or a pipe named like a photo must not be read (a pipe would hang).
+      const info = statSync(path);
+      if (!info.isFile()) {
+        throw new UsageError(`${path} is not a regular file`);
+      }
+      if (info.size > MAX_UPLOAD_BYTES) {
+        throw new UsageError(`${path} is larger than the 10 MB upload limit`);
+      }
+      bytes = readFileSync(path);
+    } catch (error) {
+      throw error instanceof UsageError
+        ? error
+        : new UsageError(
+            `Cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`,
+          );
     }
     try {
-      photos.set(photo.name, await processPhoto(readFileSync(path)));
+      photos.set(photo.name, await processPhoto(bytes));
     } catch (error) {
       if (error instanceof UnsupportedPhotoError) {
         throw new UsageError(`${path} is not a usable photo: ${error.message}`);
@@ -213,9 +237,9 @@ async function runEvalCommand(
   );
 
   // Every output location is checked before the model is asked anything.
-  const date = new Date(now()).toISOString();
+  const date = madridStamp(now());
   const outDir = resolve(
-    parsed.values.out ?? join(resolveDataDir(env), "evals", `${job}-${stamp(now())}`),
+    parsed.values.out ?? join(resolveDataDir(env), "evals", `${job}-${folderStamp(now())}`),
   );
   const reportJson = join(outDir, "report.json");
   const reportMd = join(outDir, "report.md");
@@ -226,6 +250,10 @@ async function runEvalCommand(
     );
   }
   const recordDir = parsed.values["record-fixtures"];
+  if (recordDir !== undefined) {
+    // Also before the model is asked: a refused folder must not cost a GPU run.
+    assertCandidateFolder(resolve(recordDir), recordedJobs(job));
+  }
 
   const modelsConfig = loadModelsConfig(join(configDir, "models.json"));
   const useFake = env["SIB_FAKE_MODEL"] === "1";

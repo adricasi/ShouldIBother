@@ -11,7 +11,8 @@
         "kind": "photo",
         "before": "judge-01-before-moist.jpg",
         "after": "judge-01-after-moist.jpg",
-        "staging": "before: pot with dark moist soil. after: same pot next morning, soil still dark and moist, leaves upright"
+        "beforeStaging": "pot with dark moist soil",
+        "staging": "same pot next morning, soil still dark and moist, leaves upright"
       },
       "weather": [
         {
@@ -35,7 +36,8 @@
         "kind": "photo",
         "before": "judge-02-before-dry.jpg",
         "after": "judge-02-after-dry.jpg",
-        "staging": "before: pot with dark moist soil. after: same pot, soil now pale and cracked, leaves upright"
+        "beforeStaging": "pot with dark moist soil",
+        "staging": "same pot, soil now pale and cracked, leaves upright"
       },
       "weather": [
         {
@@ -73,7 +75,8 @@
         "kind": "photo",
         "before": "judge-04-before-wilted.jpg",
         "after": "judge-04-after-wilted.jpg",
-        "staging": "before: healthy upright plant. after: the same plant with clearly drooping leaves"
+        "beforeStaging": "healthy upright plant",
+        "staging": "the same plant with clearly drooping leaves"
       },
       "weather": [
         {
@@ -116,7 +119,8 @@
         "kind": "photo",
         "before": "judge-06-before-brown-leaves.jpg",
         "after": "judge-06-after-brown-leaves.jpg",
-        "staging": "before: green plant. after: the same plant with crisp brown edges on most leaves"
+        "beforeStaging": "green plant",
+        "staging": "the same plant with crisp brown edges on most leaves"
       },
       "weather": [
         {
@@ -156,7 +160,8 @@
         "kind": "photo",
         "before": "judge-08-before-wrong-thing.jpg",
         "after": "judge-08-after-wrong-thing.jpg",
-        "staging": "before: pot with moist soil. after: a photo of a kitchen shelf, no plants"
+        "beforeStaging": "pot with moist soil",
+        "staging": "a photo of a kitchen shelf, no plants"
       },
       "weather": [
         {
@@ -176,7 +181,8 @@
         "kind": "photo",
         "before": "judge-09-before-rained-on.jpg",
         "after": "judge-09-after-rained-on.jpg",
-        "staging": "before: pot with pale dry soil. after: the pot with dark wet soil and water beads on the leaves after rain"
+        "beforeStaging": "pot with pale dry soil",
+        "staging": "the pot with dark wet soil and water beads on the leaves after rain"
       },
       "weather": [
         {
@@ -201,7 +207,8 @@
         "kind": "photo",
         "before": "judge-10-before-two-pots.jpg",
         "after": "judge-10-after-two-pots.jpg",
-        "staging": "before: two pots. after: two pots, one with moist soil and one with dry soil"
+        "beforeStaging": "two pots side by side on a railing",
+        "staging": "two pots, one with moist soil and one with dry soil"
       },
       "weather": [
         {
@@ -220,7 +227,8 @@
         "kind": "photo",
         "before": "judge-11-before-dry.jpg",
         "after": "judge-11-after-dry.jpg",
-        "staging": "before: damp shirts on the line. after: the same shirts, light and dry in the afternoon"
+        "beforeStaging": "damp shirts on the line",
+        "staging": "the same shirts, light and dry in the afternoon"
       },
       "weather": [
         {
@@ -242,7 +250,8 @@
         "kind": "photo",
         "before": "judge-12-before-damp.jpg",
         "after": "judge-12-after-damp.jpg",
-        "staging": "before: wet towels on the line. after: towels still visibly damp"
+        "beforeStaging": "wet towels on the line",
+        "staging": "towels still visibly damp"
       },
       "weather": [
         {
@@ -261,7 +270,8 @@
         "kind": "photo",
         "before": "judge-13-before-soaked.jpg",
         "after": "judge-13-after-soaked.jpg",
-        "staging": "before: dry shirts on the line. after: the shirts dripping wet after rain"
+        "beforeStaging": "dry shirts on the line",
+        "staging": "the shirts dripping wet after rain"
       },
       "weather": [
         {
@@ -350,7 +360,8 @@
         "kind": "photo",
         "before": "judge-17-before-dry-morning.jpg",
         "after": "judge-17-after-dry-morning.jpg",
-        "staging": "before: sheets on the line at dusk. after: the same sheets next morning, dry"
+        "beforeStaging": "sheets on the line at dusk",
+        "staging": "the same sheets next morning, dry"
       },
       "weather": [
         {
@@ -369,7 +380,8 @@
         "kind": "photo",
         "before": "judge-18-before-dew-damp.jpg",
         "after": "judge-18-after-dew-damp.jpg",
-        "staging": "before: sheets on the line at dusk. after: the sheets next morning with a visible damp sheen"
+        "beforeStaging": "sheets on the line at dusk",
+        "staging": "the sheets next morning with a visible damp sheen"
       },
       "weather": [
         {
@@ -389,7 +401,8 @@
         "kind": "photo",
         "before": "judge-19-before-rained-on.jpg",
         "after": "judge-19-after-rained-on.jpg",
-        "staging": "before: shirts on the line at dusk. after: the shirts next morning, soaked, with puddles below"
+        "beforeStaging": "shirts on the line at dusk",
+        "staging": "the shirts next morning, soaked, with puddles below"
       },
       "weather": [
         {
@@ -414,7 +427,8 @@
         "kind": "photo",
         "before": "judge-20-before-fallen.jpg",
         "after": "judge-20-after-fallen.jpg",
-        "staging": "before: shirts on the line at dusk. after: the line next morning with a shirt fallen on the dirty floor"
+        "beforeStaging": "shirts on the line at dusk",
+        "staging": "the line next morning with a shirt fallen on the dirty floor"
       },
       "weather": [
         {

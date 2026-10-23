@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -6,18 +6,23 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 import { EVALS_DIR, EVAL_JOBS } from "../../src/eval/cases.js";
 import { EVAL_JOB_SPECS } from "../../src/eval/jobs.js";
 import type { EvalReport } from "../../src/eval/report.js";
+import { writeCandidateFixtures } from "../../src/eval/record-fixtures.js";
 import { FIXTURES_DIR, FakeModelClient } from "../../src/server/model/fake.js";
+
+import { PLANTED_METADATA, syntheticPhoto } from "../support/photos.js";
 
 import { EchoModel, depsFor, runEvalCli, stagedPhotos, tempDir } from "./support.js";
 
@@ -49,7 +54,7 @@ describe("T-010: sib eval on a model that answers correctly (exit 0)", () => {
         mode: "ollama",
         model: "echo-gemma",
         modelDigest: "sha256:echo",
-        date: "2026-10-23T12:00:00.000Z",
+        date: "2026-10-23 14:00:00 Europe/Madrid",
         health: { state: "online" },
       });
       expect(report.cases).toHaveLength(20);
@@ -107,7 +112,7 @@ describe("T-010: sib eval on a model that answers correctly (exit 0)", () => {
       report.cases.every((entry) => entry.steps.map((s) => s.job).join() === "inspector,bookmaker"),
     ).toBe(true);
     expect(report.promptVersions).toEqual(["inspector.v1", "bookmaker.v1"]);
-    expect(output).toContain("Photo judgement within 15 s: 20/20");
+    expect(output).toContain("Photo flow valid within 15 s");
     // The bookmaker saw the inspector's observations, and the photo went to the inspector only.
     const bookmakerCalls = model.requests.filter((request) => request.job === "bookmaker");
     expect(bookmakerCalls.length).toBe(40);
@@ -360,8 +365,8 @@ describe("NFR-002: where sib eval writes (the output guard)", () => {
     const { code } = await runEvalCli(["listener"], deps);
     expect(code).toBe(0);
     const evals = join(deps.env?.["SIB_DATA_DIR"] ?? "", "evals");
-    expect(readdirSync(evals)).toEqual(["listener-20261023-120000"]);
-    expect(existsSync(join(evals, "listener-20261023-120000", "report.json"))).toBe(true);
+    expect(readdirSync(evals)).toEqual(["listener-20261023-140000"]);
+    expect(existsSync(join(evals, "listener-20261023-140000", "report.json"))).toBe(true);
   });
 
   it("never overwrites an earlier report", async () => {
@@ -456,25 +461,73 @@ describe("T-010: --record-fixtures writes candidates, never fixtures", () => {
     expect(readFileSync(join(record, "listener", "bill.json"), "utf8")).toBe("keep me\n");
   });
 
-  it("refuses test/fixtures/gemma/ itself: reviewed files are copied there by hand", async () => {
+  it("refuses test/fixtures/gemma/ itself before the model is asked: reviewed files are copied there by hand", async () => {
+    const model = new EchoModel();
     const before = readdirSync(join(FIXTURES_DIR, "listener")).length;
     const { code, output } = await runEvalCli(
       ["listener", "--out", join(tempDir(), "out"), "--record-fixtures", FIXTURES_DIR],
-      depsFor(new EchoModel()),
+      depsFor(model),
     );
     expect(code).toBe(1);
     expect(output).toContain("inside test/fixtures/gemma/");
+    expect(model.requests).toHaveLength(0);
     expect(readdirSync(join(FIXTURES_DIR, "listener")).length).toBe(before);
   });
 
-  it("refuses a record folder inside the repository that git does not ignore", async () => {
+  it("refuses a record folder inside the repository that git does not ignore, before the model is asked", async () => {
+    const model = new EchoModel();
     const record = join(ROOT, "candidate-fixtures-should-not-exist");
-    const { code } = await runEvalCli(
-      ["listener", "--out", join(tempDir(), "out"), "--record-fixtures", record],
-      depsFor(new EchoModel()),
+    const out = join(tempDir(), "out");
+    const { code, output } = await runEvalCli(
+      ["listener", "--out", out, "--record-fixtures", record],
+      depsFor(model),
     );
     expect(code).toBe(1);
+    expect(output).toContain("could be committed");
+    expect(model.requests).toHaveLength(0);
     expect(existsSync(record)).toBe(false);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it("refuses a <folder>/<job> symlink that leads into test/fixtures/gemma/, before the model is asked", async () => {
+    const model = new EchoModel();
+    const record = tempDir();
+    symlinkSync(join(FIXTURES_DIR, "listener"), join(record, "listener"));
+    const before = readdirSync(join(FIXTURES_DIR, "listener")).sort();
+    const { code, output } = await runEvalCli(
+      ["listener", "--out", join(tempDir(), "out"), "--record-fixtures", record],
+      depsFor(model),
+    );
+    expect(code).toBe(1);
+    expect(output).toContain("inside test/fixtures/gemma/");
+    expect(model.requests).toHaveLength(0);
+    expect(readdirSync(join(FIXTURES_DIR, "listener")).sort()).toEqual(before);
+  });
+
+  it("a symlink made after the first check is still caught before anything is written", () => {
+    const record = tempDir();
+    symlinkSync(join(FIXTURES_DIR, "listener"), join(record, "listener"));
+    const before = readdirSync(join(FIXTURES_DIR, "listener")).sort();
+    const run = {
+      record: { id: "would-be-fixture" },
+      calls: [
+        {
+          job: "listener",
+          toolsOffered: false,
+          images: 0,
+          content: "{}",
+          toolCalls: [],
+          model: "m",
+          modelDigest: undefined,
+          error: undefined,
+          ms: 1,
+        },
+      ],
+    } as unknown as Parameters<typeof writeCandidateFixtures>[1][number];
+    expect(() =>
+      writeCandidateFixtures(record, [run], { model: "m", modelDigest: null, date: "d" }),
+    ).toThrow(/inside test\/fixtures\/gemma/);
+    expect(readdirSync(join(FIXTURES_DIR, "listener")).sort()).toEqual(before);
   });
 });
 
@@ -514,6 +567,80 @@ describe("sib eval: bad input is named before the model is asked", () => {
     );
     expect(code).toBe(1);
     expect(output).toContain("is not a usable photo");
+  });
+
+  it("refuses a folder named like a photo, with a message and not a stack trace", async () => {
+    const model = new EchoModel();
+    const photos = await photosFor("inspector");
+    rmSync(join(photos, "inspector-01-plants-dry-soil.jpg"));
+    mkdirSync(join(photos, "inspector-01-plants-dry-soil.jpg"));
+    const { code, output } = await runEvalCli(
+      ["inspector", "--photos", photos, "--out", join(tempDir(), "out")],
+      depsFor(model),
+    );
+    expect(code).toBe(1);
+    expect(output).toContain("is not a regular file");
+    expect(model.requests).toHaveLength(0);
+  });
+
+  it("refuses a pipe named like a photo instead of waiting on it forever", async () => {
+    const photos = await photosFor("inspector");
+    rmSync(join(photos, "inspector-02-plants-moist-soil.jpg"));
+    execFileSync("mkfifo", [join(photos, "inspector-02-plants-moist-soil.jpg")]);
+    const { code, output } = await runEvalCli(
+      ["inspector", "--photos", photos, "--out", join(tempDir(), "out")],
+      depsFor(new EchoModel()),
+    );
+    expect(code).toBe(1);
+    expect(output).toContain("is not a regular file");
+  });
+
+  it("names a photo that two cases share once", async () => {
+    const dir = tempDir();
+    const path = join(dir, "cases.json");
+    const entry = (id: string) => ({
+      id,
+      chore: "plants",
+      text: "water",
+      now: "2026-07-14 18:30",
+      weather: "mild",
+      photo: "shared.jpg",
+      staging: "the one shared pot",
+    });
+    writeFileSync(path, JSON.stringify({ job: "inspector", cases: [entry("one"), entry("two")] }));
+    const { code, output } = await runEvalCli(
+      ["inspector", "--cases", path, "--photos", tempDir()],
+      depsFor(new EchoModel()),
+    );
+    expect(code).toBe(1);
+    expect(output).toContain("1 staged photo(s) missing");
+    expect(output.match(/shared\.jpg/g)).toHaveLength(1);
+  });
+
+  it("NFR-002: a photo with EXIF and GPS reaches the model without any metadata", async () => {
+    const model = new EchoModel();
+    const photos = await photosFor("inspector");
+    const original = await syntheticPhoto({ withMetadata: true, orientation: 6 });
+    expect(original.includes(Buffer.from(PLANTED_METADATA[0] ?? ""))).toBe(true);
+    writeFileSync(join(photos, "inspector-01-plants-dry-soil.jpg"), original);
+    const { code } = await runEvalCli(
+      ["inspector", "--photos", photos, "--out", join(tempDir(), "out")],
+      depsFor(model),
+    );
+    expect(code).toBe(0);
+    const sent = model.requests.find((request) => request.job === "inspector")?.images?.[0];
+    expect(sent).toBeDefined();
+    const bytes = Buffer.from(sent ?? new Uint8Array());
+    for (const marker of PLANTED_METADATA) {
+      expect(bytes.includes(Buffer.from(marker))).toBe(false);
+    }
+    const metadata = await sharp(bytes).metadata();
+    expect(metadata.exif).toBeUndefined();
+    expect(metadata.xmp).toBeUndefined();
+    expect(metadata.icc).toBeUndefined();
+    // The orientation was applied to the pixels (portrait now), not left as a tag.
+    expect(metadata.orientation ?? 1).toBe(1);
+    expect(Math.max(metadata.width ?? 0, metadata.height ?? 0)).toBeLessThanOrEqual(1024);
   });
 
   it("a case file with a mistake names the file and the case", async () => {

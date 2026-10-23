@@ -305,8 +305,8 @@ development run the same commands through npm: `npm run sib -- <command>`.
 
 The sets are in `evals/<job>/cases.json`: synthetic text and synthetic weather, no household data.
 The command checks the target of NFR-004: at least 19 of 20 schema-valid answers per job, the
-bookmaker calling `get_forecast`, and photo judgement (inspector plus the bookmaker that follows it)
-within 15 s in 19 of 20. With `SIB_FAKE_MODEL=1` it runs on the fixtures, which only proves the
+bookmaker calling `get_forecast`, and the photo flow (the inspector, then the bookmaker when the inspector
+saw enough; a question from the inspector ends it) valid and within 15 s in 19 of 20 cases. With `SIB_FAKE_MODEL=1` it runs on the fixtures, which only proves the
 pipeline (the report says so).
 
 ```bash

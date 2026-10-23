@@ -38,8 +38,14 @@ function hasGitMarker(folder: string): boolean {
   }
 }
 
-/** git's answer: its stdout, or `undefined` when it exits non-zero (1: not ignored, 128: no repository). */
-function git(cwd: string, args: readonly string[]): string | undefined {
+/** git is not installed or cannot start. */
+const GIT_UNAVAILABLE = Symbol("git unavailable");
+
+/**
+ * git's answer: its stdout, `undefined` when it exits non-zero (1: not ignored, 128: no
+ * repository), or `GIT_UNAVAILABLE` when it cannot run at all.
+ */
+function git(cwd: string, args: readonly string[]): string | undefined | typeof GIT_UNAVAILABLE {
   // A git hook sets GIT_DIR and friends, which would point git at another repository.
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
   for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]) {
@@ -56,10 +62,7 @@ function git(cwd: string, args: readonly string[]): string | undefined {
     if (typeof (error as { status?: unknown }).status === "number") {
       return undefined;
     }
-    throw new OutputGuardError(
-      "Cannot run git to check whether the output folder is inside a repository. Install git or write outside any repository.",
-      { cause: error },
-    );
+    return GIT_UNAVAILABLE;
   }
 }
 
@@ -72,8 +75,11 @@ export function assertNotCommittable(files: readonly string[]): void {
     const absolute = resolve(file);
     const nearest = existingAncestor(absolute);
     const real = realpathSync(nearest);
-    const toplevel = git(real, ["rev-parse", "--show-toplevel"])?.trim();
+    const top = git(real, ["rev-parse", "--show-toplevel"]);
+    const toplevel = typeof top === "string" ? top.trim() : undefined;
     if (toplevel === undefined || toplevel === "") {
+      // No repository, or git cannot say. Fail closed only inside a `.git` tree: a machine
+      // without git can still write reports elsewhere.
       if (hasGitMarker(real)) {
         throw new OutputGuardError(
           `${file} is inside a git working tree that git cannot read, so it is not written. Write outside the repository.`,
@@ -83,7 +89,13 @@ export function assertNotCommittable(files: readonly string[]): void {
     }
     // git reports real paths: rebuild the file's path under the real ancestor.
     const inside = join(real, relative(nearest, absolute));
-    if (git(toplevel, ["check-ignore", "-q", "--", inside]) === undefined) {
+    const ignored = git(toplevel, ["check-ignore", "-q", "--", inside]);
+    if (ignored === GIT_UNAVAILABLE) {
+      throw new OutputGuardError(
+        `Cannot run git to check whether ${file} is ignored. Install git or write outside any repository.`,
+      );
+    }
+    if (ignored === undefined) {
       throw new OutputGuardError(
         `${file} is inside the git working tree ${toplevel} and git does not ignore it, so it could be committed. ` +
           "Write outside the repository (the default is the data folder) or to a git-ignored folder.",
