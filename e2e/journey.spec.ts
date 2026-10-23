@@ -59,7 +59,7 @@ async function expectTouchTargets(page: Page): Promise<void> {
   const small = await page.evaluate(() => {
     const found: string[] = [];
     for (const element of document.querySelectorAll<HTMLElement>(
-      "button, a[href], label.button, summary, textarea",
+      "button, a[href], label.button, summary, textarea, input:not(.photo-input)",
     )) {
       const box = element.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) {

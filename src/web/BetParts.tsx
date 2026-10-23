@@ -155,6 +155,7 @@ export function DueSlip({
           {onPhoto === undefined ? null : (
             <PhotoPicker
               label="Add an after photo for full points"
+              variant="link"
               busy={busy}
               onPick={(file) => {
                 onPhoto(bet.id, file);

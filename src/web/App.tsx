@@ -146,6 +146,16 @@ export function App() {
     });
   }, [showScore, scoreOn, refreshScore]);
 
+  // The points chip on Today names the rank (flag `ranks`, which needs `score`): the rank comes
+  // with the score, so it is read once and again whenever the points total changes.
+  const ranksOn = scoreOn && today?.flags["ranks"] === true;
+  const pointsTotal = today?.points.total;
+  useEffect(() => {
+    if (ranksOn) {
+      void refreshScore(true);
+    }
+  }, [ranksOn, pointsTotal, refreshScore]);
+
   // Onboarding (flag `onboarding`, REQ-024) is read once the server reports the flag on; the
   // first time the app is opened it asks, and a skip keeps the baseline in the config file.
   const onboardingOn = today?.flags["onboarding"] === true;
@@ -354,6 +364,7 @@ export function App() {
       notice={notice}
       results={results}
       nowMs={todayNow}
+      {...(ranksOn && score?.rank !== undefined ? { rankName: score.rank.name } : {})}
       onQuickCard={(choreType) => {
         void act(async () => {
           await createQuickCard(choreType);

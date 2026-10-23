@@ -161,7 +161,10 @@ describe("AC-026.1: Today shows the weather board with split-flap tiles and hour
     };
     const html = todayHtml(stale);
     expect(html).not.toContain("Now 09:41");
-    expect(html).toMatch(/<p class="eyebrow">Forecast from 3 h ago<\/p>/);
+    expect(html).toMatch(/<p class="eyebrow board-live">Forecast from 3 h ago<\/p>/);
+    // The board itself carries the note, so the page has no second forecast line outside it.
+    expect(html).toContain("Open-Meteo could not be reached for a newer forecast.");
+    expect(html.indexOf("forecast-age")).toBeGreaterThan(html.indexOf("weather-board"));
   });
 
   it("the board comes right after the forecast age and before the chip list", () => {

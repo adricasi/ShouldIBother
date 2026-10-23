@@ -27,6 +27,41 @@ export function formatLongDate(iso: string): string {
   return longDate.format(new Date(iso));
 }
 
+const dateLineParts = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+/** "Thursday · 22 October": the date line over the greeting on Today. */
+export function formatDateLine(iso: string): string {
+  const parts = dateLineParts.formatToParts(new Date(iso));
+  const pick = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("weekday")} · ${pick("day")} ${pick("month")}`;
+}
+
+const madridHour = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "numeric",
+  hourCycle: "h23",
+});
+
+/** "Good morning" until noon, "Good afternoon" until 19:00, else "Good evening" (Madrid time). */
+export function greetingFor(iso: string): string {
+  const hour = Number(madridHour.format(new Date(iso)));
+  if (hour >= 5 && hour < 12) {
+    return "Good morning";
+  }
+  return hour >= 12 && hour < 19 ? "Good afternoon" : "Good evening";
+}
+
+/** "1,240", "−35": a points total on its own (no plus sign), with thousands separators. */
+export function formatTotal(points: number): string {
+  const text = Math.abs(points).toLocaleString("en-GB");
+  return points < 0 ? `−${text}` : text;
+}
+
 /** "+15", "-50" (a real minus sign) for points. */
 export function formatPoints(points: number): string {
   if (points > 0) {

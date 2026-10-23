@@ -9,6 +9,11 @@
   --photo-height: calc(var(--space-6) * 8);
   --motion-pulse: 1200ms ease-in-out;
   --tabbar-height: calc(var(--space-2) * 7);
+  /* Token proposals from the mockups: the big figures of Today and Score, the odds tile's band word. */
+  --text-figure: 28px;
+  --text-micro: 10px;
+  --fab-width: calc(var(--space-6) * 3);
+  --fab-lift: var(--space-5);
 }
 
 /* The tab bar is fixed: a focused control must never end up under it (WCAG 2.4.11). */
@@ -34,6 +39,18 @@ body {
   width: var(--icon-size);
   height: var(--icon-size);
   flex: none;
+}
+
+/* Text for screen readers only: still in the page, still focusable when it has tabindex. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 h1,
@@ -115,6 +132,10 @@ h3 {
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   white-space: nowrap;
+}
+
+.points .icon {
+  color: var(--color-amber);
 }
 
 .meta {
@@ -274,14 +295,47 @@ h3 {
   border: var(--border-strong) solid var(--color-sun);
 }
 
+/* A planner card is flat paper like the slips, without the torn edge. */
+.slip.flat {
+  border: 0;
+  border-radius: 0;
+}
+
+/* ink-3-text is under 4.5:1 on the soft tints (coral, amber): small print there uses ink-2. */
+.slip.alert .eyebrow,
+.slip.alert .meta,
+.notice .meta {
+  color: var(--color-ink-2);
+}
+
 .slip.alert {
   background: var(--color-coral-soft);
   border: var(--border-strong) solid var(--color-coral);
 }
 
+/* No bet: a dashed, muted card (mockup 02): nothing to do here, nothing to bet on. */
 .slip.no-bet {
-  background: transparent;
-  border-style: dashed;
+  background: var(--color-card);
+  border: var(--border-strong) dashed var(--color-ink-3);
+  border-radius: var(--radius-md);
+  color: var(--color-ink-2);
+}
+
+.slip.no-bet .chore-tile {
+  background: var(--color-line);
+  color: var(--color-ink-2);
+}
+
+.slip.no-bet h3 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 17px;
+  text-transform: none;
+  color: var(--color-ink);
+}
+
+.slip.no-bet .slip-head {
+  align-items: flex-start;
 }
 
 /* A bet slip is a receipt: straight corners, a dashed rule with notches, a torn bottom edge. */
@@ -309,6 +363,7 @@ h3 {
 
 .rule {
   position: relative;
+  overflow: visible;
   width: 100%;
   height: 0;
   margin: 0;
@@ -363,11 +418,18 @@ h3 {
   flex: 1;
 }
 
+.slip.ticket .slip-head h3 {
+  font-size: var(--text-figure);
+}
+
 .settles {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .pill {
@@ -385,7 +447,15 @@ h3 {
   color: var(--color-leaf);
 }
 
+.pill.muted {
+  flex: none;
+  background: var(--color-line);
+  color: var(--color-ink-2);
+}
+
 .odds-tile {
+  flex: none;
+  align-self: flex-start;
   background: var(--color-ink);
   color: var(--color-sun);
   border-radius: var(--radius-sm);
@@ -397,12 +467,16 @@ h3 {
 .odds-tile .odds-band {
   color: var(--color-sun-soft);
   display: block;
+  font-size: var(--text-micro);
+  letter-spacing: 0.06em;
 }
 
 .odds-figure {
+  display: block;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: var(--text-title);
+  font-size: var(--text-figure);
+  line-height: 1;
 }
 
 .payouts {
@@ -417,7 +491,7 @@ h3 {
 }
 
 .payouts .win {
-  background: var(--color-sun-soft);
+  background: var(--color-sun);
   padding: var(--space-1) var(--space-2);
 }
 
@@ -555,11 +629,13 @@ h3 {
   padding: 0;
   max-width: 480px;
   display: flex;
+  align-items: flex-end;
   justify-content: space-around;
 }
 
 .tabbar li {
   flex: 1;
+  min-width: 0;
 }
 
 .tabbar a {
@@ -570,14 +646,19 @@ h3 {
   gap: var(--space-1);
   min-height: var(--tabbar-height);
   min-width: var(--tap-min);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-1);
   font-family: var(--font-mono);
   font-weight: 500;
   font-size: var(--text-label);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-sun-soft);
+  color: var(--color-line);
   text-decoration: none;
+}
+
+.tabbar a .icon {
+  width: var(--space-6);
+  height: var(--space-6);
 }
 
 .tabbar a[aria-current="page"] {
@@ -588,6 +669,40 @@ h3 {
 .tabbar a:focus-visible {
   outline-color: var(--color-sun);
   outline-offset: -3px;
+}
+
+/* The raised centre button of the mockup (voice, flag voice): a sun block that rises above the bar. */
+.tabbar .tab-fab {
+  position: relative;
+  flex: 0 0 calc(var(--fab-width) + var(--space-4));
+  height: var(--tabbar-height);
+}
+
+.fab-button {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: var(--fab-width);
+  height: calc(var(--tabbar-height) + var(--fab-lift));
+  padding: 0;
+  background: var(--color-sun);
+  color: var(--color-ink);
+  border: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  cursor: pointer;
+}
+
+.fab-button .icon {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+.tabbar .fab-button:focus-visible {
+  outline-color: var(--color-card);
+  outline-offset: -4px;
 }
 
 .button.compact {
@@ -632,30 +747,6 @@ h3 {
   margin-top: var(--space-4);
 }
 
-.capture {
-  display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-
-.capture textarea {
-  width: 100%;
-  min-height: var(--tap-min);
-  font-family: var(--font-body);
-  font-size: var(--text-body);
-  color: var(--color-ink);
-  background: var(--color-card);
-  border: var(--border-strong) solid var(--color-ink);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  resize: vertical;
-}
-
-.gemma-status.offline {
-  color: var(--color-ink);
-  font-weight: 700;
-}
-
 .privacy {
   display: flex;
   align-items: center;
@@ -686,6 +777,36 @@ h3 {
 .photo-input:focus-visible + label {
   outline: 3px solid var(--color-leaf);
   outline-offset: 2px;
+}
+
+/* Small photo prompts: a pill on a bet slip, a text link under the settle answers. */
+.button.pill {
+  width: auto;
+  justify-self: start;
+  align-self: flex-start;
+  background: var(--color-rain-soft);
+  color: var(--color-ink);
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-4);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.button.link {
+  width: auto;
+  justify-self: start;
+  align-self: flex-start;
+  justify-content: flex-start;
+  background: transparent;
+  color: var(--color-leaf);
+  border: 0;
+  padding-inline: 0;
+  font-size: var(--text-small);
+  text-decoration: underline;
 }
 
 label.button.disabled {
@@ -992,21 +1113,7 @@ label.button.disabled {
   margin: 0;
 }
 
-.week {
-  border-block: var(--border-hair) dashed var(--color-line);
-  padding-block: var(--space-3);
-}
-
-.week .section-title {
-  margin-bottom: var(--space-1);
-}
-
-.week .stat-tiles {
-  flex-direction: row;
-  gap: var(--space-3);
-}
-
-.week .stat-tiles > div {
+.stat-tiles > div {
   background: transparent;
   padding: var(--space-2) 0;
 }
@@ -1138,34 +1245,74 @@ label.button.disabled {
   font-weight: 600;
 }
 
-/* Laundry planner (flag laundryPlanner): the four scored days of a plan card. */
+/* Laundry planner (flag laundryPlanner): the four scored days as tiles, the best day inverted. */
 .plan-days {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 .plan-days li {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1);
+  background: var(--color-paper);
+  border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--text-small);
+  text-align: center;
+}
+
+.plan-days li.best {
+  background: var(--color-ink);
+  color: var(--color-sun);
 }
 
 .plan-days .plan-day {
-  min-width: calc(var(--space-6) * 4);
+  font-size: var(--text-micro);
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-days .plan-odds {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-figure);
+  line-height: 1;
+}
+
+.plan-days .plan-band,
+.plan-days .best-day {
+  font-size: var(--text-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+
+.plan-days li.best .plan-band,
+.plan-days li.best .best-day {
+  color: var(--color-sun-soft);
 }
 
 .plan-days .best-day {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
+  font-weight: 600;
+}
+
+.plan-tag.wash_today {
   color: var(--color-leaf);
+}
+
+.plan-tag.ask_need {
+  color: var(--color-coral);
 }
 
 /* Rank hero and achievements on Score (REQ-025). */

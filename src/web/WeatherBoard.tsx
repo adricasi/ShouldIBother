@@ -61,7 +61,8 @@ export function WeatherBoard({
         <h2 id="weather-board-title" className="eyebrow">
           Weather board
         </h2>
-        <p className="eyebrow">
+        <p className="eyebrow board-live">
+          {forecast?.stale === true ? null : <span className="live-dot" aria-hidden="true" />}
           {forecast?.stale === true ? forecast.age_label : `Now ${formatClock(now)}`}
         </p>
       </div>
@@ -109,6 +110,13 @@ export function WeatherBoard({
         )}
         <span className="board-source">Bars: how well the line would dry</span>
       </p>
+      {forecast == null ? null : (
+        <p className={`board-age forecast-age${forecast.stale ? " stale" : ""}`}>
+          {forecast.stale
+            ? "Open-Meteo could not be reached for a newer forecast."
+            : forecast.age_label}
+        </p>
+      )}
     </section>
   );
 }
