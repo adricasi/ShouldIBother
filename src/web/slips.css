@@ -1,0 +1,126 @@
+/* Slips and the bet slip's photo part (mockups 04 and 05). */
+
+/* The segmented control: three toggle buttons on one card, the shown group inverted. */
+.segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--color-card);
+  border: var(--border-hair) solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+
+.segment {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  background: transparent;
+  color: var(--color-ink);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: var(--color-card);
+  font-weight: 700;
+}
+
+.segment:focus-visible {
+  outline-offset: 0;
+}
+
+.section-title {
+  scroll-margin-top: var(--space-4);
+}
+
+.section-title:focus {
+  outline: none;
+}
+
+/* A bet that is ready to settle: the sun border and a tight head with the odds in mono. */
+.slip.due .slip-head h3 {
+  font-size: var(--text-figure);
+}
+
+.slip.due .eyebrow {
+  font-size: var(--text-label);
+}
+
+.question.prompt {
+  font-size: var(--text-figure);
+}
+
+/* Cash out is a coral word at the foot of a waiting bet, not a second button (mockup 05). */
+.button.secondary.cash-out {
+  width: auto;
+  background: transparent;
+  color: var(--color-coral);
+  border: 0;
+  padding-inline: var(--space-2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The before photo with its chip, as in the place-a-bet sheet (mockup 04). */
+.photo-frame {
+  position: relative;
+  margin: 0;
+}
+
+.photo-frame .photo-thumb {
+  display: block;
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.photo-chip {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-ink);
+  color: var(--color-card);
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: var(--text-small);
+}
+
+/* The odds meter: before in grey, after big and green, the caption quiet underneath. */
+.odds-meter-head {
+  align-items: center;
+}
+
+.odds-meter-figures {
+  font-weight: 900;
+}
+
+.odds-before {
+  font-size: var(--text-body);
+  font-weight: 800;
+}
+
+.odds-after {
+  font-size: var(--text-figure);
+  color: var(--color-leaf);
+}
+
+.odds-change {
+  font-weight: 400;
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
+}
+
+.saw-row dd {
+  font-weight: 600;
+}

@@ -106,7 +106,8 @@ describe("Slips screen (REQ-007)", () => {
     expect(html).not.toContain("appear here");
     expect(html).toContain("Still moist, all fine");
     // Settle time 2026-10-23 06:00Z minus now 08:01Z the day before: 21 h 59 min left.
-    expect(html).toContain("21 h 59 min left");
+    expect(html).toContain('<span class="count-figure">21 h 59 min</span>');
+    expect(html).toContain('<span class="count-unit">left</span>');
     expect(html).toContain("Undo (4 min left)");
     expect(html).toContain("You win");
     expect(html).toContain("+15");
@@ -466,5 +467,34 @@ describe("T-017: the stamp animation on the Slips screen", () => {
     expect(result).not.toContain("stamp-animated");
     expect(html({}, [settledToday])).not.toContain("stamp-animated");
     expect(result.match(/<p class="stamp">PAID OUT<\/p>/g)).toHaveLength(2);
+  });
+});
+
+describe("Slips segmented control (mockup 05, AC-007.1)", () => {
+  it("lists the three groups under a control with the counts, and keeps the groups stacked", () => {
+    const html = renderToStaticMarkup(
+      <SlipsScreen
+        slips={{
+          ...emptySlips,
+          waiting: [{ ...bet, id: 2, time_left_ms: 22 * 3_600_000 }],
+        }}
+        flags={{}}
+        nowMs={Date.parse("2026-10-22T08:01:00.000Z")}
+        busy={false}
+        notice={undefined}
+        onSettle={() => undefined}
+        onUndo={() => undefined}
+      />,
+    );
+    expect(html).toContain('role="group" aria-label="Show a group of slips"');
+    expect(html).toMatch(
+      /aria-pressed="true"[^>]*>Settle now<span class="segment-count"> · 0<\/span>/,
+    );
+    expect(html).toMatch(/>Waiting<span class="segment-count"> · 1<\/span>/);
+    expect(html).toMatch(/>Settled<\/button>/);
+    // Each button jumps to a group's heading, which can take focus; all three groups stay listed.
+    for (const id of ["settle-now-title", "waiting-title", "settled-title"]) {
+      expect(html).toContain(`<h2 id="${id}" class="section-title" tabindex="-1">`);
+    }
   });
 });

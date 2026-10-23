@@ -93,6 +93,25 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await expectScreenIsSound(page, "today");
   expect(await focusRingProblems(page), "today: focus").toEqual([]);
 
+  // A bet on Today shows up on Slips, under the segmented control, with Undo and the countdown.
+  await page.getByRole("button", { name: "Water plants" }).click();
+  const slip = page.getByRole("article", { name: /^Water plants, / });
+  await expect(slip).toBeVisible();
+  await slip.getByRole("button", { name: "Bet: do nothing" }).click();
+  await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();
+  await expectScreenIsSound(page, "today with a bet");
+
+  await page.getByRole("link", { name: "Slips" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Slips" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Show a group of slips" })).toBeVisible();
+  await page.getByRole("button", { name: /^Waiting/ }).click();
+  await expect(page.getByRole("button", { name: /^Waiting/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expectScreenIsSound(page, "slips");
+  expect(await focusRingProblems(page), "slips: focus").toEqual([]);
+
   await page.getByRole("link", { name: "Score" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Score" })).toBeVisible();
   await expectScreenIsSound(page, "score");

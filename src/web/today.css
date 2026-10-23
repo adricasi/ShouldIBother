@@ -28,7 +28,7 @@
 /* A long rank name wraps inside the chip instead of pushing the greeting around. */
 .today-header .points {
   flex: 0 1 auto;
-  max-width: calc(var(--space-6) * 7);
+  max-width: calc(var(--space-6) * 8);
   white-space: normal;
   font-size: var(--text-small);
 }

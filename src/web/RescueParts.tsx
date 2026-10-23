@@ -70,7 +70,7 @@ export function RescuePanel({
       ) : (
         <button
           type="button"
-          className="button secondary compact"
+          className="button secondary compact cash-out"
           aria-label={`Cash out (${points} points): ${bet.title}`}
           disabled={busy}
           onClick={() => {

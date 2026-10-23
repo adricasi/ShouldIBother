@@ -88,10 +88,17 @@ export function WaitingLine({
         <span className="meta">
           {formatOdds(bet.band_name, bet.odds)} · settles {formatSettleTime(bet.settle_at)}
         </span>
-        <span className="meta countdown">{formatTimeLeft(settleAtMs - nowMs)} left</span>
       </div>
-      <UndoButton bet={bet} nowMs={nowMs} busy={busy} onUndo={onUndo} />
-      {onCashOut === undefined ? null : <RescuePanel bet={bet} busy={busy} onCashOut={onCashOut} />}
+      <p className="countdown">
+        <span className="count-figure">{formatTimeLeft(settleAtMs - nowMs)}</span>{" "}
+        <span className="count-unit">left</span>
+      </p>
+      <div className="waiting-foot">
+        <UndoButton bet={bet} nowMs={nowMs} busy={busy} onUndo={onUndo} />
+        {onCashOut === undefined ? null : (
+          <RescuePanel bet={bet} busy={busy} onCashOut={onCashOut} />
+        )}
+      </div>
     </li>
   );
 }
