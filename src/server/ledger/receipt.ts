@@ -41,6 +41,8 @@ const EVIDENCE_LABEL = {
 export interface Receipt {
   readonly bet_id: number;
   readonly title: string;
+  /** The bet's chore type, so the client picks the icon without guessing from the title. */
+  readonly chore_type: string;
   readonly kind: "do_nothing" | "do_it";
   /**
    * `paid_out` prints the receipt with the stamp; `loss` and `do_it` print the plain result, and so
@@ -184,6 +186,7 @@ export function receiptOf(
   return {
     bet_id: bet.id,
     title: chore?.title ?? card.chore_type,
+    chore_type: card.chore_type,
     kind: bet.kind,
     outcome: win ? "paid_out" : bet.kind === "do_it" ? "do_it" : "loss",
     verdict,
@@ -249,6 +252,7 @@ export function cashOutReceiptOf(
   return {
     bet_id: bet.id,
     title: chore?.title ?? card.chore_type,
+    chore_type: card.chore_type,
     kind: bet.kind,
     outcome: "cash_out",
     verdict: "cash_out",

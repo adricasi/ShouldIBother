@@ -611,6 +611,11 @@ describe("REQ-022: cash-out (AC-022.2)", () => {
     const parsed = slipsSchema.parse((await h.get("/api/slips")).json());
     expect(parsed.waiting.find((bet) => bet.id === alerted.id)?.rescue?.alert).not.toBeNull();
     expect(parsed.settled.map((bet) => bet.receipt.outcome)).toEqual(["cash_out"]);
+    // The cash-out line and its receipt name the chore, so the client needs no title guess.
+    expect(parsed.waiting.find((bet) => bet.id === alerted.id)?.chore_type).toBe("plants");
+    expect(parsed.settled.map((bet) => [bet.chore_type, bet.receipt.chore_type])).toEqual([
+      ["plants", "plants"],
+    ]);
   });
 
   it("AC-022.2: the receipt route answers for a cashed-out bet", async () => {
@@ -621,7 +626,7 @@ describe("REQ-022: cash-out (AC-022.2)", () => {
       outcome: string;
       points: number;
     }>();
-    expect(receipt).toMatchObject({ outcome: "cash_out", points: -10 });
+    expect(receipt).toMatchObject({ outcome: "cash_out", points: -10, chore_type: "plants" });
   });
 
   it("AC-022.2: the total adds the cash-out to settled points", async () => {

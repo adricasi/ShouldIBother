@@ -178,6 +178,7 @@ export function betView(
     id: bet.id,
     card_id: bet.card_id,
     title: chore?.title ?? card.chore_type,
+    chore_type: card.chore_type,
     kind: bet.kind,
     band: bet.band,
     band_name: nameOfBand(table, bet.band),

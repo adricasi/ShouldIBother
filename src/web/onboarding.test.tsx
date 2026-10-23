@@ -127,6 +127,7 @@ const dueBet: Bet = {
   id: 8,
   card_id: 1,
   title: "Water plants",
+  chore_type: "plants",
   kind: "do_nothing",
   band: 3,
   band_name: "likely",
