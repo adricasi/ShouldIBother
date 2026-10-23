@@ -340,6 +340,28 @@ describe("AC-021.1: the planner scores the next 4 days and the card shows Wash t
   });
 });
 
+describe("the fake planner at night (fake mode, no scenario set)", () => {
+  it("AC-021.1: at 21:00 Madrid day_0 has no drying hours, and the fake answers with day_0 very unlikely", async () => {
+    const h = await setup({}, GOOD_SATURDAY, "21:00");
+    const planned = await plan(h);
+    const calls = h.model.calls.filter((call) => call.job === "laundry-planner");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.messages.find((m) => m.role === "user")!.content).toContain(
+      '"drying_window":null',
+    );
+    // The check accepts it: the card is a Skip today question, not the offline error.
+    expect(planned.laundry_plan).toMatchObject({ stage: "ask_need", headline: "Skip today" });
+    expect(planned.laundry_plan?.days[0]).toMatchObject({ band: 0, band_name: "very unlikely" });
+    expect(planned.laundry_plan?.note).toBeNull();
+  });
+
+  it("keeps the daytime fixture when day_0 still has drying hours", async () => {
+    const h = await setup({}, GOOD_SATURDAY, "09:00");
+    const planned = await plan(h);
+    expect(planned.laundry_plan?.days[0]).toMatchObject({ band: 1, band_name: "unlikely" });
+  });
+});
+
 describe("AC-021.1: the planner never lets a bad answer reach the card (unsure path, retry budget)", () => {
   it.each([
     ["invalid-json", "Gemma's answer did not pass the checks."],

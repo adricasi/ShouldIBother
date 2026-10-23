@@ -1,0 +1,27 @@
+{
+  "description": "Hand-written synthetic planner answer for a day_0 with no drying hours left (after 18:00 Madrid): today scores very_unlikely, day_2 is the best drying day, so skip today.",
+  "content": {
+    "status": "ok",
+    "state": "skip_today",
+    "best_day": "day_2",
+    "days": [
+      {
+        "day": "day_0",
+        "score": "very_unlikely"
+      },
+      {
+        "day": "day_1",
+        "score": "toss_up"
+      },
+      {
+        "day": "day_2",
+        "score": "likely"
+      },
+      {
+        "day": "day_3",
+        "score": "toss_up"
+      }
+    ],
+    "reason": "Light wind and sun on day 3, and today's drying hours are over: wait and dry it then."
+  }
+}
