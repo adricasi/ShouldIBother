@@ -148,15 +148,36 @@ export function App() {
     });
   }, [showScore, scoreOn, refreshScore]);
 
-  // The points chip on Today names the rank (flag `ranks`, which needs `score`): the rank comes
-  // with the score, so it is read once and again whenever the points total changes.
+  // The points chip on Today names the rank (flag `ranks`, which needs `score`). The rank comes
+  // with the score, so it is read quietly (no notice, and a failure just drops the name) when
+  // Today is open and again whenever the points total changes. The Score screen loads it itself.
   const ranksOn = scoreOn && today?.flags["ranks"] === true;
   const pointsTotal = today?.points.total;
+  const [rankName, setRankName] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (ranksOn) {
-      void refreshScore(true);
+    if (!ranksOn) {
+      setRankName(undefined);
+      return undefined;
     }
-  }, [ranksOn, pointsTotal, refreshScore]);
+    if (route === "score") {
+      return undefined;
+    }
+    let current = true;
+    fetchScore()
+      .then((next) => {
+        if (current) {
+          setRankName(next.rank?.name);
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setRankName(undefined);
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [ranksOn, pointsTotal, route]);
 
   // Onboarding (flag `onboarding`, REQ-024) is read once the server reports the flag on; the
   // first time the app is opened it asks, and a skip keeps the baseline in the config file.
@@ -331,6 +352,15 @@ export function App() {
     route === "today" &&
     emptyApp &&
     (onboarding?.state === "pending" || (onboarding === undefined && notice === undefined));
+  // Leaving the first-run screen (Start lazing or Skip) keeps the route "today", so no route
+  // change announces Today: move the focus to its heading and set the title.
+  const wasFirstRun = useRef(false);
+  useEffect(() => {
+    if (wasFirstRun.current && !firstRun && route === "today") {
+      announceRoute("today", document);
+    }
+    wasFirstRun.current = firstRun;
+  }, [firstRun, route]);
   if (onboardingOn && (route === "onboarding" || firstRun)) {
     return (
       <OnboardingScreen
@@ -399,7 +429,7 @@ export function App() {
       notice={notice}
       results={results}
       nowMs={todayNow}
-      {...(ranksOn && score?.rank !== undefined ? { rankName: score.rank.name } : {})}
+      {...(rankName === undefined ? {} : { rankName })}
       onQuickCard={(choreType) => {
         void act(async () => {
           await createQuickCard(choreType);

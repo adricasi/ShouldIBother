@@ -696,8 +696,21 @@ h3 {
 }
 
 .tabbar a[aria-current="page"] {
+  position: relative;
   color: var(--color-sun);
   font-weight: 600;
+}
+
+/* A shape as well as a colour for the current tab: a sun bar on its top edge. */
+.tabbar a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-3);
+  right: var(--space-3);
+  height: 3px;
+  background: var(--color-sun);
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
 }
 
 .tabbar a:focus-visible {
@@ -712,9 +725,8 @@ h3 {
   height: var(--tabbar-height);
 }
 
-/* The button is the voice mic of VoiceCapture; its words stay as its accessible name. */
+/* The button is the voice mic of VoiceCapture; its words are an sr-only label (voice-mic-label). */
 .tabbar .tab-fab > button {
-  font-size: 0;
   margin: 0;
   position: absolute;
   bottom: 0;
@@ -741,6 +753,24 @@ h3 {
 .tabbar .tab-fab > button:focus-visible {
   outline-color: var(--color-ink);
   outline-offset: -4px;
+}
+
+/* A 320 px phone: five slots do not fit the tab labels at the usual size, so the raised button's
+   slot and the labels shrink. */
+@media (max-width: 359px) {
+  :root {
+    --fab-width: calc(var(--space-6) * 2);
+  }
+
+  .tabbar .tab-fab {
+    flex-basis: calc(var(--fab-width) + var(--space-2));
+  }
+
+  .tabbar a {
+    padding-inline: 0;
+    font-size: var(--text-micro);
+    letter-spacing: 0;
+  }
 }
 
 .button.compact {

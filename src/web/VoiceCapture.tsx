@@ -40,7 +40,7 @@ function MicButton(props: VoiceCaptureProps) {
         }}
       >
         <Mic className="icon" strokeWidth={1.8} aria-hidden="true" focusable="false" />
-        Say your chores
+        <span className="voice-mic-label">Say your chores</span>
       </button>
       {recorder === undefined ? null : (
         <VoiceSheet

@@ -72,7 +72,7 @@ describe("Today header (mockup 02)", () => {
 
   it("keeps an h1 for screen readers and shows the greeting, the points and the rank", () => {
     const html = renderToStaticMarkup(<TodayHeader today={today} rankName="Koala" />);
-    expect(html).toContain('<h1 class="sr-only" tabindex="-1">The Lazy Bookie</h1>');
+    expect(html).toContain('<h1 class="sr-only" tabindex="-1">Today</h1>');
     expect(html).toContain("Good morning");
     expect(html).toContain("1,240");
     expect(html).toContain("Koala");
@@ -110,7 +110,7 @@ describe("Week strip keeps every assumption one tap away (AC-011.5)", () => {
       },
     });
     const details = html.slice(html.indexOf('<details class="week-notes"'));
-    expect(details).toContain("<summary>How we count</summary>");
+    expect(details).toContain("<summary>How we count (assumptions)</summary>");
     expect(details).toContain("Monday 2026-10-19 to Sunday 2026-10-25");
     expect(details).toContain("10 min saved, minus 1 min spent on 2 bets.");
     expect(details).toContain("~5 L per watering (estimate), 1 won");

@@ -87,20 +87,25 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await page.getByRole("checkbox", { name: /Balcony plants/ }).check();
   await page.getByRole("button", { name: "Start lazing" }).click();
 
-  await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeAttached();
+  await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeAttached();
   await expect(page.getByText("This week the sky did")).toBeVisible();
   await expect(page.getByRole("region", { name: "Weather board" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
-  // Voice on and a microphone API (localhost is a secure context): the mic sits in the capture bar
-  // and the raised button in the tab bar (AC-027.3), both named by their words.
-  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(2);
+  // Voice on and a microphone API (localhost is a secure context): one mic per screen (AC-027.3).
+  // On a phone it is the raised button of the tab bar, and the capture bar's is not shown.
+  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(1);
+  await expect(
+    page.locator(".tab-fab").getByRole("button", { name: "Say your chores" }),
+  ).toBeVisible();
   const raised = await page.locator(".tab-fab > button").boundingBox();
   expect(raised?.width).toBeGreaterThanOrEqual(44);
   await expectScreenIsSound(page, "today");
   expect(await focusRingProblems(page), "today: focus").toEqual([]);
 
   // A bet on Today shows up on Slips, under the segmented control, with Undo and the countdown.
-  await page.getByRole("button", { name: "Water plants" }).click();
+  // Typed capture: Enter in the field submits the sentence (a real key press, no button).
+  await page.getByLabel("Or type your chores in one sentence").fill("water the plants");
+  await page.keyboard.press("Enter");
   const slip = page.getByRole("article", { name: /^Water plants, / });
   await expect(slip).toBeVisible();
   await expect(slip.getByText("Gemma's odds")).toBeVisible();
@@ -110,10 +115,10 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
 
   await page.getByRole("link", { name: "Slips" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Slips" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Show a group of slips" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Jump to a group" })).toBeVisible();
   await page.getByRole("button", { name: /^Waiting/ }).click();
   await expect(page.getByRole("button", { name: /^Waiting/ })).toHaveAttribute(
-    "aria-pressed",
+    "aria-current",
     "true",
   );
   await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(1);
@@ -131,15 +136,36 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   // A wide screen: the tab bar is a sidebar and Today has two columns, still sound (mockups D1, D2).
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("link", { name: "Today" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeAttached();
+  await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeAttached();
   const sidebar = await page.getByRole("navigation", { name: "Main" }).boundingBox();
   expect(sidebar?.x).toBe(0);
   expect(sidebar?.height).toBeGreaterThanOrEqual(900);
   const week = await page.locator(".week").boundingBox();
   const slips = await page.locator("#slips-title").boundingBox();
   expect(week?.x ?? 0).toBeGreaterThan(slips?.x ?? 0);
+  // On a wide screen the sidebar has no raised button on Today; the capture bar's mic is the one.
+  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(1);
+  await expect(
+    page.locator(".capture-bar").getByRole("button", { name: "Say your chores" }),
+  ).toBeVisible();
   await expectScreenIsSound(page, "today, wide");
   expect(await focusRingProblems(page), "today, wide: focus").toEqual([]);
+
+  // The narrowest phone: five slots in the tab bar, and not one label is cut off.
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(1);
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".tabbar a")]
+      .filter(
+        (link) =>
+          link.scrollWidth > link.clientWidth ||
+          link.getBoundingClientRect().right > window.innerWidth ||
+          link.getBoundingClientRect().left < 0,
+      )
+      .map((link) => link.textContent?.trim() ?? ""),
+  );
+  expect(clipped, "tab labels cut off at 320 px").toEqual([]);
+  await expectScreenIsSound(page, "today, 320");
 
   expect(problems).toEqual([]);
 });

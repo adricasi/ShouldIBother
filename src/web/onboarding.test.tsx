@@ -93,6 +93,11 @@ describe("AC-024.1: the household screen asks the five questions", () => {
 
   it("offers Skip only until the first answer, and fills the form from the stored answers", () => {
     expect(screen(pending)).toContain("Skip for now");
+    // The button says what it starts on the first open, and what it does afterwards.
+    expect(screen(pending)).toContain(">Start lazing<");
+    expect(screen(pending)).not.toContain("Save my answers");
+    expect(screen(completed)).toContain(">Save my answers<");
+    expect(screen(completed)).not.toContain("Start lazing");
     const html = screen(completed);
     expect(html).not.toContain("Skip for now");
     expect(html).toContain('value="40.42"');
@@ -250,7 +255,7 @@ describe("REQ-024 in the app", () => {
   it("AC-024.1: the first time the app is opened Today asks in a card above the chips", async () => {
     const calls = stubServer(true, pending);
     await render();
-    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
+    expect(container.querySelector("h1")?.textContent).toBe("Today");
     expect(container.textContent).toContain("Tell me about your home");
     expect(container.querySelector('a[href="#/onboarding"]')?.textContent).toBe(
       "Answer the questions",
@@ -263,7 +268,7 @@ describe("REQ-024 in the app", () => {
     await render();
     expect(container.querySelector(".race-board")).not.toBeNull();
     expect(container.textContent).toContain("Let the sky do your chores.");
-    expect(container.textContent).toContain("Step 1 of 1 · 30 seconds");
+    expect(container.textContent).toContain("Takes about 30 seconds");
     expect(container.textContent).toContain("What is outside your door?");
     expect(container.querySelector("button[type=submit]")?.textContent).toBe("Start lazing");
     // The first screen has no tab bar: the way out is Start lazing or Skip for now.
@@ -334,7 +339,7 @@ describe("REQ-024 in the app", () => {
     expect(container.querySelector("h1")?.textContent).toBe("Household");
     click('a[href="#/today"]');
     await settle();
-    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
+    expect(container.querySelector("h1")?.textContent).toBe("Today");
     expect(container.textContent).toContain("Water plants");
   });
 
@@ -366,7 +371,7 @@ describe("REQ-024 in the app", () => {
     await settle();
     expect(calls.map((call) => call.line)).toContain("POST /api/onboarding/skip");
     expect(container.textContent).not.toContain("Tell me about your home");
-    expect(container.querySelector("h1")?.textContent).toBe("The Lazy Bookie");
+    expect(container.querySelector("h1")?.textContent).toBe("Today");
   });
 
   it.each([

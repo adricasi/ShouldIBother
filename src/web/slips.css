@@ -24,7 +24,7 @@
   cursor: pointer;
 }
 
-.segment[aria-pressed="true"] {
+.segment[aria-current="true"] {
   background: var(--color-ink);
   color: var(--color-card);
   font-weight: 700;

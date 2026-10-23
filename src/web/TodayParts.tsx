@@ -35,8 +35,8 @@ export function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
 
 /**
  * The header of Today (mockup 02): the date, a greeting by Madrid time of day, the points chip
- * with the rank, and Gemma's status. The h1 is the app's name for screen readers and for the focus
- * move after a route change; the greeting is the visible headline.
+ * with the rank, and Gemma's status. The h1 names the screen for screen readers and takes the
+ * focus after a route change; the greeting is the visible headline.
  */
 export function TodayHeader({
   today,
@@ -51,7 +51,7 @@ export function TodayHeader({
   return (
     <header className="today-header">
       <h1 className="sr-only" tabIndex={-1}>
-        The Lazy Bookie
+        Today
       </h1>
       <div className="today-hello">
         <p className="eyebrow">{formatDateLine(now)}</p>
@@ -61,15 +61,17 @@ export function TodayHeader({
       {today === undefined ? null : (
         <p className="points">
           <Icon name="trophy" />
-          {formatTotal(today.points.total)}{" "}
-          {rankName === undefined ? (
-            "pts"
-          ) : (
-            <>
-              <span className="sr-only">points, </span>
-              {rankName}
-            </>
-          )}
+          <span className="points-text">
+            {formatTotal(today.points.total)}{" "}
+            {rankName === undefined ? (
+              "pts"
+            ) : (
+              <>
+                <span className="sr-only">points, </span>
+                {rankName}
+              </>
+            )}
+          </span>
         </p>
       )}
     </header>

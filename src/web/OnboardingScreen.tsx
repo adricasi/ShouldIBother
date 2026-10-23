@@ -402,7 +402,7 @@ export function OnboardingScreen({
           <h1 className="sr-only" tabIndex={-1}>
             Household
           </h1>
-          <p className="eyebrow leaf">{pending ? "Step 1 of 1 · 30 seconds" : "Your home"}</p>
+          <p className="eyebrow leaf">{pending ? "Takes about 30 seconds" : "Your home"}</p>
           <p className="headline">{pending ? "Let the sky do your chores." : "Your household"}</p>
           <p>
             {pending

@@ -119,6 +119,11 @@
     color: var(--color-ink);
   }
 
+  /* The sidebar marks the current item with its filled pill, not the phone's top bar. */
+  .tabbar a[aria-current="page"]::before {
+    content: none;
+  }
+
   .tabbar a[aria-current="page"]:focus-visible {
     outline-color: var(--color-ink);
   }
@@ -126,6 +131,24 @@
   .tabbar .tab-fab {
     flex: none;
     height: auto;
+  }
+
+  /* One mic per screen: on Today the capture bar has it, so the sidebar's button is not shown. */
+  .today-screen ~ .tabbar .tab-fab {
+    display: none;
+  }
+
+  .capture-bar .voice-mic {
+    display: grid;
+  }
+
+  .tab-fab .voice-mic-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
   }
 
   .tab-fab > button .icon {
@@ -185,6 +208,8 @@
   }
 
   .chip-row {
+    flex-wrap: wrap;
+    overflow: visible;
     margin-inline: 0;
     padding-inline: 0;
   }

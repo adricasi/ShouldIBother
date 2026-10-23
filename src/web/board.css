@@ -155,3 +155,9 @@
   letter-spacing: 0.04em;
   color: var(--color-line);
 }
+
+/* The empty board is paper, not ink: its age line takes the caption colour. */
+.weather-board.empty-board .board-age {
+  margin-top: 0;
+  color: var(--color-ink-3-text);
+}

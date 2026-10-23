@@ -486,9 +486,9 @@ describe("Slips segmented control (mockup 05, AC-007.1)", () => {
         onUndo={() => undefined}
       />,
     );
-    expect(html).toContain('role="group" aria-label="Show a group of slips"');
+    expect(html).toContain('role="group" aria-label="Jump to a group"');
     expect(html).toMatch(
-      /aria-pressed="true"[^>]*>Settle now<span class="segment-count"> · 0<\/span>/,
+      /aria-current="true"[^>]*>Settle now<span class="segment-count"> · 0<\/span>/,
     );
     expect(html).toMatch(/>Waiting<span class="segment-count"> · 1<\/span>/);
     expect(html).toMatch(/>Settled<\/button>/);

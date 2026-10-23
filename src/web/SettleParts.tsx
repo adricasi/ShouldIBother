@@ -233,7 +233,7 @@ export function WeekStrip({
         </div>
       </dl>
       <details className="week-notes">
-        <summary>How we count</summary>
+        <summary>How we count (assumptions)</summary>
         <p className="meta">
           Monday {from} to Sunday {to}
         </p>

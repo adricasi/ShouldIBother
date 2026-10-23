@@ -26,6 +26,10 @@
 }
 
 /* A long rank name wraps inside the chip instead of pushing the greeting around. */
+.today-header .points-text {
+  min-width: 0;
+}
+
 .today-header .points {
   flex: 0 1 auto;
   max-width: calc(var(--space-6) * 8);
@@ -159,7 +163,7 @@
   align-items: center;
   gap: var(--space-2);
   background: var(--color-card);
-  border: var(--border-hair) solid var(--color-line);
+  border: var(--border-hair) solid var(--color-ink-3);
   border-radius: var(--radius-lg);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
 }
@@ -213,11 +217,12 @@
   height: var(--space-5);
 }
 
-/* The voice mic (VoiceCapture's button) sits in the bar as a 44 px square icon; its words stay as
-   its accessible name, only the text is shrunk away. */
+/* The voice mic (VoiceCapture's button) is one mic per screen: on a phone the raised button of the
+   tab bar is the mic, so the one in the bar is hidden there; on a wide screen the tab bar has no
+   raised button on Today and this one shows (desktop.css). Its words are an sr-only label. */
 .capture-bar .voice-mic {
+  display: none;
   flex: none;
-  display: grid;
   place-items: center;
   width: var(--tap-min);
   height: var(--tap-min);
@@ -226,9 +231,8 @@
   padding: 0;
   background: var(--color-paper);
   color: var(--color-ink);
-  border: 0;
+  border: var(--border-hair) solid var(--color-ink-3);
   border-radius: var(--radius-md);
-  font-size: 0;
 }
 
 .capture-bar .voice-mic .icon {
@@ -236,19 +240,16 @@
   height: var(--space-5);
 }
 
-/* A button other than submit in the capture bar gets the same 44 px square. */
-.capture-bar .capture-tool {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: var(--tap-min);
-  height: var(--tap-min);
+/* The words of an icon-only voice button: read out, not drawn. */
+.voice-mic-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
   padding: 0;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  border: 0;
-  border-radius: var(--radius-md);
-  cursor: pointer;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* The row bleeds to the screen edge like the mockup; the padding keeps the focus ring unclipped. */

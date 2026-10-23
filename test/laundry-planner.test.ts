@@ -364,8 +364,8 @@ describe("the fake planner at night (fake mode, no scenario set)", () => {
 
 describe("AC-021.1: the planner never lets a bad answer reach the card (unsure path, retry budget)", () => {
   it.each([
-    ["invalid-json", "Gemma's answer did not pass the checks."],
-    ["inconsistent", "Gemma's answer did not pass the checks."],
+    ["invalid-json", "Gemma couldn't plan this wash. Nothing was lost. Try again."],
+    ["inconsistent", "Gemma couldn't plan this wash. Nothing was lost. Try again."],
     ["timeout", "Gemma took too long to answer."],
     ["offline", "Gemma is not running."],
   ])("a %s planner leaves the card offline with Retry, and Retry works", async (scenario, note) => {
@@ -1136,7 +1136,7 @@ describe("AC-004.3: a Skip today band two or more bands from the rule needs a re
     const planned = await plan(h, "disagreement-without-reason");
     expect(planned.laundry_plan).toMatchObject({
       stage: "offline",
-      note: "Gemma's answer did not pass the checks.",
+      note: "Gemma couldn't plan this wash. Nothing was lost. Try again.",
       days: [],
     });
     expect(decisions(h, "laundry-planner")).toMatchObject([{ valid: 0, retries: 1 }]);

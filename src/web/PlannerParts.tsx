@@ -139,13 +139,13 @@ export function PlannerSlip({
       <hr className="rule" />
       {plan.stage === "thinking" ? (
         <>
-          <h3>{card.title}</h3>
+          <h3>Planning the wash</h3>
           <p role="status">{plan.note ?? "Gemma is planning your wash."}</p>
         </>
       ) : null}
       {plan.stage === "question" && plan.question !== null ? (
         <>
-          <h3>{card.title}</h3>
+          <h3>Wash plan</h3>
           <YesNo
             cardId={card.id}
             question={plan.question}
@@ -158,8 +158,10 @@ export function PlannerSlip({
       ) : null}
       {plan.stage === "offline" ? (
         <>
-          <h3>{card.title}</h3>
-          <p>{plan.note ?? "Gemma could not plan the wash."}</p>
+          <h3>No wash plan</h3>
+          <p role="status">
+            {plan.note ?? "Gemma couldn't plan this wash. Nothing was lost. Try again."}
+          </p>
           {plan.can_retry ? (
             <button
               type="button"

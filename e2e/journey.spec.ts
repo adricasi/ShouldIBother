@@ -85,7 +85,7 @@ test("capture, bet, settle at phone width", async ({ page }) => {
 
   // Pair this browser, as the phone does with the one-time link.
   await page.goto(server.pairUrl);
-  await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeVisible();
   session = await page.context().storageState();
 
   // Today, empty: states, no chores yet.
@@ -169,7 +169,7 @@ test("the axe check really sees a violation (so a pass means something)", async 
   expect(await axeViolations(page)).toContainEqual(expect.stringContaining("image-alt"));
 });
 
-for (const width of [375, 768, 1280]) {
+for (const width of [320, 375, 768, 1280]) {
   test(`Today and Slips fit at ${width} px`, async ({ browser }) => {
     expect(session).toBeDefined();
     const context = await browser.newContext({
@@ -178,7 +178,7 @@ for (const width of [375, 768, 1280]) {
     });
     const page = await context.newPage();
     await page.goto(`${server.origin}/#/today`);
-    await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeVisible();
     await expectNoSideScroll(page);
     await shot(page, `w${width}-today`);
     await expectNoViolations(page);
