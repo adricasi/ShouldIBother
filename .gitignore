@@ -66,3 +66,6 @@ backtest-runs/
 # Playwright output
 test-results/
 playwright-report/
+
+# --- weather snapshots made with `sib snapshot --out data-snapshots` (the default is outside the repo) ---
+data-snapshots/

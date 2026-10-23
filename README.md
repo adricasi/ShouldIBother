@@ -297,8 +297,8 @@ development run the same commands through npm: `npm run sib -- <command>`.
 | `sib export <dir>` | Write `export.json` (bets, decisions, verdicts, totals, onboarding profile, achievements) and the photos to a new, empty folder |
 | `sib delete-photos [--all-data]` | Asks first; removes every photo and what Gemma read from it. With `--all-data` it also removes the database and its WAL files |
 | `sib backtest [options]` | Replays the weather snapshot with the rule, a fixed routine, E2B and E4B (and the fine-tuned model) and writes a report; resumable, `--help` lists the options |
-| `sib snapshot` | Downloads the Open-Meteo snapshot for the backtest and the fine-tune. **Arrives with PR #30 (T-031); not on `main` yet.** TODO(builder): remove this note when merged |
-| `sib dataset` | Builds the fine-tune JSONL from the snapshot. **Arrives with PR #30 (T-031); not on `main` yet.** TODO(builder): remove this note when merged |
+| `sib snapshot [options]` | Downloads the Open-Meteo snapshot (Previous Runs, Historical Forecast, archive) for the backtest and the fine-tune into the data folder. Details below |
+| `sib dataset [options]` | Builds `train.jsonl`, `holdout.jsonl` and `manifest.json` for the fine-tune from the snapshot, offline. Details below |
 | `sib eval <job> [options]` | Runs the 20-case staged set of one Gemma job (`listener`, `bookmaker`, `inspector`, `judge`, `safety`, `laundry-planner`) through the real job on the configured model and reports valid JSON out of 20, tool use, model calls and latency (p50/p95/max) with the model digest and prompt version. Exit 0 when the target is met (19 of 20), 3 when missed, 2 when Gemma is unreachable. Details below |
 
 ### Evaluating Gemma (`sib eval`)
@@ -333,6 +333,45 @@ npm run sib -- eval bookmaker --out ~/sib-evals/bookmaker-1 --record-fixtures ~/
 the files the app owns in the data folder (`sib.db` and its `-wal`/`-shm` files, and the photos);
 `config/household.json` is never touched. `export` refuses a folder that is not empty or is a
 symlink.
+
+### Building the fine-tune dataset (`sib snapshot`, `sib dataset`)
+The fine-tune dataset (REQ-019) is built in two steps. The first needs the network (Open-Meteo);
+the second runs offline on the saved snapshot.
+```bash
+npm run sib -- snapshot   # Open-Meteo -> ~/.should-i-bother/data-snapshots/gracia-barcelona_<start>_<end>/
+npm run sib -- dataset    # snapshot -> ~/.should-i-bother/datasets/<same name>/{train.jsonl,holdout.jsonl,manifest.json}
+```
+- `snapshot` fetches 1 Apr 2026 to yesterday for Gràcia (`--start`, `--end`, `--out` change that);
+  the end date in the folder name is the archive's last complete day, which is where the hold-out
+  ends. Both commands refuse a folder inside a git working tree unless git ignores it.
+- `dataset` builds with the prompt the app runs (`BOOKMAKER_PROMPT`, today `bookmaker.v1`). When
+  T-010 freezes a later `prompts/bookmaker.vN.md`, run `sib dataset --prompt-version N` (or raise
+  the version in `src/server/gemma/bookmaker.ts`); the manifest records the version and its hash.
+- Habits: every row carries the fixed synthetic profile in `training/habits.synthetic.json`, while
+  the live app sends `habits: {}` until onboarding feeds the bookmaker (the manifest says so under
+  `habits`). T-014 also evaluates the fine-tuned model with habits `{}`. `--habits <file>` replaces
+  the profile, but a file in the data folder or named `household.json` is refused.
+- The build stops, and writes nothing, if a value from `config/household.json` appears in a row or
+  the manifest (AC-019.8): strings as whole words, and decimal numbers as written or rounded to
+  2-4 decimals (1 from 10 up), with `.` or `,`. The onboarding profile in the database is not
+  checked: this command never opens the database. The same inputs give the same bytes.
+- `sib backtest` now shows the same synthetic habits by default. A run started with the old
+  default (no habits) refuses to resume; `--habits <file containing {}>` reproduces the old
+  behaviour, `--restart` starts over.
+- Each line of `train.jsonl` is `{id, split, chore, date, messages, tools, meta}`: `messages` is the
+  conversation the live bookmaker has (system prompt, data message, the `get_forecast` call with
+  `hours_ahead: 24`, which the trained model must emit, and its result) plus the answer as the last `assistant` message; `tools` is the tool definition; `meta`
+  holds the rule band and the target (training only). `holdout.jsonl` has the same rows without the
+  answer and the target, ending at the tool result, and `meta.outcome_delivered` is the label for
+  the evaluation. Training rows never show an hour of 1 Sep or later; rows whose forecast needed a
+  Historical Forecast or archive value, and days with a safety alert, are left out and counted in
+  `manifest.json`. Training uses `messages` and `tools` only; `meta` is for audit and evaluation.
+- Before `ollama stop` and T-012, check `manifest.json`: prompt version, rules hash, snapshot end
+  date, rows per chore and band, skips.
+
+The snapshot queries are written against the Open-Meteo documentation and have not been run
+against the live API (`src/backtest/open-meteo.ts` lists what to verify): if `snapshot` fails, its
+one-line error names the URL's status and reason.
 
 ## Weather data and attribution
 

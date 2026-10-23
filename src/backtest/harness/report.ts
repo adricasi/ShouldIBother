@@ -290,7 +290,7 @@ export function buildReport(input: ReportInput): BacktestReport {
       toolHorizon: TOOL_HORIZON_TEXT,
       habitsNote:
         method.habits.sha256 === null
-          ? "The bookmaker was shown no habits: the repository has no synthetic habit profile yet (T-031 defines it). The fine-tuned model must be evaluated with the profile it was trained on."
+          ? "The bookmaker was shown no habits (the run used a habits file with {}, as the live app does until onboarding feeds them). The default is the fixed synthetic profile in training/habits.synthetic.json, which the fine-tuned model was trained with."
           : `The bookmaker was shown a habit profile of ${method.habits.entries} entries (sha256 ${method.habits.sha256.slice(0, 12)}); the values are not printed here.`,
     },
   };
