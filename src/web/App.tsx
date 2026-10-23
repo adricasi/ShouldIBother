@@ -41,6 +41,8 @@ import { estimateServerNow, startPolling } from "./polling.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
 import { TodayScreen } from "./TodayScreen.js";
+import { VoiceCapture } from "./VoiceCapture.js";
+import { browserEnvironment, micAvailable } from "./voice/support.js";
 
 /** Countdowns are re-rendered this often between the 30 s polls. */
 const CLOCK_TICK_MS = 15_000;
@@ -275,6 +277,20 @@ export function App() {
     });
   };
 
+  // The raised mic of the tab bar (flag `voice`, only where the browser can record, AC-027.3).
+  // The same VoiceCapture as the capture bar's; the cards it makes show on Today.
+  const voiceOn = today?.flags["voice"] === true && micAvailable(browserEnvironment());
+  const voiceFab = voiceOn ? (
+    <VoiceCapture
+      enabled
+      disabled={busy}
+      onCards={() => {
+        window.location.hash = "#/today";
+        void act(() => Promise.resolve(undefined));
+      }}
+    />
+  ) : undefined;
+
   const reload = (): void => {
     void act(() => Promise.resolve(undefined));
   };
@@ -318,6 +334,7 @@ export function App() {
   if (onboardingOn && (route === "onboarding" || firstRun)) {
     return (
       <OnboardingScreen
+        fab={voiceFab}
         firstRun={firstRun}
         onboarding={onboarding}
         flags={today?.flags ?? {}}
@@ -340,6 +357,7 @@ export function App() {
   if (showScore) {
     return (
       <ScoreScreen
+        fab={voiceFab}
         score={score}
         flags={today?.flags ?? {}}
         notice={notice}
@@ -352,6 +370,7 @@ export function App() {
   if (route === "slips") {
     return (
       <SlipsScreen
+        fab={voiceFab}
         slips={slips}
         flags={today?.flags ?? {}}
         nowMs={slipsNow}
@@ -370,6 +389,7 @@ export function App() {
   }
   return (
     <TodayScreen
+      voiceFab={voiceFab}
       today={today}
       // First open: Today asks in a card above the chips; everything below it keeps working.
       {...(onboardingOn && onboarding?.state === "pending"
@@ -394,6 +414,10 @@ export function App() {
           return undefined;
         });
         return made;
+      }}
+      onVoiceCards={() => {
+        // The cards exist already (the sheet made them); reload Today to show them.
+        void act(() => Promise.resolve(undefined));
       }}
       onRetry={(cardId) => {
         void act(async () => {

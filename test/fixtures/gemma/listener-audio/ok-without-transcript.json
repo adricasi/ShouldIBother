@@ -1,0 +1,7 @@
+{
+  "description": "Says ok but gives no transcript (first attempt and retry): invalid.",
+  "content": {
+    "status": "ok",
+    "transcript": ""
+  }
+}

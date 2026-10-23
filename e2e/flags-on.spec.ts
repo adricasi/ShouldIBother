@@ -15,6 +15,7 @@ const ALL_ON = {
   ranks: true,
   heater: true,
   splitFlap: true,
+  voice: true,
 } as const;
 
 const server = new TestServer();
@@ -90,6 +91,11 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await expect(page.getByText("This week the sky did")).toBeVisible();
   await expect(page.getByRole("region", { name: "Weather board" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  // Voice on and a microphone API (localhost is a secure context): the mic sits in the capture bar
+  // and the raised button in the tab bar (AC-027.3), both named by their words.
+  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(2);
+  const raised = await page.locator(".tab-fab > button").boundingBox();
+  expect(raised?.width).toBeGreaterThanOrEqual(44);
   await expectScreenIsSound(page, "today");
   expect(await focusRingProblems(page), "today: focus").toEqual([]);
 
@@ -97,6 +103,7 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await page.getByRole("button", { name: "Water plants" }).click();
   const slip = page.getByRole("article", { name: /^Water plants, / });
   await expect(slip).toBeVisible();
+  await expect(slip.getByText("Gemma's odds")).toBeVisible();
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();
   await expectScreenIsSound(page, "today with a bet");
@@ -109,6 +116,7 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
     "aria-pressed",
     "true",
   );
+  await expect(page.getByRole("button", { name: "Say your chores" })).toHaveCount(1);
   await expectScreenIsSound(page, "slips");
   expect(await focusRingProblems(page), "slips: focus").toEqual([]);
 

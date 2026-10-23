@@ -465,8 +465,8 @@ export function gemmaBusy(): HttpError {
   );
 }
 
-export function assertGemmaCapacity(deps: Pick<LedgerDeps, "gemma">): void {
-  if (deps.gemma.full) {
+export function assertGemmaCapacity(deps: Pick<LedgerDeps, "gemma">, jobs = 1): void {
+  if (deps.gemma.full || !deps.gemma.hasRoom(jobs)) {
     throw gemmaBusy();
   }
 }

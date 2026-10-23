@@ -104,6 +104,8 @@ describe("OllamaClient (request format against a fake server)", () => {
       content: '{"a":1}',
       toolCalls: [],
       model: TAG,
+      // Not known yet at the first call, so the chat looked it up first (AC-019.4).
+      modelDigest: "sha256:synthetic0042",
     });
   });
 
@@ -193,18 +195,62 @@ describe("OllamaClient (request format against a fake server)", () => {
     expect(body.messages[1]?.images).toEqual([Buffer.from([1, 2, 3]).toString("base64")]);
   });
 
-  it("a chat makes no extra request; the digest comes from the health check and is remembered", async () => {
+  it("a chat whose digest is unknown looks it up once with one list call, then remembers it", async () => {
     const { url, seen } = await fakeOllama((req, res) =>
       req.url === "/api/tags"
         ? json(res, 200, TAGS)
         : json(res, 200, { message: { content: "{}" } }),
     );
     const client = ollama(url);
-    expect((await client.chat(request)).modelDigest).toBeUndefined();
-    expect(seen.map((entry) => entry.url)).toEqual(["/api/chat"]);
+    expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
+    expect(seen.map((entry) => entry.url)).toEqual(["/api/tags", "/api/chat"]);
+    expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
+    expect(seen.filter((entry) => entry.url === "/api/tags")).toHaveLength(1);
+  });
+
+  it("a chat makes no extra request once the health check has the digest", async () => {
+    const { url, seen } = await fakeOllama((req, res) =>
+      req.url === "/api/tags"
+        ? json(res, 200, TAGS)
+        : json(res, 200, { message: { content: "{}" } }),
+    );
+    const client = ollama(url);
     await client.health();
     expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
     expect(seen.filter((entry) => entry.url === "/api/tags")).toHaveLength(1);
+  });
+
+  it("an empty digest counts as missing and is looked up again, and a model listed without one is asked once", async () => {
+    let digest = "";
+    const { url, seen } = await fakeOllama((req, res) =>
+      req.url === "/api/tags"
+        ? json(res, 200, { models: [{ name: TAG, digest }] })
+        : json(res, 200, { message: { content: "{}" } }),
+    );
+    const client = ollama(url);
+    expect((await client.chat(request)).modelDigest).toBeUndefined();
+    await client.chat(request);
+    expect(seen.filter((entry) => entry.url === "/api/tags")).toHaveLength(1);
+    // Ollama later reports a digest (a health check refreshes it).
+    digest = "sha256:later";
+    await client.health();
+    expect((await client.chat(request)).modelDigest).toBe("sha256:later");
+  });
+
+  it("a failed lookup does not stop the chat, and is tried again at the next call", async () => {
+    let tagsUp = false;
+    const { url, seen } = await fakeOllama((req, res) =>
+      req.url === "/api/tags"
+        ? tagsUp
+          ? json(res, 200, TAGS)
+          : json(res, 500, { error: "busy" })
+        : json(res, 200, { message: { content: "{}" } }),
+    );
+    const client = ollama(url);
+    expect((await client.chat(request)).modelDigest).toBeUndefined();
+    tagsUp = true;
+    expect((await client.chat(request)).modelDigest).toBe("sha256:synthetic0042");
+    expect(seen.filter((entry) => entry.url === "/api/tags")).toHaveLength(2);
   });
 
   it("the warm-up also takes the digest", async () => {
@@ -258,7 +304,9 @@ describe("OllamaClient (failures become the errors the jobs understand)", () => 
       res.end();
     });
     await expect(ollama(url).chat(request)).rejects.toBeInstanceOf(ModelUnavailableError);
-    expect(seen).toHaveLength(1);
+    // The digest lookup (a list, which also gets the redirect) and the chat: nothing was followed.
+    expect(seen.filter((entry) => entry.url === "/api/chat")).toHaveLength(1);
+    expect(seen.every((entry) => entry.url !== "/api/chat" || entry.method === "POST")).toBe(true);
   });
 
   it("refuses an answer over 1 MB, declared or streamed", async () => {

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { Slips } from "./api.js";
 import { DueSlip, SettledLine, WaitingLine } from "./BetParts.js";
 import { isMadridToday } from "./format.js";
@@ -12,6 +14,8 @@ import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 export interface SlipsScreenProps {
   readonly slips: Slips | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   /** The server's clock estimated now, so countdowns tick without requests. */
   readonly nowMs: number;
   readonly busy: boolean;
@@ -147,7 +151,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
           </>
         )}
       </main>
-      <Nav flags={props.flags} current="slips" />
+      <Nav flags={props.flags} current="slips" fab={props.fab} />
     </PrivacyProvider>
   );
 }

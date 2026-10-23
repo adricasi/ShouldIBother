@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { CalibrationBand, Score } from "./api.js";
 import {
   formatDuration,
@@ -17,6 +19,8 @@ export interface ScoreScreenProps {
   /** Undefined until the first answer. */
   readonly score: Score | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   readonly notice: Notice | undefined;
   /** Reads the score again after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
@@ -230,7 +234,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
 }
 
 /** The Score screen (REQ-020): points, savings, how often the judge was overruled, calibration. */
-export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps) {
+export function ScoreScreen({ score, flags, fab, notice, onReload }: ScoreScreenProps) {
   return (
     <>
       <main className="screen">
@@ -269,7 +273,7 @@ export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps
           </>
         )}
       </main>
-      <Nav flags={flags} current="score" />
+      <Nav flags={flags} current="score" fab={fab} />
     </>
   );
 }

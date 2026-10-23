@@ -111,7 +111,9 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   await expectTouchTargets(page);
   await expectNoSideScroll(page);
 
-  // Bet: do nothing.
+  // Bet: do nothing, once the slip shows Gemma's odds. The rule odds it starts with are replaced
+  // by Gemma's a moment later; a bet placed on the old quote is refused ("The odds changed").
+  await expect(slip.getByText("Gemma's odds")).toBeVisible();
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByText(/Bet placed/)).toBeVisible();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();

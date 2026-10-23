@@ -17,6 +17,10 @@ import {
   type ListedModel,
   type WireSettings,
 } from "./ollama-wire.js";
+import { assertNoProxyForLoopback } from "./proxy-guard.js";
+import { MAX_RESPONSE_BYTES, isTimeout, readLimited } from "./http.js";
+
+export { MAX_RESPONSE_BYTES };
 
 export interface OllamaOptions {
   /** `http://127.0.0.1:11434`; `config/models.json` only allows loopback addresses. */
@@ -33,48 +37,16 @@ export interface OllamaOptions {
   /** The warm-up may have to load the weights from disk. */
   readonly warmUpTimeoutMs?: number;
   readonly fetch?: typeof fetch;
+  /** The environment the proxy check reads; `process.env` unless a test says otherwise. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-/** No answer from a local runtime is bigger than this; a larger body is refused unread. */
-export const MAX_RESPONSE_BYTES = 1_048_576;
 const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
 const DEFAULT_WARM_UP_TIMEOUT_MS = 120_000;
 
 /** `gemma4` and `gemma4:latest` are the same model in Ollama's listings. */
 function normaliseTag(name: string): string {
   return name.includes(":") ? name : `${name}:latest`;
-}
-
-/** Reads a response body as text, giving up when it grows past `maxBytes`. */
-async function readLimited(response: Response, maxBytes: number): Promise<string> {
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (declared > maxBytes) {
-    await response.body?.cancel();
-    throw new ModelUnavailableError("Ollama sent an answer that is too large");
-  }
-  if (response.body === null) {
-    return "";
-  }
-  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new ModelUnavailableError("Ollama sent an answer that is too large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function isTimeout(error: unknown): boolean {
-  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 }
 
 /**
@@ -90,9 +62,16 @@ export class OllamaClient implements ModelClient {
   private readonly healthTimeoutMs: number;
   private readonly warmUpTimeoutMs: number;
   private digest: string | undefined;
+  /** True once the model list was read successfully, so a model without a digest is not asked again. */
+  private digestLookedUp = false;
   private warming = false;
 
   constructor(options: OllamaOptions) {
+    // The global fetch may be routed through an environment proxy; a client given its own fetch
+    // (tests) is not.
+    if (options.fetch === undefined) {
+      assertNoProxyForLoopback("Ollama", options.env);
+    }
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.settings = {
       model: options.model,
@@ -131,7 +110,7 @@ export class OllamaClient implements ModelClient {
     }
     let payload: unknown;
     try {
-      const text = await readLimited(response, MAX_RESPONSE_BYTES);
+      const text = await readLimited(response, MAX_RESPONSE_BYTES, "Ollama");
       payload = text === "" ? undefined : JSON.parse(text);
     } catch (error) {
       if (error instanceof ModelUnavailableError) {
@@ -151,7 +130,29 @@ export class OllamaClient implements ModelClient {
     return payload;
   }
 
+  /**
+   * Learns the digest when it is not known yet (Ollama started after the app, so the start-up
+   * health check found nothing): a bet records `tag@digest` (AC-019.4). One short list call, only
+   * while the digest is missing and the list has not been read; never throws.
+   */
+  private async ensureDigest(): Promise<void> {
+    if ((this.digest !== undefined && this.digest !== "") || this.digestLookedUp) {
+      return;
+    }
+    const listed = await this.listModels();
+    if (listed === undefined) {
+      return;
+    }
+    this.digestLookedUp = true;
+    const wanted = normaliseTag(this.settings.model);
+    const digest = listed.find((model) => normaliseTag(model.name) === wanted)?.digest;
+    if (digest !== undefined && digest !== "") {
+      this.digest = digest;
+    }
+  }
+
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    await this.ensureDigest();
     const payload = await this.request(
       "POST",
       CHAT_PATH,
@@ -162,8 +163,8 @@ export class OllamaClient implements ModelClient {
     if (parsed === undefined) {
       throw new ModelUnavailableError("Ollama sent an answer this app cannot read");
     }
-    // The digest comes from the health check and the warm-up; a chat makes no extra request, so
-    // a good answer is never pushed past its timeout by a lookup.
+    // The digest comes from the health check, the warm-up or, while still unknown, the lookup
+    // above (which has its own short timeout).
     return {
       content: parsed.content,
       toolCalls: parsed.toolCalls,
@@ -191,7 +192,10 @@ export class OllamaClient implements ModelClient {
     if (entry === undefined) {
       return { state: "offline", detail: `model ${this.settings.model} is not pulled` };
     }
-    this.digest = entry.digest ?? this.digest;
+    this.digestLookedUp = true;
+    if (entry.digest !== undefined && entry.digest !== "") {
+      this.digest = entry.digest;
+    }
     return this.warming
       ? { state: "waking", detail: "loading the model" }
       : { state: "online", detail: this.settings.model };

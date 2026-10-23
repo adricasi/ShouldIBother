@@ -712,13 +712,17 @@ h3 {
   height: var(--tabbar-height);
 }
 
-.fab-button {
+/* The button is the voice mic of VoiceCapture; its words stay as its accessible name. */
+.tabbar .tab-fab > button {
+  font-size: 0;
+  margin: 0;
   position: absolute;
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   display: grid;
   place-items: center;
+  align-content: center;
   width: var(--fab-width);
   height: calc(var(--tabbar-height) + var(--fab-lift));
   padding: 0;
@@ -729,13 +733,13 @@ h3 {
   cursor: pointer;
 }
 
-.fab-button .icon {
+.tab-fab > button .icon {
   width: var(--space-6);
   height: var(--space-6);
 }
 
-.tabbar .fab-button:focus-visible {
-  outline-color: var(--color-card);
+.tabbar .tab-fab > button:focus-visible {
+  outline-color: var(--color-ink);
   outline-offset: -4px;
 }
 

@@ -10,12 +10,15 @@ import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
 import { CaptureBar, QuickChips, TodayHeader, type ChipSpec } from "./TodayParts.js";
+import { VoiceCapture } from "./VoiceCapture.js";
 import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
 import { Icon } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
+
+const noCards = (): void => undefined;
 
 export type QuickChip = ChipSpec;
 
@@ -57,12 +60,9 @@ export interface TodayScreenProps {
   readonly onDeletePhoto?: (photoId: string) => void;
   /** The rank for the points total (flag `ranks`), shown in the points chip. */
   readonly rankName?: string;
-  /**
-   * The voice capture button, rendered inside the capture bar (flag `voice`, only while the
-   * microphone is available, AC-027.3). Absent: no mic is shown.
-   */
-  readonly voiceControl?: ReactNode;
-  /** The raised centre button of the tab bar (the voice mic); absent: four plain tabs. */
+  /** Voice capture (flag `voice`): cards were made from a confirmed voice note (REQ-027). */
+  readonly onVoiceCards?: (cards: Card[]) => void;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
   readonly voiceFab?: ReactNode;
   /** Reload Today after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
@@ -337,7 +337,17 @@ export function TodayScreen(props: TodayScreenProps) {
               <h2 id="chips-title" className="sr-only">
                 What is on your list?
               </h2>
-              <CaptureBar busy={busy} onCapture={props.onCapture} micSlot={props.voiceControl} />
+              <CaptureBar
+                busy={busy}
+                onCapture={props.onCapture}
+                micSlot={
+                  <VoiceCapture
+                    enabled={today?.flags["voice"] === true && props.onVoiceCards !== undefined}
+                    disabled={busy}
+                    onCards={props.onVoiceCards ?? noCards}
+                  />
+                }
+              />
               <QuickChips chips={chips} busy={busy} onPick={props.onQuickCard} />
             </section>
 

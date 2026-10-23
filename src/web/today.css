@@ -164,6 +164,14 @@
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
 }
 
+.capture-form {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .capture-bar input {
   flex: 1;
   min-width: 0;
@@ -205,7 +213,30 @@
   height: var(--space-5);
 }
 
-/* A button other than submit in the capture bar (the voice mic) gets the same 44 px square. */
+/* The voice mic (VoiceCapture's button) sits in the bar as a 44 px square icon; its words stay as
+   its accessible name, only the text is shrunk away. */
+.capture-bar .voice-mic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 0;
+  border-radius: var(--radius-md);
+  font-size: 0;
+}
+
+.capture-bar .voice-mic .icon {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+/* A button other than submit in the capture bar gets the same 44 px square. */
 .capture-bar .capture-tool {
   flex: none;
   display: grid;

@@ -346,7 +346,7 @@ describe("T-006: Gemma on Today (REQ-002, REQ-003, REQ-013)", () => {
     const html = screen(emptyToday);
     expect(html).toContain('<input id="capture-text" type="text"');
     expect(html).toContain('maxLength="500"');
-    expect(html).toContain("Type your chores in one sentence");
+    expect(html).toContain("Or type your chores in one sentence");
     expect(html).toMatch(/<button type="submit"[^>]*aria-label="Get odds"/);
   });
 

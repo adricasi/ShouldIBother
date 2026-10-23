@@ -197,9 +197,9 @@ describe("Capture bar (AC-002.1, AC-027.3)", () => {
         }
       />,
     );
-    // The slot sits between the text box and the submit button.
-    expect(withMic.indexOf("<input")).toBeLessThan(withMic.indexOf("capture-tool"));
-    expect(withMic.indexOf("capture-tool")).toBeLessThan(withMic.indexOf('type="submit"'));
+    // The slot follows the typed row, outside its form: the voice sheet is not part of the sentence.
+    expect(withMic.indexOf('type="submit"')).toBeLessThan(withMic.indexOf("capture-tool"));
+    expect(withMic.indexOf("</form>")).toBeLessThan(withMic.indexOf("capture-tool"));
   });
 
   it("scrolls the quick chips in one labelled row", () => {
@@ -214,22 +214,11 @@ describe("Capture bar (AC-002.1, AC-027.3)", () => {
     expect(html).toContain("Water plants");
   });
 
-  it("the screen passes the voice slots on to the capture bar and the tab bar", () => {
-    const html = screen(today, {
-      voiceControl: (
-        <button type="button" className="capture-tool">
-          mic-in-bar
-        </button>
-      ),
-      voiceFab: (
-        <button type="button" className="fab-button">
-          mic-fab
-        </button>
-      ),
-    });
-    expect(html).toContain("mic-in-bar");
-    expect(html).toContain("mic-fab");
-    expect(screen(today)).not.toContain("tab-fab");
+  it("the screen mounts VoiceCapture in the bar only with the voice flag on and a handler", () => {
+    // No microphone in a server render, so VoiceCapture renders nothing: the bar has no mic.
+    const html = screen({ ...today, flags: { voice: true } }, { onVoiceCards: () => undefined });
+    expect(html).not.toContain("voice-mic");
+    expect(html).toContain('class="capture-bar"');
   });
 });
 

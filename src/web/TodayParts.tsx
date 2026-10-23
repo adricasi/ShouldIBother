@@ -17,11 +17,19 @@ const GEMMA_STATUS_TEXT = {
 /** Gemma's status on Today (AC-013.5): one quiet line with a dot, announced when it changes. */
 export function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
   return (
-    <p className={`gemma-status ${gemma.status}`} role="status">
-      <span className="status-dot" aria-hidden="true" />
-      {GEMMA_STATUS_TEXT[gemma.status]}
-      {gemma.detail === "fake model" ? " (fake model)" : ""}
-    </p>
+    <>
+      <p className={`gemma-status ${gemma.status}`} role="status">
+        <span className="status-dot" aria-hidden="true" />
+        {GEMMA_STATUS_TEXT[gemma.status]}
+        {gemma.detail === "fake model" ? " (fake model)" : ""}
+      </p>
+      {gemma.warning === undefined ? null : (
+        <p className="gemma-status offline" role="status">
+          <span className="status-dot" aria-hidden="true" />
+          {gemma.warning}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -69,9 +77,10 @@ export function TodayHeader({
 }
 
 /**
- * The capture bar (mockup 02): one input row for the typed sentence, an optional voice control
- * and the submit button. Enter submits too. `micSlot` is where the voice capture button goes (flag
- * `voice`, only while the microphone is available, AC-027.3); without it no mic is shown.
+ * The capture bar (mockup 02): one row with the typed sentence and its submit button (Enter
+ * submits too), and the voice control after it. `micSlot` is where the voice capture button goes
+ * (flag `voice`, only while the microphone is available, AC-027.3); it stays outside the form, as
+ * the sheet it opens is not part of the typed sentence. Without it no mic is shown.
  */
 export function CaptureBar({
   busy,
@@ -97,32 +106,34 @@ export function CaptureBar({
     });
   };
   return (
-    <form className="capture-bar" onSubmit={submit}>
-      <label htmlFor="capture-text" className="sr-only">
-        Type your chores in one sentence
-      </label>
-      <input
-        id="capture-text"
-        type="text"
-        value={text}
-        maxLength={MAX_CAPTURE_CHARS}
-        placeholder="What's on your list today?"
-        autoComplete="off"
-        enterKeyHint="send"
-        onChange={(event) => {
-          setText(event.target.value);
-        }}
-      />
+    <div className="capture-bar">
+      <form className="capture-form" onSubmit={submit}>
+        <label htmlFor="capture-text" className="sr-only">
+          Or type your chores in one sentence
+        </label>
+        <input
+          id="capture-text"
+          type="text"
+          value={text}
+          maxLength={MAX_CAPTURE_CHARS}
+          placeholder="What's on your list today?"
+          autoComplete="off"
+          enterKeyHint="send"
+          onChange={(event) => {
+            setText(event.target.value);
+          }}
+        />
+        <button
+          type="submit"
+          className="capture-send"
+          aria-label="Get odds"
+          disabled={busy || text.trim() === ""}
+        >
+          <Icon name="arrow" />
+        </button>
+      </form>
       {micSlot}
-      <button
-        type="submit"
-        className="capture-send"
-        aria-label="Get odds"
-        disabled={busy || text.trim() === ""}
-      >
-        <Icon name="arrow" />
-      </button>
-    </form>
+    </div>
   );
 }
 

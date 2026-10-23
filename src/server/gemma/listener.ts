@@ -44,14 +44,18 @@ export const listenerOutputSchema = z
 export type ListenerOutput = z.infer<typeof listenerOutputSchema>;
 export type ListenerChore = ListenerOutput["chores"][number];
 
-/** Asks the listener to split a typed sentence into chores (REQ-002). */
-export function runListener(runner: JobRunner, text: string): Promise<JobResult<ListenerOutput>> {
+/** Asks the listener to split a sentence into chores (REQ-002); a voice transcript too (REQ-027). */
+export function runListener(
+  runner: JobRunner,
+  text: string,
+  source: "typed" | "voice" = "typed",
+): Promise<JobResult<ListenerOutput>> {
   return runner.run({
     job: "listener",
     prompt: LISTENER_PROMPT,
     user: untrustedBlock({ text }),
     schema: listenerOutputSchema,
     // The sentence is household text: only its length is stored with the decision.
-    inputSummary: `typed text, ${text.length} chars`,
+    inputSummary: `${source === "voice" ? "voice transcript" : "typed text"}, ${text.length} chars`,
   });
 }

@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 
 import type { Onboarding, OnboardingAnswers } from "./api.js";
@@ -13,6 +13,8 @@ export interface OnboardingScreenProps {
   /** Undefined until the first answer. */
   readonly onboarding: Onboarding | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   readonly busy: boolean;
   readonly notice: Notice | undefined;
   /** The first screen of an empty app: no tab bar, the way out is Skip for now. */
@@ -386,6 +388,7 @@ export function OnboardingScreen({
   busy,
   notice,
   firstRun = false,
+  fab,
   onSave,
   onSkip,
   onReload,
@@ -432,7 +435,7 @@ export function OnboardingScreen({
           />
         )}
       </main>
-      {firstRun ? null : <Nav flags={flags} current="onboarding" />}
+      {firstRun ? null : <Nav flags={flags} current="onboarding" fab={fab} />}
     </>
   );
 }

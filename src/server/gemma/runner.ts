@@ -82,6 +82,8 @@ export interface JobRequest<T> {
   /** The user message: untrusted input inside delimiters (design.md, Gemma jobs). */
   readonly user: string;
   readonly images?: readonly Uint8Array[];
+  /** WAV audio for a job that listens (voice capture); it goes to the job's model only. */
+  readonly audio?: readonly Uint8Array[];
   /** The job's output schema; the JSON schema sent to the runtime is derived from it. */
   readonly schema: z.ZodType<T>;
   /** Rules the schema cannot express (AC-004.3). Returns what to tell the model, else undefined. */
@@ -90,6 +92,8 @@ export interface JobRequest<T> {
   readonly cardId?: number;
   readonly betId?: number;
   readonly photoId?: string;
+  /** The answer is household text (a transcript): the decision keeps no copy of it. */
+  readonly redactOutput?: boolean;
   /** Free of household text and photo data: it is stored with the decision (NFR-007). */
   readonly inputSummary: string;
   /** Queue time to measure the deadline from; a photo's inspector and bookmaker share one. */
@@ -126,7 +130,14 @@ export type JobResult<T> =
     });
 
 export interface RunnerOptions {
+  /** The model every job uses unless `jobModels` names another for it. */
   readonly model: ModelClient;
+  /**
+   * A different runtime or model for some jobs, by job name: the llama.cpp client for the voice
+   * job (REQ-027), the fine-tuned bookmaker (REQ-019). The queue, retry budget and deadline are
+   * the runner's, whichever client answers.
+   */
+  readonly jobModels?: Readonly<Partial<Record<string, ModelClient>>>;
   readonly db: Db;
   readonly now: () => number;
   readonly callTimeoutMs?: number;
@@ -207,6 +218,7 @@ class Stop extends Error {
  */
 export class JobRunner {
   private readonly model: ModelClient;
+  private readonly jobModels: Readonly<Partial<Record<string, ModelClient>>>;
   private readonly db: Db;
   private readonly now: () => number;
   private readonly callTimeoutMs: number;
@@ -221,6 +233,7 @@ export class JobRunner {
 
   constructor(options: RunnerOptions) {
     this.model = options.model;
+    this.jobModels = options.jobModels ?? {};
     this.db = options.db;
     this.now = options.now;
     this.callTimeoutMs = options.callTimeoutMs ?? MODEL_CALL_TIMEOUT_MS;
@@ -245,6 +258,11 @@ export class JobRunner {
     while (this.pending > 0) {
       await this.tail;
     }
+  }
+
+  /** True when `jobs` more jobs fit in the queue now (a flow that runs several in a row). */
+  hasRoom(jobs: number): boolean {
+    return this.pending + jobs <= this.maxQueued;
   }
 
   /** True when a new job would be refused (the queue holds `maxQueued` jobs already). */
@@ -280,6 +298,7 @@ export class JobRunner {
     this.runs += 1;
     const run = this.runs;
     const deadlineAt = enqueuedAt + this.deadlineMs;
+    const model = this.jobModels[request.job] ?? this.model;
     const state = {
       calls: 0,
       toolCalls: 0,
@@ -308,11 +327,12 @@ export class JobRunner {
       state.calls += 1;
       try {
         const response = await raceTimeout(
-          this.model.chat({
+          model.chat({
             job: request.job,
             run,
             messages,
             ...(request.images === undefined ? {} : { images: request.images }),
+            ...(request.audio === undefined ? {} : { audio: request.audio }),
             ...(withTools && request.tool !== undefined
               ? { tools: [request.tool.definition] }
               : {}),
@@ -480,7 +500,7 @@ export class JobRunner {
       promptVersion: request.prompt.version,
       toolMode: state.toolMode,
       inputSummary: request.inputSummary,
-      output: outcome.raw,
+      output: request.redactOutput === true ? undefined : outcome.raw,
       valid: outcome.ok,
       retries,
       latencyMs,
