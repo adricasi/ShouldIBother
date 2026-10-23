@@ -1,0 +1,313 @@
+{
+  "_comment": "Staged synthetic cases for `sib eval`. Nothing here is household data. Weather is synthetic (src/eval/weather.ts); expect lists are informational and never change the exit code.",
+  "job": "bookmaker",
+  "cases": [
+    {
+      "id": "plants-hot-dry",
+      "chore": "plants",
+      "text": "Water the tomatoes",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["very_unlikely", "unlikely"]
+    },
+    {
+      "id": "plants-mild-dry",
+      "chore": "plants",
+      "text": "Water the balcony plants",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["unlikely", "very_unlikely", "toss_up"]
+    },
+    {
+      "id": "plants-rain-overnight",
+      "note": "3 mm in six hours",
+      "chore": "plants",
+      "text": "water the herbs",
+      "now": "2026-07-14 18:30",
+      "weather": "rainy",
+      "expect": ["likely", "toss_up", "very_likely"]
+    },
+    {
+      "id": "plants-heavy-rain",
+      "note": "about 11 mm overnight",
+      "chore": "plants",
+      "text": "Water everything on the terrace",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "hours": 4,
+          "temperatureC": 19
+        },
+        {
+          "temperatureC": 17,
+          "rain": {
+            "startsAfterHours": 0,
+            "hours": 8,
+            "mmPerHour": 1.4
+          },
+          "dryProbabilityPct": 30
+        }
+      ],
+      "expect": ["very_likely", "likely"]
+    },
+    {
+      "id": "plants-showers-likely",
+      "note": "high rain probability but no rain amount: the numbers disagree",
+      "chore": "plants",
+      "text": "Should I water the geraniums?",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "temperatureC": 21,
+          "dryProbabilityPct": 70
+        }
+      ],
+      "expect": ["toss_up", "unlikely", "likely"]
+    },
+    {
+      "id": "plants-heatwave-34",
+      "note": "heatwave just under the 35 degrees backstop",
+      "chore": "plants",
+      "text": "Water the plants",
+      "now": "2026-07-20 18:30",
+      "weather": [
+        {
+          "temperatureC": 34,
+          "dryProbabilityPct": 0,
+          "sunshineSeconds": 3400
+        }
+      ],
+      "expect": ["very_unlikely", "unlikely"]
+    },
+    {
+      "id": "plants-autumn-cool",
+      "note": "cool, dry autumn evening",
+      "chore": "plants",
+      "text": "water the herbs",
+      "now": "2026-10-20 18:30",
+      "weather": [
+        {
+          "temperatureC": 14,
+          "dryProbabilityPct": 10
+        }
+      ],
+      "expect": ["unlikely", "toss_up", "very_unlikely"]
+    },
+    {
+      "id": "plants-sad",
+      "note": "ambiguous wording: the person already suspects the answer",
+      "chore": "plants",
+      "text": "the balcony plants look a bit sad, water them?",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ]
+    },
+    {
+      "id": "plants-covered-balcony",
+      "note": "the person says the balcony is covered, so the forecast rain does not reach the pots",
+      "chore": "plants",
+      "text": "water the ferns",
+      "now": "2026-07-14 18:30",
+      "weather": "rainy",
+      "answers": [
+        {
+          "question": "Is the balcony covered from the rain?",
+          "yes": true
+        }
+      ],
+      "expect": ["unlikely", "toss_up", "very_unlikely"]
+    },
+    {
+      "id": "plants-storm",
+      "note": "storm: the live app shows Do it now before the bookmaker; here only the answer format is tested",
+      "chore": "plants",
+      "text": "water the plants",
+      "now": "2026-07-14 18:30",
+      "weather": [
+        {
+          "temperatureC": 20,
+          "dryProbabilityPct": 60,
+          "gustKmh": 80,
+          "weatherCode": 95,
+          "rain": {
+            "startsAfterHours": 2,
+            "hours": 6,
+            "mmPerHour": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "line-breezy-sun",
+      "chore": "laundry_line",
+      "text": "Hang the washing on the line",
+      "now": "2026-07-14 09:00",
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["very_likely", "likely"]
+    },
+    {
+      "id": "line-rain-midday",
+      "note": "rain in the drying hours",
+      "chore": "laundry_line",
+      "text": "dry the towels outside",
+      "now": "2026-07-14 09:00",
+      "weather": [
+        {
+          "temperatureC": 23,
+          "dryProbabilityPct": 30,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 3,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["very_unlikely", "unlikely"]
+    },
+    {
+      "id": "line-humid-still",
+      "note": "no rain but nothing to dry with",
+      "chore": "laundry_line",
+      "text": "line-dry the sheets",
+      "now": "2026-07-14 09:00",
+      "weather": [
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        }
+      ],
+      "expect": ["unlikely", "very_unlikely", "toss_up"]
+    },
+    {
+      "id": "tonight-dew",
+      "note": "dew risk all night",
+      "chore": "laundry_tonight",
+      "text": "leave the shirts out overnight",
+      "now": "2026-07-14 19:30",
+      "weather": [
+        {
+          "temperatureC": 20,
+          "dryProbabilityPct": 5,
+          "dewSpreadC": 1.5,
+          "windKmh": 4,
+          "relativeHumidityPct": 90
+        }
+      ],
+      "expect": ["unlikely", "very_unlikely", "toss_up"]
+    },
+    {
+      "id": "tonight-rain",
+      "chore": "laundry_tonight",
+      "text": "leave the laundry out tonight",
+      "now": "2026-07-14 19:30",
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 5,
+            "hours": 4,
+            "mmPerHour": 0.6
+          }
+        }
+      ],
+      "expect": ["very_unlikely", "unlikely"]
+    },
+    {
+      "id": "tonight-dry-breeze",
+      "chore": "laundry_tonight",
+      "text": "can the sheets stay out tonight?",
+      "now": "2026-07-14 19:30",
+      "weather": [
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 0,
+          "windKmh": 22,
+          "relativeHumidityPct": 40,
+          "dewSpreadC": 9
+        }
+      ],
+      "expect": ["toss_up", "likely", "unlikely", "very_likely"]
+    },
+    {
+      "id": "ac-warm-night",
+      "chore": "ac",
+      "text": "Skip the AC tonight?",
+      "now": "2026-07-14 21:30",
+      "weather": [
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["toss_up", "unlikely", "likely"]
+    },
+    {
+      "id": "ac-cool-night",
+      "chore": "ac",
+      "text": "skip the AC",
+      "now": "2026-07-14 21:30",
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 0,
+          "windKmh": 12
+        }
+      ],
+      "expect": ["very_likely", "likely"]
+    },
+    {
+      "id": "heater-cold-day",
+      "chore": "heater",
+      "text": "Skip the heater tomorrow?",
+      "now": "2026-12-10 20:00",
+      "weather": [
+        {
+          "temperatureC": 8,
+          "dryProbabilityPct": 10,
+          "sunshineSeconds": 900
+        }
+      ],
+      "expect": ["very_unlikely", "unlikely"]
+    },
+    {
+      "id": "heater-sunny-day",
+      "chore": "heater",
+      "text": "can I skip the heater today",
+      "now": "2026-03-10 09:00",
+      "weather": [
+        {
+          "temperatureC": 21,
+          "dryProbabilityPct": 0,
+          "sunshineSeconds": 3400
+        }
+      ],
+      "expect": ["very_likely", "likely"]
+    }
+  ]
+}

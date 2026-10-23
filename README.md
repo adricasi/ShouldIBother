@@ -299,7 +299,35 @@ development run the same commands through npm: `npm run sib -- <command>`.
 | `sib backtest [options]` | Replays the weather snapshot with the rule, a fixed routine, E2B and E4B (and the fine-tuned model) and writes a report; resumable, `--help` lists the options |
 | `sib snapshot` | Downloads the Open-Meteo snapshot for the backtest and the fine-tune. **Arrives with PR #30 (T-031); not on `main` yet.** TODO(builder): remove this note when merged |
 | `sib dataset` | Builds the fine-tune JSONL from the snapshot. **Arrives with PR #30 (T-031); not on `main` yet.** TODO(builder): remove this note when merged |
-| `sib eval <job>` | 20-case live evaluation of a Gemma job against Ollama (valid-JSON rate, latency, model digest). **Not in `src/cli.ts` yet (T-010, T-030).** TODO(builder): confirm it is merged or remove the row |
+| `sib eval <job> [options]` | Runs the 20-case staged set of one Gemma job (`listener`, `bookmaker`, `inspector`, `judge`, `safety`, `laundry-planner`) through the real job on the configured model and reports valid JSON out of 20, tool use, model calls and latency (p50/p95/max) with the model digest and prompt version. Exit 0 when the target is met (19 of 20), 3 when missed, 2 when Gemma is unreachable. Details below |
+
+### Evaluating Gemma (`sib eval`)
+
+The sets are in `evals/<job>/cases.json`: synthetic text and synthetic weather, no household data.
+The command checks the target of NFR-004: at least 19 of 20 schema-valid answers per job, the
+bookmaker calling `get_forecast`, and the photo flow (the inspector, then the bookmaker when the inspector
+saw enough; a question from the inspector ends it) valid and within 15 s in 19 of 20 cases. With `SIB_FAKE_MODEL=1` it runs on the fixtures, which only proves the
+pipeline (the report says so).
+
+```bash
+npm run sib -- eval listener                 # also bookmaker, safety, laundry-planner and judge (taps)
+npm run sib -- eval inspector --photos ~/eval-photos
+npm run sib -- eval judge --cases evals/judge/photo-cases.json --photos ~/eval-photos
+npm run sib -- eval bookmaker --out ~/sib-evals/bookmaker-1 --record-fixtures ~/sib-evals/fixtures
+```
+
+- It prints a table (valid, answer, tool use, model calls, retries, job time per case) and a summary,
+  then writes `report.json` and `report.md` to `--out` (default `<data folder>/evals/<job>-<date>/`).
+  A folder inside the repository is refused unless git ignores it, and an earlier report is never
+  overwritten. Exit codes: 0 target met, 1 bad input, 2 Gemma unreachable, 3 target missed.
+- The photo sets name the files to stage in the `--photos` folder; each case says what to photograph,
+  and photos are never committed: `inspector-01-plants-dry-soil.jpg` to `inspector-20-sign-in-photo.jpg`,
+  and `judge-NN-before-<what>.jpg` / `judge-NN-after-<what>.jpg` (see `evals/judge/photo-cases.json`).
+  They go through the app's own photo pipeline first (at most 1024 px, no metadata).
+- `--record-fixtures <dir>` also writes the model's raw answers as `<dir>/<job>/<case>.json`, in the
+  format of `test/fixtures/gemma/` but under the fake's own model name. They are candidates: read each
+  one, then copy the good ones into `test/fixtures/gemma/` yourself. The command never overwrites a
+  file and never writes into that folder.
 
 `export` and `delete-photos` refuse to run while the app is running (stop it first). They touch only
 the files the app owns in the data folder (`sib.db` and its `-wal`/`-shm` files, and the photos);
