@@ -31,6 +31,7 @@ import {
   type Slips,
   type Today,
 } from "./api.js";
+import { DemoBanner } from "./DemoBanner.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
 import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
@@ -87,7 +88,7 @@ function useServerNow(serverNowIso: string | undefined): number {
   return estimateServerNow(base, Math.max(localNow, base.localMs));
 }
 
-export function App() {
+function Screens() {
   const route = useRoute();
   const [today, setToday] = useState<Today | undefined>(undefined);
   const [slips, setSlips] = useState<Slips | undefined>(undefined);
@@ -421,5 +422,14 @@ export function App() {
       onUndo={onUndo}
       onReload={reload}
     />
+  );
+}
+
+export function App() {
+  return (
+    <>
+      <DemoBanner />
+      <Screens />
+    </>
   );
 }

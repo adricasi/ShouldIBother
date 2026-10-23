@@ -1,0 +1,35 @@
+/* `sib demo` (AC-029.4): a fixed notice on every screen and a watermark on the Score figures. */
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding: var(--space-2) var(--space-5);
+  background: var(--color-sun);
+  color: var(--color-ink);
+  font-size: var(--text-small);
+  text-align: center;
+  border-bottom: var(--border-hair) solid var(--color-ink);
+}
+
+.sample-marked {
+  position: relative;
+  isolation: isolate;
+}
+
+.sample-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: -1;
+  pointer-events: none;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-hero);
+  letter-spacing: 0.12em;
+  color: var(--color-ink);
+  opacity: 0.12;
+  transform: rotate(-10deg);
+  user-select: none;
+}

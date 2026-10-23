@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { DEMO_EXPORT_REFUSAL, isDemoDataDir } from "./demo.js";
 import type { Db } from "./db.js";
 import { DATABASE_FILE } from "./data-dir.js";
 import { EXPORT_PHOTOS_DIR, buildExport } from "./ledger/export.js";
@@ -180,6 +181,9 @@ export function exportCommand(
 ): void {
   const { db, dataDir } = runtime;
   try {
+    if (isDemoDataDir(dataDir)) {
+      throw new Error(DEMO_EXPORT_REFUSAL);
+    }
     lockDatabase(db);
     const target = resolve(directory);
     prepareExportFolder(target);

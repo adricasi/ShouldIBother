@@ -271,6 +271,8 @@ export type WeatherBoard = z.infer<typeof weatherBoardSchema>;
 
 export const todaySchema = z.object({
   now: z.string(),
+  /** True when the server runs `sib demo`: sample data, shown with a banner (AC-029.4). */
+  demo: z.boolean().optional(),
   flags: flagsSchema,
   points: z.object({ total: z.number() }),
   /** This week's savings, Monday to Sunday in Madrid time (AC-011.6). */
@@ -344,6 +346,8 @@ const achievementSchema = z.object({
 /** The Score screen: points, savings, judge overrule rate and band calibration (REQ-020). */
 export const scoreSchema = z.object({
   now: z.string(),
+  /** True in `sib demo`: the figures are sample data and are watermarked (AC-029.4). */
+  demo: z.boolean().optional(),
   points: z.object({ total: z.number() }),
   /** Rank and achievements (REQ-025) come only while the server's `ranks` flag is on. */
   rank: rankSchema.optional(),

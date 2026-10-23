@@ -9,10 +9,11 @@ import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./comm
 import { HouseholdStore } from "./household-store.js";
 import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
+import { asDemoModel } from "./demo.js";
 import { createFakeServices } from "./fakes.js";
 import { loadModelsConfig } from "./model/config.js";
 import { selectModel } from "./model/select.js";
-import { loadFlags } from "./flags.js";
+import { loadFlags, type Flags } from "./flags.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
 import { loadRules } from "./rules.js";
@@ -33,7 +34,19 @@ const print = (text: string): void => {
 /** The built SPA (`npm run build`), relative to the repository for both `src/` and `dist/`. */
 export const WEB_ROOT = fileURLToPath(new URL("../../dist/web/", import.meta.url));
 
+/**
+ * `sib demo` (AC-029.4): the server runs on a fixed clock with the flags of the `presentation`
+ * preset applied in memory (nothing is written to `config/flags.json`), the fake model under the
+ * demo model name and fake weather, whatever the environment says.
+ */
+export interface DemoStart {
+  readonly now: () => number;
+  readonly flags: Flags;
+}
+
 export interface StartOptions {
+  /** Set by `sib demo` only. */
+  readonly demo?: DemoStart;
   /** Where the summary, pairing banner and pairing lines go; stderr by default. */
   readonly output?: (text: string) => void;
   /**
@@ -67,8 +80,9 @@ export async function startServer(
   let modelNotice: string;
   const webBuilt = existsSync(`${WEB_ROOT}index.html`);
   try {
-    const flags = loadFlags(`${configDir}flags.json`);
-    const now = Date.now;
+    const demo = options.demo;
+    const flags = demo?.flags ?? loadFlags(`${configDir}flags.json`);
+    const now = demo?.now ?? Date.now;
     const fakes = createFakeServices(now);
     const household = loadHousehold(configDir);
     // Onboarding answers (flag `onboarding`) replace the baseline, location included.
@@ -77,14 +91,14 @@ export async function startServer(
       : undefined;
     const modelsConfig = loadModelsConfig(`${configDir}models.json`);
     const selection = await selectModel(modelsConfig, {
-      useFake: env["SIB_FAKE_MODEL"] === "1",
-      fake: () => fakes.model,
+      useFake: demo !== undefined || env["SIB_FAKE_MODEL"] === "1",
+      fake: () => (demo === undefined ? fakes.model : asDemoModel(fakes.model)),
       voice: flags.voice,
       env,
       finetunedBookmaker: flags.finetunedBookmaker,
     });
     modelNotice = selection.notice;
-    const useFakeWeather = env["SIB_FAKE_WEATHER"] === "1";
+    const useFakeWeather = demo !== undefined || env["SIB_FAKE_WEATHER"] === "1";
     const weather: WeatherClient = useFakeWeather
       ? fakes.weather
       : new OpenMeteoWeatherClient({
@@ -106,6 +120,7 @@ export async function startServer(
       ...(householdStore === undefined ? {} : { householdStore }),
       savings: loadSavings(),
       flags,
+      ...(demo === undefined ? {} : { demo: true }),
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
       runner: {
         toolUse: modelsConfig.gemma.toolUse,
@@ -126,6 +141,10 @@ export async function startServer(
           `Gemma warm-up: ${health.state}${health.detail === undefined ? "" : ` (${health.detail})`}`,
         );
       });
+    }
+    if (demo !== undefined) {
+      // The weather board and "forecast age" read the newest forecast without a call of their own.
+      await fakes.weather.getForecast({ fromMs: now(), hours: 48, pastHours: 24 });
     }
     app = await buildApp({
       flags,
@@ -150,7 +169,7 @@ export async function startServer(
   core.scheduler.start();
   output(modelNotice);
   output(
-    env["SIB_FAKE_WEATHER"] === "1"
+    options.demo !== undefined || env["SIB_FAKE_WEATHER"] === "1"
       ? "The weather is fake (SIB_FAKE_WEATHER=1)."
       : "The weather is Open-Meteo.",
   );

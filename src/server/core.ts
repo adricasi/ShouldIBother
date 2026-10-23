@@ -56,6 +56,8 @@ export interface CoreDeps {
   readonly rules: RulesConfig;
   /** The flags, exposed to the SPA so it can hide entry points of features that are off. */
   readonly flags: Flags;
+  /** True in `sib demo`: the SPA shows its "Sample data" banner (AC-029.4). */
+  readonly demo?: boolean;
   /** The household baseline behind "Not needed this season" (AC-016.5). */
   readonly household: Household;
   /**
@@ -165,6 +167,7 @@ export function createCore(deps: CoreDeps): Core {
       return householdStore?.current() ?? deps.household;
     },
     flags: deps.flags,
+    ...(deps.demo === true ? { demo: true } : {}),
     savings: deps.savings,
     photos: deps.photos,
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
@@ -233,6 +236,7 @@ export function createCore(deps: CoreDeps): Core {
       const gemmaStatus = await status.get();
       return {
         now: new Date(deps.now()).toISOString(),
+        demo: deps.demo === true,
         flags: Object.fromEntries(FLAG_NAMES.map((name) => [name, deps.flags[name]])),
         gemma: {
           status: gemmaStatus.state,

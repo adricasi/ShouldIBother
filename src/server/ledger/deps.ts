@@ -45,6 +45,11 @@ export interface LedgerDeps {
   /** The household baseline: whether the AC and heater are used this season (AC-016.5). */
   readonly household: Household;
   readonly flags: Flags;
+  /**
+   * True in `sib demo` (AC-029.4): the data is synthetic and Score counts the demo model's rows,
+   * labelled as sample data. Absent everywhere else.
+   */
+  readonly demo?: boolean;
   /** What one won bet saves per chore; the figure is written on the bet when it is placed (REQ-011). */
   readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
