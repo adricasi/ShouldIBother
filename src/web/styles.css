@@ -11,6 +11,7 @@
   --tabbar-height: calc(var(--space-2) * 7);
   /* Token proposals from the mockups: the big figures of Today and Score, the odds tile's band word. */
   --text-figure: 28px;
+  --text-display: 42px;
   --text-micro: 10px;
   --fab-width: calc(var(--space-6) * 3);
   --fab-lift: var(--space-5);

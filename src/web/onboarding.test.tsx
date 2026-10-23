@@ -170,7 +170,7 @@ describe("REQ-024 in the app", () => {
     readonly body: unknown;
   }
 
-  function stubServer(onboardingOn: boolean, state: Onboarding): Call[] {
+  function stubServer(onboardingOn: boolean, state: Onboarding, emptyApp = false): Call[] {
     const calls: Call[] = [];
     const today = {
       now: "2026-10-22T08:01:00.000Z",
@@ -182,9 +182,14 @@ describe("REQ-024 in the app", () => {
       attribution: "Weather data by Open-Meteo.com",
       cards: [],
       open_bets: [],
-      due_bets: [dueBet],
+      due_bets: emptyApp ? [] : [dueBet],
     };
-    const slips = { now: today.now, settle_now: [dueBet], waiting: [], settled: [] };
+    const slips = {
+      now: today.now,
+      settle_now: emptyApp ? [] : [dueBet],
+      waiting: [],
+      settled: [],
+    };
     vi.stubGlobal("fetch", (path: string, init?: { method?: string; body?: string }) => {
       calls.push({
         line: `${init?.method ?? "GET"} ${path}`,
@@ -253,6 +258,63 @@ describe("REQ-024 in the app", () => {
     expect(calls.map((call) => call.line)).toContain("GET /api/onboarding");
   });
 
+  it("AC-024.1: an empty app opens on the household questions, laid out like mockup 01", async () => {
+    const calls = stubServer(true, pending, true);
+    await render();
+    expect(container.querySelector(".race-board")).not.toBeNull();
+    expect(container.textContent).toContain("Let the sky do your chores.");
+    expect(container.textContent).toContain("Step 1 of 1 · 30 seconds");
+    expect(container.textContent).toContain("What is outside your door?");
+    expect(container.querySelector("button[type=submit]")?.textContent).toBe("Start lazing");
+    // The first screen has no tab bar: the way out is Start lazing or Skip for now.
+    expect(container.querySelector("nav")).toBeNull();
+    expect(container.textContent).not.toContain("Tell me about your home");
+    expect(calls.map((call) => call.line)).toContain("GET /api/onboarding");
+  });
+
+  it("AC-024.2: Skip for now on the first screen posts the skip and opens Today", async () => {
+    const calls = stubServer(true, pending, true);
+    await render();
+    click("button", "Skip for now");
+    await settle();
+    expect(calls.map((call) => call.line)).toContain("POST /api/onboarding/skip");
+    expect(container.querySelector("nav")).not.toBeNull();
+    expect(container.querySelector(".race-board")).toBeNull();
+  });
+
+  it("an empty app whose household was answered opens on Today", async () => {
+    stubServer(true, completed, true);
+    await render();
+    expect(container.querySelector(".race-board")).toBeNull();
+    expect(container.querySelector("nav")).not.toBeNull();
+  });
+
+  it("the place row shows the coordinates, and Change opens the two fields", async () => {
+    stubServer(true, pending, true);
+    await render();
+    const fields =
+      container.querySelector<HTMLElement>("#onboarding-latitude")?.parentElement?.parentElement;
+    expect(fields?.hidden).toBe(true);
+    expect(container.querySelector(".place-text")?.textContent).toBe("41.4, 2.16");
+    click("button.place-change");
+    expect(fields?.hidden).toBe(false);
+    expect(container.querySelector("button.place-change")?.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+  });
+
+  it("a ticked outdoor tile is a real checkbox inside a labelled tile", async () => {
+    stubServer(true, pending, true);
+    await render();
+    const tile = container.querySelector<HTMLElement>("label.choice.tile");
+    expect(tile?.textContent).toContain("Balcony plants");
+    expect(tile?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    click('label.choice.tile input[type="checkbox"]');
+    expect(container.querySelector<HTMLInputElement>("label.choice.tile input")?.checked).toBe(
+      true,
+    );
+  });
+
   it("a due bet shows on Today and can be settled while onboarding is pending", async () => {
     const calls = stubServer(true, pending);
     await render();
@@ -284,7 +346,7 @@ describe("REQ-024 in the app", () => {
     // The first checkbox is "Plants on a balcony or terrace".
     click('input[type="checkbox"]');
     click('input[value="vented"]');
-    click("button", "Save my answers");
+    click("button", "Start lazing");
     await settle();
     const save = calls.find((call) => call.line === "PUT /api/onboarding");
     expect(save?.body).toEqual({
@@ -320,7 +382,7 @@ describe("REQ-024 in the app", () => {
       await render();
       type("#onboarding-latitude", latitude);
       type("#onboarding-longitude", longitude);
-      click("button", "Save my answers");
+      click("button", "Start lazing");
       const field = container.querySelector<HTMLInputElement>(bad)!;
       expect(container.querySelector("#location-error")?.textContent).toContain("Latitude");
       expect(container.querySelector('[role="alert"]')?.id).toBe("location-error");
@@ -337,7 +399,7 @@ describe("REQ-024 in the app", () => {
     await render();
     type("#onboarding-latitude", "40,42");
     type("#onboarding-longitude", "-3.70");
-    click("button", "Save my answers");
+    click("button", "Start lazing");
     await settle();
     const save = calls.find((call) => call.line === "PUT /api/onboarding");
     expect((save?.body as { location: unknown }).location).toEqual({

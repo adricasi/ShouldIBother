@@ -7,6 +7,7 @@ export type IconName =
   | "rain"
   | "drop"
   | "lock"
+  | "pin"
   | "shirt"
   | "sparkle"
   | "plant"

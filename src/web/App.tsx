@@ -301,9 +301,24 @@ export function App() {
       "Skipped. Savings use the baseline in the config file.",
     );
   };
-  if (onboardingOn && route === "onboarding") {
+  // An empty app that has not been answered yet opens on the household questions (mockup 01,
+  // AC-024.1). An app with cards or bets keeps Today and asks in a card above the chips instead,
+  // so nothing in use is hidden behind the questions. While the answer is unknown the screen shows
+  // its loading state; a failed read falls back to Today.
+  const emptyApp =
+    today !== undefined &&
+    today.cards.length === 0 &&
+    today.open_bets.length === 0 &&
+    today.due_bets.length === 0;
+  const firstRun =
+    onboardingOn &&
+    route === "today" &&
+    emptyApp &&
+    (onboarding?.state === "pending" || (onboarding === undefined && notice === undefined));
+  if (onboardingOn && (route === "onboarding" || firstRun)) {
     return (
       <OnboardingScreen
+        firstRun={firstRun}
         onboarding={onboarding}
         flags={today?.flags ?? {}}
         busy={busy}
