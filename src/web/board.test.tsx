@@ -161,12 +161,33 @@ describe("AC-026.1: Today shows the weather board with split-flap tiles and hour
     };
     const html = todayHtml(stale);
     expect(html).not.toContain("Now 09:41");
-    expect(html).toMatch(/<p class="eyebrow">Forecast from 3 h ago<\/p>/);
+    expect(html).toMatch(/<p class="eyebrow board-live">Forecast from 3 h ago<\/p>/);
+    // The board itself carries the note, so the page has no second forecast line outside it.
+    expect(html).toContain("Open-Meteo could not be reached for a newer forecast.");
+    expect(html.indexOf("forecast-age")).toBeGreaterThan(html.indexOf("weather-board"));
   });
 
-  it("the board comes right after the forecast age and before the chip list", () => {
+  it("the board comes after the week strip and before the chip list", () => {
     const html = todayHtml(withBoard({ splitFlap: true }, board));
+    expect(html.indexOf("week-title")).toBeLessThan(html.indexOf("weather-board"));
     expect(html.indexOf("weather-board")).toBeLessThan(html.indexOf("chips-title"));
+  });
+
+  it("AC-014.3: the board says how old the forecast is, also while it has nothing to draw yet", () => {
+    const forecast = {
+      fetched_at: "2026-10-22T07:00:00.000Z",
+      age_label: "Forecast from 41 min ago",
+      stale: false,
+    };
+    const empty = renderToStaticMarkup(
+      <WeatherBoard board={null} now={today.now} forecast={forecast} />,
+    );
+    expect(empty).toContain("No forecast yet");
+    expect(empty).toContain("Forecast from 41 min ago");
+    const stale = renderToStaticMarkup(
+      <WeatherBoard board={null} now={today.now} forecast={{ ...forecast, stale: true }} />,
+    );
+    expect(stale).toContain("Open-Meteo could not be reached for a newer forecast.");
   });
 
   it("the API schema accepts the server's board, null, and no field", () => {

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { CalibrationBand, Score } from "./api.js";
 import {
   formatDuration,
@@ -11,12 +13,15 @@ import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { Achievements, RankHero } from "./RankParts.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { Icon } from "./ui/Icon.js";
 import { ErrorState, LoadingState } from "./ui/States.js";
 
 export interface ScoreScreenProps {
   /** Undefined until the first answer. */
   readonly score: Score | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   readonly notice: Notice | undefined;
   /** Reads the score again after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
@@ -113,18 +118,22 @@ function SavingsTiles({
       </h2>
       <dl className="stat-tiles score-tiles">
         <div>
+          <Icon name="check" />
           <dt>Chores skipped</dt>
           <dd>{savings.wins}</dd>
         </div>
         <div>
+          <Icon name="drop" />
           <dt>Water</dt>
           <dd>{formatLitres(savings.water_l)}</dd>
         </div>
         <div>
+          <Icon name="bolt" />
           <dt>Electricity</dt>
           <dd>{formatKwh(savings.electricity_kwh)}</dd>
         </div>
         <div>
+          <Icon name="clock" />
           <dt>Net time back</dt>
           <dd>{formatNetDuration(savings.net_time_s)}</dd>
         </div>
@@ -175,6 +184,23 @@ function JudgeLine({ judge }: { readonly judge: Score["judge"] }) {
   );
 }
 
+/**
+ * The sentence over the chart (mockup 08): the band Gemma used most that has enough bets to say
+ * anything, with how often doing nothing worked there and the N behind it. Undefined when no band
+ * has five bets yet, so a shaky share never becomes a headline (AC-020.3).
+ */
+export function calibrationHeadline(bands: readonly CalibrationBand[]): string | undefined {
+  const best = bands
+    .filter((band) => !band.too_few && band.actual_pct !== null)
+    .reduce<CalibrationBand | undefined>(
+      (most, band) => (most === undefined || band.n > most.n ? band : most),
+      undefined,
+    );
+  return best === undefined
+    ? undefined
+    : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
+}
+
 function Calibration({
   calibration,
   sample,
@@ -183,6 +209,7 @@ function Calibration({
   readonly sample: boolean;
 }) {
   const { lucky_wins: lucky } = calibration;
+  const headline = calibrationHeadline(calibration.gemma);
   return (
     <section aria-labelledby="honest-title">
       <h2 id="honest-title" className="section-title">
@@ -193,6 +220,7 @@ function Calibration({
       ) : (
         <>
           {sample ? <p className="meta sample-label">Sample data · fake model</p> : null}
+          {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
             worked. Every win counts, lucky wins included. A band needs 5 bets before it says
@@ -230,7 +258,7 @@ function Calibration({
 }
 
 /** The Score screen (REQ-020): points, savings, how often the judge was overruled, calibration. */
-export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps) {
+export function ScoreScreen({ score, flags, fab, notice, onReload }: ScoreScreenProps) {
   return (
     <>
       <main className="screen">
@@ -269,7 +297,7 @@ export function ScoreScreen({ score, flags, notice, onReload }: ScoreScreenProps
           </>
         )}
       </main>
-      <Nav flags={flags} current="score" />
+      <Nav flags={flags} current="score" fab={fab} />
     </>
   );
 }

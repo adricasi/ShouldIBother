@@ -1,6 +1,9 @@
+import type { ReactNode } from "react";
+
 import type { Slips } from "./api.js";
 import { DueSlip, SettledLine, WaitingLine } from "./BetParts.js";
 import { isMadridToday } from "./format.js";
+import { GroupJump } from "./SlipsParts.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
@@ -11,6 +14,8 @@ import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 export interface SlipsScreenProps {
   readonly slips: Slips | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   /** The server's clock estimated now, so countdowns tick without requests. */
   readonly nowMs: number;
   readonly busy: boolean;
@@ -68,8 +73,16 @@ export function SlipsScreen(props: SlipsScreenProps) {
           )
         ) : (
           <>
+            <GroupJump
+              groups={[
+                { id: "settle-now-title", label: "Settle now", count: slips.settle_now.length },
+                { id: "waiting-title", label: "Waiting", count: slips.waiting.length },
+                { id: "settled-title", label: "Settled" },
+              ]}
+            />
+
             <section aria-labelledby="settle-now-title">
-              <h2 id="settle-now-title" className="section-title">
+              <h2 id="settle-now-title" className="section-title" tabIndex={-1}>
                 Settle now
               </h2>
               {slips.settle_now.length === 0 ? (
@@ -91,7 +104,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
             </section>
 
             <section aria-labelledby="waiting-title">
-              <h2 id="waiting-title" className="section-title">
+              <h2 id="waiting-title" className="section-title" tabIndex={-1}>
                 Waiting
               </h2>
               {slips.waiting.length === 0 ? (
@@ -113,13 +126,13 @@ export function SlipsScreen(props: SlipsScreenProps) {
             </section>
 
             <section aria-labelledby="settled-title">
-              <h2 id="settled-title" className="section-title">
+              <h2 id="settled-title" className="section-title" tabIndex={-1}>
                 Settled
               </h2>
               {slips.settled.length === 0 ? (
                 <EmptyState icon="trophy">{SLIPS_EMPTY_TEXT.settled}</EmptyState>
               ) : (
-                <ul className="waiting">
+                <ul className="waiting settled-list">
                   {slips.settled.map((bet) => (
                     <SettledLine
                       key={bet.id}
@@ -138,7 +151,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
           </>
         )}
       </main>
-      <Nav flags={props.flags} current="slips" />
+      <Nav flags={props.flags} current="slips" fab={props.fab} />
     </PrivacyProvider>
   );
 }

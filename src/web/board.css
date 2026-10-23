@@ -133,3 +133,31 @@
   font-size: var(--text-label);
   color: var(--color-line);
 }
+
+.board-live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The "live" dot of the mockup; the words beside it say the same, so it is decoration. */
+.live-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-coral);
+}
+
+.board-age {
+  margin: calc(var(--space-2) * -1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.04em;
+  color: var(--color-line);
+}
+
+/* The empty board is paper, not ink: its age line takes the caption colour. */
+.weather-board.empty-board .board-age {
+  margin-top: 0;
+  color: var(--color-ink-3-text);
+}

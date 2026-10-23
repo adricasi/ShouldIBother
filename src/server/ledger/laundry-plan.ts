@@ -141,6 +141,16 @@ function writePlan(deps: Pick<LedgerDeps, "db">, cardId: number, plan: StoredPla
 
 type CardFailure = keyof typeof FAILURE_NOTES;
 
+/** Said when the planner has no usable plan: what happened to the person's data, and the way on. */
+const PLANNER_COULD_NOT_PLAN = "Gemma couldn't plan this wash. Nothing was lost. Try again.";
+
+/** The planner's words for a failure by code: the answer was unusable, not the model away. */
+const PLANNER_FAILURE_NOTES: Readonly<Record<string, string>> = {
+  ...FAILURE_NOTES,
+  invalid: PLANNER_COULD_NOT_PLAN,
+  tool_missed: PLANNER_COULD_NOT_PLAN,
+};
+
 /**
  * The planner run `attempt` has no answer: Retry is offered (there are no rule odds to fall back
  * on). Only the card's current run can do this: a run that was overtaken (a restart, then Retry)
@@ -675,7 +685,7 @@ export function plannerView(card: CardRow, table: BandTable, nowMs: number) {
           : null,
     note:
       stage === "offline"
-        ? (FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? "Gemma is not running.")
+        ? (PLANNER_FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? "Gemma is not running.")
         : stage === "thinking" && plan.state !== null
           ? "Checking that it is safe to wait."
           : null,
@@ -718,7 +728,7 @@ export function withPlan<T extends CardView>(
   const words: Record<PlannerView["stage"], string> = {
     thinking: plan.note ?? "Gemma is planning your wash.",
     question: "Gemma has a question about your wash.",
-    offline: "Gemma could not plan the wash.",
+    offline: PLANNER_COULD_NOT_PLAN,
     ask_need: plan.stale ? "This plan is out of date. Plan the wash again." : (plan.question ?? ""),
     wash_today: `${plan.headline ?? ""}. ${plan.reason ?? ""}`,
     skip_today: `${plan.headline ?? ""}. ${plan.reason ?? ""}`,

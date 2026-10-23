@@ -4,6 +4,7 @@ import type { Card } from "./api.js";
 import { Icon } from "./ui/Icon.js";
 import { OddsMeter } from "./ui/OddsMeter.js";
 import { PrivacyNote } from "./ui/PrivacyNote.js";
+import "./slips.css";
 
 export interface PhotoActions {
   readonly onPhoto: (cardId: number, file: File) => void;
@@ -17,6 +18,7 @@ export function PhotoPicker({
   onPick,
   showPrivacy = true,
   describedBy,
+  variant = "button",
 }: {
   label: string;
   busy: boolean;
@@ -25,6 +27,8 @@ export function PhotoPicker({
   showPrivacy?: boolean;
   /** Id of the text that explains what the photo is for; read out with the picker. */
   describedBy?: string;
+  /** How the label looks: a bordered button, a small pill (before photo) or a text link (after photo). */
+  variant?: "button" | "pill" | "link";
 }) {
   const inputId = useId();
   const change = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -46,7 +50,10 @@ export function PhotoPicker({
         onChange={change}
         {...(describedBy === undefined ? {} : { "aria-describedby": describedBy })}
       />
-      <label htmlFor={inputId} className={`button secondary compact${busy ? " disabled" : ""}`}>
+      <label
+        htmlFor={inputId}
+        className={`button ${variant === "button" ? "secondary compact" : variant}${busy ? " disabled" : ""}`}
+      >
         <Icon name="camera" />
         {label}
       </label>
@@ -78,6 +85,7 @@ export function PhotoBlock({
       <div className="photo-block">
         <PhotoPicker
           label="Add a photo for sharper odds"
+          variant="pill"
           busy={busy}
           onPick={(file) => {
             actions.onPhoto(card.id, file);
@@ -88,13 +96,18 @@ export function PhotoBlock({
   }
   return (
     <div className="photo-block">
-      <img
-        className="photo-thumb"
-        src={photo.url}
-        alt={`Your photo for ${card.title}`}
-        width={96}
-        height={96}
-      />
+      <figure className="photo-frame">
+        <img
+          className="photo-thumb"
+          src={photo.url}
+          alt={`Your photo for ${card.title}`}
+          width={96}
+          height={96}
+        />
+        <figcaption className="photo-chip">
+          <Icon name="camera" /> Your photo
+        </figcaption>
+      </figure>
       {photo.state === "inspecting" ? (
         <p className="meta" role="status">
           {photo.note}

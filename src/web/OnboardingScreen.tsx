@@ -1,10 +1,11 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 
 import type { Onboarding, OnboardingAnswers } from "./api.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import "./onboarding.css";
-import { Icon } from "./ui/Icon.js";
+import { Icon, type IconName } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { ErrorState, LoadingState } from "./ui/States.js";
 
@@ -12,8 +13,12 @@ export interface OnboardingScreenProps {
   /** Undefined until the first answer. */
   readonly onboarding: Onboarding | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly fab?: ReactNode;
   readonly busy: boolean;
   readonly notice: Notice | undefined;
+  /** The first screen of an empty app: no tab bar, the way out is Skip for now. */
+  readonly firstRun?: boolean;
   readonly onSave: (answers: OnboardingAnswers) => void;
   /** Skip for now: the baseline in the config file stays in force (AC-024.2). */
   readonly onSkip: () => void;
@@ -21,9 +26,24 @@ export interface OnboardingScreenProps {
 }
 
 const OUTDOOR_CHOICES = [
-  { id: "balcony_plants", label: "Plants on a balcony or terrace" },
-  { id: "clothes_line", label: "A clothes line or drying rack" },
-] as const;
+  {
+    id: "balcony_plants",
+    title: "Balcony plants",
+    label: "Plants on a balcony or terrace",
+    icon: "plant",
+  },
+  {
+    id: "clothes_line",
+    title: "Laundry line",
+    label: "A clothes line or drying rack",
+    icon: "shirt",
+  },
+] as const satisfies readonly {
+  id: string;
+  title: string;
+  label: string;
+  icon: IconName;
+}[];
 
 const DRYER_CHOICES = [
   { id: "none", label: "No dryer" },
@@ -77,6 +97,79 @@ export function OnboardingPrompt({
   );
 }
 
+/** The sample "Today's card" board of the mockup: what a day of bets looks like. Decoration only. */
+const SAMPLE_ROWS = [
+  { name: "Laundry", odds: "70%" },
+  { name: "Plants", odds: "35%" },
+  { name: "Heater", odds: "NO BET" },
+] as const;
+
+function RaceBoard() {
+  return (
+    <div className="race-board" aria-hidden="true">
+      <p className="race-title">Today&apos;s card · sample</p>
+      <ul>
+        {SAMPLE_ROWS.map((row) => (
+          <li key={row.name}>
+            <span className="race-name">{row.name}</span>
+            <span className="race-leader" />
+            <span className={`race-odds${row.odds === "NO BET" ? " none" : ""}`}>{row.odds}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A tile or row you tick: a real checkbox or radio covers it, so the whole surface is the target. */
+function Choice({
+  type,
+  name,
+  value,
+  checked,
+  onChange,
+  title,
+  caption,
+  icon,
+  layout,
+}: {
+  readonly type: "checkbox" | "radio";
+  readonly name?: string;
+  readonly value?: string;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+  readonly title: string;
+  readonly caption?: string;
+  readonly icon?: IconName;
+  readonly layout: "tile" | "row";
+}) {
+  return (
+    <label className={`choice ${layout}`}>
+      <input
+        type={type}
+        {...(name === undefined ? {} : { name })}
+        {...(value === undefined ? {} : { value })}
+        checked={checked}
+        onChange={(event) => {
+          onChange(event.target.checked);
+        }}
+      />
+      {icon === undefined ? null : (
+        <span className="choice-icon" aria-hidden="true">
+          <Icon name={icon} />
+        </span>
+      )}
+      <span className="choice-text">
+        <span className="choice-title">{title}</span>
+        {caption === undefined ? null : <span className="choice-caption">{caption}</span>}
+      </span>
+      <span className="choice-mark" aria-hidden="true">
+        <Icon name="check" />
+      </span>
+    </label>
+  );
+}
+
 function Form({
   initial,
   state,
@@ -96,11 +189,13 @@ function Form({
   const [heater, setHeater] = useState(initial.heaterThisSeason);
   const [latitude, setLatitude] = useState(String(initial.location.latitude));
   const [longitude, setLongitude] = useState(String(initial.location.longitude));
+  const [editingPlace, setEditingPlace] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const latitudeBad = invalid && parseCoordinate(latitude, 90) === undefined;
   const longitudeBad = invalid && parseCoordinate(longitude, 180) === undefined;
   const latitudeInput = useRef<HTMLInputElement>(null);
   const longitudeInput = useRef<HTMLInputElement>(null);
+  const placeFieldsId = useId();
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -108,6 +203,10 @@ function Form({
     const lon = parseCoordinate(longitude, 180);
     if (lat === undefined || lon === undefined) {
       setInvalid(true);
+      // The place fields may be folded away: open them first so the wrong one can take focus.
+      flushSync(() => {
+        setEditingPlace(true);
+      });
       // The first wrong field gets the focus, so the error is not left behind a keyboard or reader.
       (lat === undefined ? latitudeInput : longitudeInput).current?.focus();
       return;
@@ -128,102 +227,126 @@ function Form({
     <form className="onboarding" onSubmit={submit} noValidate>
       <fieldset>
         <legend>What is outside your door?</legend>
-        {OUTDOOR_CHOICES.map((choice) => (
-          <label key={choice.id} className="choice">
-            <input
+        <div className="choice-grid">
+          {OUTDOOR_CHOICES.map((choice) => (
+            <Choice
+              key={choice.id}
               type="checkbox"
+              layout="tile"
+              title={choice.title}
+              caption={choice.label}
+              icon={choice.icon}
               checked={outdoor.includes(choice.id)}
-              onChange={(event) => {
+              onChange={(checked) => {
                 setOutdoor((current) =>
-                  event.target.checked
-                    ? [...current, choice.id]
-                    : current.filter((id) => id !== choice.id),
+                  checked ? [...current, choice.id] : current.filter((id) => id !== choice.id),
                 );
               }}
             />
-            {choice.label}
-          </label>
-        ))}
+          ))}
+        </div>
         <p className="meta">Used by upcoming features; nothing changes yet.</p>
       </fieldset>
 
       <fieldset>
         <legend>Your dryer</legend>
-        {DRYER_CHOICES.map((choice) => (
-          <label key={choice.id} className="choice">
-            <input
+        <div className="choice-grid">
+          {DRYER_CHOICES.map((choice) => (
+            <Choice
+              key={choice.id}
               type="radio"
               name="dryer"
               value={choice.id}
+              layout="row"
+              title={choice.label}
               checked={dryer === choice.id}
               onChange={() => {
                 setDryer(choice.id);
               }}
             />
-            {choice.label}
-          </label>
-        ))}
+          ))}
+        </div>
         <p className="meta">Line-drying is measured against this dryer.</p>
       </fieldset>
 
       <fieldset>
         <legend>Air conditioning and heating</legend>
-        <label className="choice">
-          <input
+        <div className="choice-stack">
+          <Choice
             type="checkbox"
+            layout="row"
+            icon="thermo"
+            title="I use air conditioning"
             checked={airConditioning}
-            onChange={(event) => {
-              setAirConditioning(event.target.checked);
-            }}
+            onChange={setAirConditioning}
           />
-          I use air conditioning
-        </label>
-        <label className="choice">
-          <input
+          <Choice
             type="checkbox"
+            layout="row"
+            icon="thermo"
+            title="I heat the home this season"
             checked={heater}
-            onChange={(event) => {
-              setHeater(event.target.checked);
-            }}
+            onChange={setHeater}
           />
-          I heat the home this season
-        </label>
+        </div>
         <p className="meta">Skip the AC and skip the heater are offered only when you use them.</p>
       </fieldset>
 
       <fieldset>
         <legend>Where you live</legend>
-        <p className="meta" id="location-help">
-          Neighbourhood level is enough. Latitude and longitude, for example 41.40 and 2.16 for
-          Gràcia, Barcelona.
-        </p>
-        <div className="coordinates">
-          <label htmlFor="onboarding-latitude">Latitude</label>
-          <input
-            id="onboarding-latitude"
-            ref={latitudeInput}
-            type="text"
-            inputMode="decimal"
-            value={latitude}
-            aria-describedby={latitudeBad ? "location-help location-error" : "location-help"}
-            aria-invalid={latitudeBad}
-            onChange={(event) => {
-              setLatitude(event.target.value);
+        <div className="place-row">
+          <Icon name="pin" />
+          <span className="place-text">
+            {parseCoordinate(latitude, 90) === undefined ||
+            parseCoordinate(longitude, 180) === undefined
+              ? "Check the coordinates"
+              : `${latitude.trim()}, ${longitude.trim()}`}
+          </span>
+          <button
+            type="button"
+            className="place-change"
+            aria-expanded={editingPlace}
+            aria-controls={placeFieldsId}
+            onClick={() => {
+              setEditingPlace((open) => !open);
             }}
-          />
-          <label htmlFor="onboarding-longitude">Longitude</label>
-          <input
-            id="onboarding-longitude"
-            ref={longitudeInput}
-            type="text"
-            inputMode="decimal"
-            value={longitude}
-            aria-describedby={longitudeBad ? "location-help location-error" : "location-help"}
-            aria-invalid={longitudeBad}
-            onChange={(event) => {
-              setLongitude(event.target.value);
-            }}
-          />
+          >
+            Change
+          </button>
+        </div>
+        <div id={placeFieldsId} hidden={!editingPlace}>
+          <p className="meta" id="location-help">
+            Neighbourhood level is enough. Latitude and longitude, for example 41.40 and 2.16 for
+            Gràcia, Barcelona.
+          </p>
+          <div className="coordinates">
+            <label htmlFor="onboarding-latitude">Latitude</label>
+            <input
+              id="onboarding-latitude"
+              ref={latitudeInput}
+              type="text"
+              inputMode="decimal"
+              value={latitude}
+              aria-describedby={latitudeBad ? "location-help location-error" : "location-help"}
+              aria-invalid={latitudeBad}
+              onChange={(event) => {
+                setLatitude(event.target.value);
+              }}
+            />
+            <label htmlFor="onboarding-longitude">Longitude</label>
+            <input
+              id="onboarding-longitude"
+              ref={longitudeInput}
+              type="text"
+              inputMode="decimal"
+              value={longitude}
+              aria-describedby={longitudeBad ? "location-help location-error" : "location-help"}
+              aria-invalid={longitudeBad}
+              onChange={(event) => {
+                setLongitude(event.target.value);
+              }}
+            />
+          </div>
         </div>
         {invalid ? (
           <p className="notice error" role="alert" id="location-error">
@@ -242,7 +365,7 @@ function Form({
       </p>
 
       <button type="submit" className="button primary" disabled={busy}>
-        Save my answers
+        {state === "pending" ? "Start lazing" : "Save my answers"}
       </button>
       {state === "pending" ? (
         <button type="button" className="button secondary" disabled={busy} onClick={onSkip}>
@@ -254,30 +377,39 @@ function Form({
 }
 
 /**
- * The household questions (REQ-024): shown on first open, and again from the Household tab. A
- * skip keeps the baseline in the config file (AC-024.2).
+ * The household questions (REQ-024), laid out like mockup 01: the sample race board, the headline,
+ * outdoor tiles, the place row, the privacy line and "Start lazing". Shown on first open (alone,
+ * `firstRun`) and again from the Household tab. A skip keeps the baseline in the config file
+ * (AC-024.2).
  */
 export function OnboardingScreen({
   onboarding,
   flags,
   busy,
   notice,
+  firstRun = false,
+  fab,
   onSave,
   onSkip,
   onReload,
 }: OnboardingScreenProps) {
+  const pending = onboarding?.state === "pending";
   return (
     <>
-      <main className="screen">
-        <header className="header">
-          <div>
-            <p className="eyebrow">{onboarding?.state === "pending" ? "Welcome" : "Your home"}</p>
-            <h1 tabIndex={-1}>Household</h1>
-          </div>
+      <main className="screen onboarding-screen">
+        <RaceBoard />
+        <header className="onboarding-head">
+          <h1 className="sr-only" tabIndex={-1}>
+            Household
+          </h1>
+          <p className="eyebrow leaf">{pending ? "Takes about 30 seconds" : "Your home"}</p>
+          <p className="headline">{pending ? "Let the sky do your chores." : "Your household"}</p>
+          <p>
+            {pending
+              ? "Tell us what's outside. We'll bet on the weather doing the work, and pay you points when it does."
+              : "Savings are measured against your own habits. Answer once; you can change it any time."}
+          </p>
         </header>
-        <p>
-          Savings are measured against your own habits. Answer once; you can change it any time.
-        </p>
 
         {onboarding === undefined && notice?.kind === "error" ? (
           <ErrorState title="Can't load your household" busy={busy} onRetry={onReload}>
@@ -303,7 +435,7 @@ export function OnboardingScreen({
           />
         )}
       </main>
-      <Nav flags={flags} current="onboarding" />
+      {firstRun ? null : <Nav flags={flags} current="onboarding" fab={fab} />}
     </>
   );
 }

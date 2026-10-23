@@ -143,6 +143,7 @@ Fixed values used below:
   - AC-011.4: THE SYSTEM SHALL count time only for skipped steps; electricity-only savings (e.g. line instead of dryer) add 0 minutes.
   - AC-011.5: THE SYSTEM SHALL show the assumption behind each savings figure where it is displayed (e.g. "vs a heat-pump dryer, ~2 kWh"); a figure without a cited source is labelled "typical estimate" (e.g. the condenser dryer).
   - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday, Europe/Madrid): net time back, water in litres and electricity in kWh. A bet counts, whole (its 30 s included), in the week of its settle time, so a bet placed on Sunday night and settled on Monday counts in Monday's week.
+  - AC-011.7: WHEN a card offers a do-nothing bet THE SYSTEM SHALL show what a win would save (time, water, electricity from the same catalogue and household baseline as AC-011.1, with its assumption as in AC-011.5), worded as an estimate ("saves ~5 min · ~5 L water if the sky does it"); the estimate is computed by code, equals the `savings_snapshot` a bet placed from that quote would store, omits time when it is 0 (AC-011.4), and nothing is added to any total until the bet wins; a placed bet shows its stored snapshot, not a recomputed estimate.
 
 ### REQ-012: Safety is never a bet
 - Story: As a household member, I want risky weather to tell me to act, so that the game never puts plants or people at risk.
@@ -275,7 +276,7 @@ Fixed values used below:
 - Priority: Could
 - Goals: G-3, G-4
 - Acceptance criteria:
-  - AC-024.1: WHEN the app is opened for the first time THE SYSTEM SHALL ask for outdoor items, dryer type (none / heat pump / condenser / vented), AC and heater use, and location (entered as latitude and longitude text, rounded to 2 decimals before anything leaves the laptop). Outdoor items are stored but have no effect yet.
+  - AC-024.1: WHEN the app is opened for the first time THE SYSTEM SHALL ask for outdoor items, dryer type (none / heat pump / condenser / vented), AC and heater use, and location (entered as latitude and longitude text, rounded to 2 decimals before anything leaves the laptop). Outdoor items are stored but have no effect yet. An optional place label (AC-026.3) is asked next to the location.
   - AC-024.2: WHEN onboarding is skipped or not built THE SYSTEM SHALL use the baseline in the config file (A-6). A completed profile replaces the baseline for bets placed afterwards (a bet's savings snapshot stays write-once). A card keeps the location it was made under (`cards.location_lat` and `location_lon`, write-once, stamped only while the `onboarding` flag is on); settlement, the lucky-win label and rescue checks use the card's location.
 
 ### REQ-025: Ranks and achievements
@@ -293,6 +294,7 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-026.1: WHEN the user opens Today THE SYSTEM SHALL show the current temperature and condition as split-flap tiles and hourly bars marking the lazy window. A lazy hour is a remaining daylight hour whose drying index is at or above the line-dry toss-up row of `config/rules.json` (0.30), clipped to 18:00. The board reads cached forecasts only and shows the forecast age when it is stale; the Open-Meteo attribution (AC-014.6) appears once, in the footer.
   - AC-026.2: WHILE the device prefers reduced motion THE SYSTEM SHALL change tiles without the flip animation.
+  - AC-026.3: WHERE the household has a place label (optional free text set in onboarding, at most 40 characters, e.g. "Gràcia · Barcelona") THE SYSTEM SHALL show it in the weather board header; the label is stored on the laptop only; it is not geocoded and never appears in an Open-Meteo request, a Gemma prompt, `gemma_decisions`, a log line or a dataset row; it is trimmed, may not contain control characters, and its 40-character limit counts code points; it is included in `sib export` and deleted by `sib delete-photos --all-data`; `sib demo` uses a synthetic label.
 
 ### REQ-027: Voice capture through Gemma
 - Story: As a household member on the balcony, I want to say my chores, so that capture is hands-free.
@@ -318,6 +320,8 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-029.1: THE SYSTEM SHALL read feature flags from `config/flags.json`; every Should and Could feature has a flag that is off by default, and only the builder turns a flag on after merging and checking the feature.
   - AC-029.2: WHILE a flag is off THE SYSTEM SHALL show no UI entry point and expose no route for that feature.
+  - AC-029.3: THE SYSTEM SHALL provide `sib flags` on the laptop to list the flags and turn them on or off in `config/flags.json`, including presets read from `config/flags.presets.json`, an explicit list of flag names per preset that the builder edits; the `presentation` preset lists every merged feature except `voice` and `finetunedBookmaker`, which need the laptop checks of T-028 and T-014 and are turned on by name; the committed defaults in `config/flags.json` stay off (AC-029.1), and applying a preset is the builder turning flags on.
+  - AC-029.4: THE SYSTEM SHALL provide `sib demo` to run the app for rehearsals and screenshots on a separate temporary data folder seeded with synthetic bets, with the fake model, fake weather and the flags of the `presentation` preset (AC-029.3) applied in memory; every screen shows a fixed "Sample data" banner, the Score tiles and calibration chart carry a "SAMPLE" watermark, and `sib export` refuses in demo mode; it never reads or writes the live data folder or `config/household.json`; the seeded rows carry `model_version = 'fake-demo'` and Score counts them only in demo mode, labelled "Sample data · fake model" (NFR-010); its numbers are never reported as results (G-1).
 
 ## Non-functional requirements
 | ID | Category | Requirement (measurable) | Verification |
@@ -331,7 +335,7 @@ Fixed values used below:
 | NFR-007 | Observability | Local structured JSON logs; every Gemma call logs job, model version, prompt version, latency, schema-valid flag and retries; never tokens, session IDs or photo bytes. Gemma status visible in the UI (AC-013.5). | Log inspection test |
 | NFR-008 | Compliance / licensing | Repo MIT; README lists third-party licences (Gemma 4 Apache 2.0, Open-Meteo CC BY 4.0 non-commercial, fonts SIL OFL, Lucide ISC). Points only: no stakes, purchases or value. Challenge rules (repo window, public, tags) met. | Release checklist before publishing |
 | NFR-009 | Accessibility | WCAG 2.2 AA on all mobile screens: text contrast ≥ 4.5:1 (use `ink-3-text`, `amber-text` tokens), touch targets ≥ 44 × 44 px, win/lose never by colour alone, odds always with words, `prefers-reduced-motion` respected. | `ux-reviewer` pass; automated contrast check on tokens |
-| NFR-010 | Testability | Every Gemma job runs against a fake returning recorded JSON fixtures; CI runs with no GPU, no model and no network. The fake model runs only when `SIB_FAKE_MODEL=1` is set, and `sib start` refuses to start without a configured Gemma tag, so fixtures never pose as Gemma; `SIB_FAKE_WEATHER=1` swaps in fake weather for development. Points, rule baseline, settlement and savings logic have unit tests covering every AC above. | CI green without GPU or network |
+| NFR-010 | Testability | Every Gemma job runs against a fake returning recorded JSON fixtures; CI runs with no GPU, no model and no network. The fake model runs only when `SIB_FAKE_MODEL=1` is set, and `sib start` refuses to start without a configured Gemma tag, so fixtures never pose as Gemma, except in `sib demo` (AC-029.4), whose rows carry `model_version = 'fake-demo'`, are labelled "Sample data · fake model" and live in a temporary folder; `SIB_FAKE_WEATHER=1` swaps in fake weather for development. Points, rule baseline, settlement and savings logic have unit tests covering every AC above. | CI green without GPU or network |
 | NFR-011 | Portability / setup | Supported: Windows 11 + WSL2 (Ubuntu), NVIDIA GPU ≥ 8 GB VRAM, ≥ 16 GB RAM [ASSUMPTION A-11], Node.js 24 (pinned); phone: current iOS Safari or Android Chrome. Model pinned by tag and digest. From a clean clone, setup (excluding model download) ≤ 30 min following the README. | Fresh-clone run-through before publishing |
 | NFR-012 | Reproducibility | Backtest and fine-tune evaluation are reproducible: pinned model digests, fixed seeds, fixed date split, weather data snapshot saved with attribution; re-running gives the same reported numbers. | Re-run from the snapshot matches the report |
 
