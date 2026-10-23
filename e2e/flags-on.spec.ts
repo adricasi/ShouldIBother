@@ -112,7 +112,7 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   const slip = page.getByRole("article", { name: /^Water plants, / });
   await expect(slip).toBeVisible();
   // What a win would save, as an estimate (AC-011.7); the place name heads the board (AC-026.3).
-  await expect(slip.getByText(/saves ~5 min/i)).toBeVisible();
+  await expect(slip.getByText(/could save ~5 min/i)).toBeVisible();
   await expect(page.locator("#weather-board-title")).toContainText("Test Quarter · Nowhere");
   await expect(slip.getByText("Gemma's odds")).toBeVisible();
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();

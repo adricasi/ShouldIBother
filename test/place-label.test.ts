@@ -10,6 +10,7 @@ import { OpenMeteoWeatherClient } from "../src/server/weather/open-meteo-client.
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 import { FakeClock } from "./helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
+import { tap } from "./support/settle.js";
 
 // A synthetic label that no real place and no prompt, URL or log line could contain by chance.
 const LABEL = "Zyx Test Quarter · Nowhere";
@@ -36,6 +37,20 @@ describe("AC-026.3: the place label is trimmed, free of control characters and a
     for (const bad of ["Grà\ncia", "Grà\tcia", "Grà\u001bcia", "Grà\u0000cia", "a\u0085b"]) {
       expect(parsePlaceLabel(bad)).toMatchObject({ ok: false });
     }
+  });
+
+  it("refuses invisible format characters too: bidi overrides, zero-width space and joiner, the BOM", () => {
+    for (const bad of [
+      "Gr\u202eacia",
+      "Gr\u200bacia",
+      "Gr\u200dacia",
+      "Gr\ufeffacia",
+      "Gr\u2066acia",
+    ]) {
+      expect(parsePlaceLabel(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
+    }
+    // Ordinary punctuation, accents and the middle dot are fine.
+    expect(parsePlaceLabel("Gràcia · Barcelona")).toMatchObject({ ok: true });
   });
 
   it("counts code points, not UTF-16 units: 40 emoji fit, 41 do not", () => {
@@ -188,6 +203,17 @@ describe("AC-024.1: the place label is asked next to the location, and refused w
     expect((await h.get("/api/onboarding")).json()).not.toHaveProperty("place_label");
   });
 
+  it("a null place_label clears it, like a blank one", async () => {
+    const h = await setup({ onboarding: true });
+    await put(h, { ...ANSWERS, place_label: LABEL });
+    const cleared = await put(h, { ...ANSWERS, place_label: null });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).not.toHaveProperty("place_label");
+    expect(h.db.prepare("SELECT place_label FROM household_profile").get()).toEqual({
+      place_label: null,
+    });
+  });
+
   it("skipping onboarding leaves no label", async () => {
     const h = await setup({ onboarding: true });
     await h.post("/api/onboarding/skip", {});
@@ -238,22 +264,37 @@ describe("AC-026.3: the label is in the weather board header only while onboardi
 describe("AC-026.3: the label never leaves the household screen and the board", () => {
   it("is in no Open-Meteo request, no Gemma prompt, no decision row, no log line and no card, quote or bet row", async () => {
     const logLines: string[] = [];
-    const h = await setup({ onboarding: true, splitFlap: true }, logLines);
+    const h = await setup({ onboarding: true, splitFlap: true, safetyGuard: true }, logLines);
     h.model.setScenario("bookmaker", "ok");
     await put(h, { ...ANSWERS, place_label: LABEL });
-    const plants = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<{
-      id: number;
-      quote: { id: number };
-    }>();
+    await h.post("/api/cards/quick", { chore_type: "plants" });
     await h.post("/api/cards/quick", { chore_type: "laundry_line" });
+    // The guard and the bookmaker run one after the other: wait for both rounds.
     await h.idle();
-    await h.post("/api/bets", {
+    await h.idle();
+    // Gemma's odds replaced the rule odds: bet on the quote the card shows now.
+    const plants = (await h.get("/api/today"))
+      .json<{ cards: { id: number; chore_type: string; quote: { id: number } }[] }>()
+      .cards.find((card) => card.chore_type === "plants")!;
+    const placed = await h.post("/api/bets", {
       card_id: plants.id,
       quote_id: plants.quote.id,
       kind: "do_nothing",
     });
+    expect(placed.statusCode, placed.body).toBe(201);
+    // The night goes by and the bet is settled by a tap: the judge runs too.
+    const waiting = (await h.get("/api/slips")).json<{
+      waiting: { id: number; settle_at: string }[];
+    }>();
+    h.clock.current = Date.parse(waiting.waiting[0]!.settle_at) + 3_600_000;
     await h.get("/api/today");
+    await tap(h, waiting.waiting[0]!.id, "moist");
+    await h.idle();
     await h.get("/api/slips");
+    // The safety guard and the judge are among the prompts checked, not only the bookmaker's.
+    const jobs = new Set(h.model.calls.map((call) => call.job));
+    expect(jobs).toContain("safety");
+    expect(jobs).toContain("judge");
 
     // Open-Meteo: every URL the real client built, decoded and raw.
     expect(server!.requests.length).toBeGreaterThan(0);

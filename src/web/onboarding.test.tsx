@@ -327,12 +327,26 @@ describe("REQ-024 in the app", () => {
     expect(container.querySelector('label[for="onboarding-place"]')?.textContent).toBe(
       "Place name (optional)",
     );
-    expect(container.querySelector<HTMLInputElement>("#onboarding-place")?.maxLength).toBe(40);
+    // No maxLength: that counts UTF-16 units, so the field clamps to 40 code points itself.
+    expect(container.querySelector<HTMLInputElement>("#onboarding-place")?.maxLength).toBe(-1);
     type("#onboarding-place", "  Test Quarter ");
     click("button", "Start lazing");
     await settle();
     const save = calls.find((call) => call.line === "PUT /api/onboarding");
     expect(save?.body).toMatchObject({ place_label: "Test Quarter" });
+  });
+
+  it("AC-026.3: the place name is cut at 40 code points: 40 emoji fit and a 41st is dropped", async () => {
+    stubServer(true, pending);
+    window.location.hash = "#/onboarding";
+    await render();
+    const rain = "🌧";
+    type("#onboarding-place", rain.repeat(45));
+    const field = container.querySelector<HTMLInputElement>("#onboarding-place")!;
+    expect([...field.value]).toHaveLength(40);
+    expect(field.value).toBe(rain.repeat(40));
+    type("#onboarding-place", "a".repeat(41));
+    expect(field.value).toBe("a".repeat(40));
   });
 
   it("AC-024.1: a blank place name is left out of the answers", async () => {

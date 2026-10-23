@@ -85,7 +85,7 @@ describe("AC-011.7: the savings estimate on a bet slip", () => {
 
   it("is worded as an estimate, with its assumption and where it comes from in view", () => {
     const html = screen(today([{ ...card, savings_estimate: estimate }]));
-    expect(html).toContain("Saves ~5 min · ~5 L water if the sky does it");
+    expect(html).toContain("Could save ~5 min · ~5 L water if the sky does it");
     expect(html).toContain(
       "5 balcony pots: about 5 L of watering and 5 min skipped (typical estimate)",
     );
@@ -102,10 +102,24 @@ describe("AC-011.7: the savings estimate on a bet slip", () => {
     };
     expect(savingsEstimateParts(dryer)).toEqual(["~2.2 kWh"]);
     const html = screen(today([{ ...card, savings_estimate: dryer }]));
-    expect(html).toContain("Saves ~2.2 kWh if the sky does it");
+    expect(html).toContain("Could save ~2.2 kWh if the sky does it");
     expect(html).not.toContain("~0");
     expect(html).not.toContain("min if the sky");
     expect(savingsEstimateParts(estimate)).toEqual(["~5 min", "~5 L water"]);
+  });
+
+  it("shows the clock only where minutes are saved: a bolt for energy, a drop for water", () => {
+    const base = { assumption: "x", basis: "sourced" };
+    const html = (estimate: NonNullable<Card["savings_estimate"]>): string =>
+      screen(today([{ ...card, savings_estimate: estimate }]))
+        .split("saves-line")[1]
+        ?.split("</p>")[0] ?? "";
+    expect(html({ ...base, time_min: 5, water_l: 4, electricity_kwh: 0 })).toContain(
+      "lucide-clock",
+    );
+    expect(html({ ...base, water_l: 0, electricity_kwh: 2.2 })).toContain("lucide-zap");
+    expect(html({ ...base, water_l: 3, electricity_kwh: 0 })).toContain("lucide-droplet");
+    expect(html({ ...base, water_l: 0, electricity_kwh: 2.2 })).not.toContain("lucide-clock");
   });
 
   it("shows nothing when there is no estimate, or when every part is 0", () => {

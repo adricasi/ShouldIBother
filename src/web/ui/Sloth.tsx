@@ -60,7 +60,7 @@ export function Sloth({ className }: { readonly className?: string }) {
         />
         <path className="sloth-eye" d="M67 54 Q 71 57 75 54 M85 54 Q 89 57 93 54" />
         <ellipse className="sloth-nose" cx="80" cy="61" rx="3.5" ry="2.5" />
-        <path className="sloth-eye" d="M75 66 Q 80 70 85 66" />
+        <path className="sloth-mouth" d="M75 66 Q 80 70 85 66" />
       </g>
     </svg>
   );

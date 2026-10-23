@@ -55,13 +55,28 @@ export function savingsEstimate(deps: SavingsDeps, choreType: string): SavingsEs
   };
 }
 
-/** A card view with its savings estimate when the card offers a bet (it has a quote). */
-export function withSavingsEstimate<T extends { readonly quote: unknown }>(
-  deps: SavingsDeps,
-  card: { readonly chore_type: string },
+/**
+ * A card view with its savings estimate, when the card still offers a do-nothing bet, as Today
+ * decides it: it has a quote whose settle time is ahead and no bet on it that was not undone
+ * (AC-011.7). A card that has been bet on shows its bet's own stored figure elsewhere, not a
+ * recomputed estimate.
+ */
+export function withSavingsEstimate<
+  T extends { readonly quote: { readonly settle_at: string } | null },
+>(
+  deps: SavingsDeps & Pick<LedgerDeps, "now">,
+  card: { readonly id: number; readonly chore_type: string },
   view: T,
 ): T & { savings_estimate?: SavingsEstimate } {
-  if (view.quote === null) {
+  if (view.quote === null || Date.parse(view.quote.settle_at) <= deps.now()) {
+    return view;
+  }
+  const bets = deps.db
+    .prepare<[number], { n: number }>(
+      "SELECT COUNT(*) AS n FROM bets WHERE card_id = ? AND status != 'undone'",
+    )
+    .get(card.id)!.n;
+  if (bets > 0) {
     return view;
   }
   const estimate = savingsEstimate(deps, card.chore_type);

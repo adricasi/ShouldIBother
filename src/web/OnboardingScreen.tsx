@@ -52,6 +52,14 @@ const DRYER_CHOICES = [
   { id: "vented", label: "Vented dryer" },
 ] as const;
 
+/** The longest place name, in code points (AC-026.3); the server refuses a longer one. */
+const MAX_PLACE_LABEL = 40;
+
+/** Cuts a typed place name to 40 code points, so an emoji is one character, not two. */
+export function clampPlaceLabel(text: string): string {
+  return [...text].slice(0, MAX_PLACE_LABEL).join("");
+}
+
 /** The privacy sentence for this screen: the answers stay home, only a rounded place goes out. */
 export const ONBOARDING_PRIVACY_TEXT =
   "Your answers stay on your computer. Only your location, rounded to 2 decimals (about 1 km), goes to Open-Meteo to ask for the forecast.";
@@ -343,12 +351,12 @@ function Form({
             <input
               id="onboarding-place"
               type="text"
-              maxLength={40}
               autoComplete="off"
               value={placeLabel}
               aria-describedby="place-help"
               onChange={(event) => {
-                setPlaceLabel(event.target.value);
+                // 40 characters as the server counts them: code points, not UTF-16 units.
+                setPlaceLabel(clampPlaceLabel(event.target.value));
               }}
             />
             <p className="meta" id="place-help">

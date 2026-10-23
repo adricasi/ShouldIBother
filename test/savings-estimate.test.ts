@@ -6,6 +6,7 @@ import { loadSavings } from "../src/server/savings.js";
 import { savingsEstimate, savingsSnapshotText } from "../src/server/ledger/savings.js";
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
+import { HOUR, MINUTE, tap } from "./support/settle.js";
 import { EXAMPLE_HOUSEHOLD, createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 
 interface Estimate {
@@ -15,7 +16,14 @@ interface Estimate {
   assumption: string;
   basis: string;
 }
+interface Totals {
+  wins: number;
+  time_saved_s: number;
+  water_l: number;
+  electricity_kwh: number;
+}
 interface CardJson {
+  kind?: string;
   id: number;
   chore_type: string;
   quote: { id: number } | null;
@@ -137,14 +145,80 @@ describe("AC-011.7: a card that offers a do-nothing bet shows what a win would s
     expect(parseSnapshot(stored.savings_snapshot)!.assumption).toBe(before.assumption);
   });
 
-  it("AC-011.7: nothing is added to any total, and a card without a bet to offer has no estimate", async () => {
+  it("AC-011.7: nothing is added to any total by an estimate, nor by placing the bet; only the win adds its snapshot", async () => {
+    const h = await setup();
+    const totals = async () =>
+      (await h.get("/api/today")).json<{ week: { totals: Totals } }>().week.totals;
+    const before = await totals();
+    // A bettable card that does carry an estimate, so the assertions below cannot pass vacuously.
+    const card = await quick(h, "plants");
+    const shown = (await todayCards(h)).find((candidate) => candidate.id === card.id)!;
+    expect(shown.kind).toBe("weather");
+    expect(shown.quote).not.toBeNull();
+    expect(shown.savings_estimate?.water_l).toBeGreaterThan(0);
+    expect(await totals()).toEqual(before);
+    // Placing the bet costs 30 s of app time, but adds no saving.
+    const bet = await h.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote!.id,
+      kind: "do_nothing",
+    });
+    const afterPlacing = await totals();
+    expect(afterPlacing).toMatchObject({
+      time_saved_s: before.time_saved_s,
+      water_l: before.water_l,
+      electricity_kwh: before.electricity_kwh,
+      wins: 0,
+    });
+    // The win adds the snapshot the bet stored, which is the estimate that was shown.
+    h.clock.current =
+      Date.parse(
+        (await h.get("/api/slips")).json<{ waiting: { settle_at: string }[] }>().waiting[0]!
+          .settle_at,
+      ) + HOUR;
+    expect((await tap(h, bet.json<{ id: number }>().id, "moist")).status).toBe(200);
+    const afterWin = await totals();
+    expect(afterWin.wins).toBe(1);
+    expect(afterWin.water_l).toBeCloseTo(before.water_l + shown.savings_estimate!.water_l);
+    expect(afterWin.time_saved_s).toBe(
+      before.time_saved_s + Math.round((shown.savings_estimate!.time_min ?? 0) * 60),
+    );
+  });
+
+  it("AC-011.7: an alert card and a coming-later card carry no estimate", async () => {
     const h = await setup({ weatherProfile: FAKE_WEATHER_PROFILES.heatwave });
-    const before = (await h.get("/api/today")).json<{ week: { totals: object } }>().week.totals;
     const alert = await quick(h, "plants");
     const cards = await todayCards(h);
-    expect(cards.find((card) => card.id === alert.id)).not.toHaveProperty("savings_estimate");
-    expect((await h.get("/api/today")).json<{ week: { totals: object } }>().week.totals).toEqual(
-      before,
+    const shown = cards.find((card) => card.id === alert.id)!;
+    expect(shown.kind).toBe("alert");
+    expect(shown.quote).toBeNull();
+    expect(shown).not.toHaveProperty("savings_estimate");
+  });
+
+  it("AC-011.7: the card route and Today agree: a card with a bet on it, or whose quote ran out, shows none", async () => {
+    const h = await setup();
+    const card = await quick(h, "plants");
+    expect((await h.get(`/api/cards/${card.id}`)).json<CardJson>().savings_estimate).toBeDefined();
+    // A bet is placed: the card is no longer one that offers a bet (and an undone bet frees it).
+    const bet = await h.post("/api/bets", {
+      card_id: card.id,
+      quote_id: card.quote!.id,
+      kind: "do_nothing",
+    });
+    expect((await h.get(`/api/cards/${card.id}`)).json<CardJson>()).not.toHaveProperty(
+      "savings_estimate",
+    );
+    expect((await todayCards(h)).find((c) => c.id === card.id)).toBeUndefined();
+    await h.delete(`/api/bets/${bet.json<{ id: number }>().id}`);
+    expect((await h.get(`/api/cards/${card.id}`)).json<CardJson>().savings_estimate).toBeDefined();
+    // The quote's settle time passes: nothing to bet on, so no estimate.
+    h.clock.current =
+      Date.parse(
+        (await h.get(`/api/cards/${card.id}`)).json<{ quote: { settle_at: string } }>().quote
+          .settle_at,
+      ) + MINUTE;
+    expect((await h.get(`/api/cards/${card.id}`)).json<CardJson>()).not.toHaveProperty(
+      "savings_estimate",
     );
   });
 
@@ -168,5 +242,45 @@ describe("AC-011.7: a card that offers a do-nothing bet shows what a win would s
       expect(estimate.time_min ?? 0).toBe(snapshot.time_min);
     }
     expect(savingsEstimate(deps, "not_a_chore")).toBeNull();
+  });
+});
+
+describe("AC-011.7: every chore of the catalogue, and the household baseline's labels", () => {
+  const deps = (household: Parameters<typeof savingsEstimate>[0]["household"]) => ({
+    db: undefined as never,
+    household,
+    savings: loadSavings(),
+  });
+
+  it.each(["ac", "heater"])(
+    "the %s estimate equals the snapshot a bet on it would store",
+    (choreType) => {
+      const d = deps({ ...EXAMPLE_HOUSEHOLD, airConditioning: true, heaterThisSeason: true });
+      const snapshot = parseSnapshot(savingsSnapshotText(d, choreType))!;
+      const estimate = savingsEstimate(d, choreType)!;
+      expect(estimate).toMatchObject({
+        water_l: snapshot.water_l,
+        electricity_kwh: snapshot.electricity_kwh,
+        assumption: snapshot.assumption,
+        basis: snapshot.basis,
+      });
+      expect(estimate.time_min ?? 0).toBe(snapshot.time_min);
+      expect(estimate.electricity_kwh).toBeGreaterThan(0);
+    },
+  );
+
+  it("a condenser dryer is labelled a typical estimate, and follows the dryer of the household", () => {
+    const condenser = savingsEstimate(
+      deps({ ...EXAMPLE_HOUSEHOLD, dryer: "condenser" }),
+      "laundry_line",
+    )!;
+    const heatPump = savingsEstimate(
+      deps({ ...EXAMPLE_HOUSEHOLD, dryer: "heat-pump" }),
+      "laundry_line",
+    )!;
+    expect(condenser.basis).toBe("typical estimate");
+    expect(condenser.assumption).toContain("condenser");
+    expect(heatPump.assumption).toContain("heat-pump");
+    expect(condenser.electricity_kwh).not.toBe(heatPump.electricity_kwh);
   });
 });

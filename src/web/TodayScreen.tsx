@@ -13,7 +13,7 @@ import { CaptureBar, QuickChips, TodayHeader, type ChipSpec } from "./TodayParts
 import { VoiceCapture } from "./VoiceCapture.js";
 import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
-import { Icon } from "./ui/Icon.js";
+import { Icon, type IconName } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
@@ -159,6 +159,14 @@ export function savingsEstimateParts(estimate: NonNullable<Card["savings_estimat
   return parts;
 }
 
+/** The clock only where minutes are saved; otherwise the energy bolt, or the water drop. */
+function estimateIcon(estimate: NonNullable<Card["savings_estimate"]>): IconName {
+  if ((estimate.time_min ?? 0) > 0) {
+    return "clock";
+  }
+  return estimate.electricity_kwh > 0 ? "bolt" : "drop";
+}
+
 /**
  * What a win would save, worded as an estimate with its assumption in view (AC-011.7, AC-011.5).
  * It is a guess made before the bet: nothing is counted until the bet wins.
@@ -171,7 +179,7 @@ function SavingsEstimateLine({ estimate }: { estimate: NonNullable<Card["savings
   return (
     <div className="saves">
       <p className="saves-line">
-        <Icon name="clock" /> Saves {parts.join(" · ")} if the sky does it
+        <Icon name={estimateIcon(estimate)} /> Could save {parts.join(" · ")} if the sky does it
       </p>
       <p className="meta saves-assumption">
         {estimate.assumption} ({estimate.basis})

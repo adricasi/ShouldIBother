@@ -55,9 +55,12 @@
   fill: var(--color-ink);
 }
 
-/* The mouth is drawn with the eye style but must read dark on the pale face. */
-.sloth-eye:last-of-type {
+/* The mouth reads dark on the pale face. */
+.sloth-mouth {
+  fill: none;
   stroke: var(--color-ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .sloth-hang {
