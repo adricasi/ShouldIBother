@@ -8,6 +8,25 @@ const CHECK_TIMEOUT_MS = 2_000;
 export interface GemmaStatus extends ModelHealth {
   /** When the runtime was last asked, epoch milliseconds. */
   readonly checkedAt: number;
+  /**
+   * Set while a model that one job depends on cannot answer although the primary one can (the
+   * fine-tuned bookmaker not pulled): Today must not read plain "online" while every card of that
+   * job falls back to rule odds.
+   */
+  readonly warning?: string;
+}
+
+/** A runtime whose health matters to one job, next to the primary model's. */
+export interface WatchedModel {
+  /** How the warning names it, e.g. "The fine-tuned bookmaker". */
+  readonly label: string;
+  readonly model: ModelClient;
+}
+
+export interface StatusOptions {
+  readonly watched?: readonly WatchedModel[];
+  /** Called when the warning appears or changes (once per change, for one log line). */
+  readonly onWarning?: (message: string) => void;
 }
 
 /**
@@ -18,11 +37,13 @@ export interface GemmaStatus extends ModelHealth {
 export class GemmaStatusMonitor {
   private last: GemmaStatus | undefined;
   private inFlight: Promise<GemmaStatus> | undefined;
+  private lastWarning = "";
 
   constructor(
     private readonly model: ModelClient,
     private readonly now: () => number,
     private readonly ttlMs: number = STATUS_TTL_MS,
+    private readonly options: StatusOptions = {},
   ) {}
 
   async get(): Promise<GemmaStatus> {
@@ -37,6 +58,31 @@ export class GemmaStatusMonitor {
   }
 
   private async check(): Promise<GemmaStatus> {
+    const [health, ...watched] = await Promise.all([
+      this.healthOf(this.model),
+      ...(this.options.watched ?? []).map((entry) => this.healthOf(entry.model)),
+    ]);
+    const warning = (this.options.watched ?? [])
+      .map((entry, index) => ({ entry, health: watched[index] }))
+      .filter(({ health: other }) => other?.state === "offline")
+      .map(
+        ({ entry, health: other }) =>
+          `${entry.label} is not available (${other?.detail ?? "no answer"}), so its cards use rule odds.`,
+      )
+      .join(" ");
+    if (warning !== "" && warning !== this.lastWarning) {
+      this.options.onWarning?.(warning);
+    }
+    this.lastWarning = warning;
+    this.last = {
+      ...health,
+      checkedAt: this.now(),
+      ...(warning === "" ? {} : { warning }),
+    };
+    return this.last;
+  }
+
+  private async healthOf(model: ModelClient): Promise<ModelHealth> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<ModelHealth>((resolve) => {
       timer = setTimeout(() => {
@@ -44,15 +90,12 @@ export class GemmaStatusMonitor {
       }, CHECK_TIMEOUT_MS);
       timer.unref();
     });
-    let health: ModelHealth;
     try {
-      health = await Promise.race([this.model.health(), timeout]);
+      return await Promise.race([model.health(), timeout]);
     } catch {
-      health = { state: "offline", detail: "health check failed" };
+      return { state: "offline", detail: "health check failed" };
     } finally {
       clearTimeout(timer);
     }
-    this.last = { ...health, checkedAt: this.now() };
-    return this.last;
   }
 }

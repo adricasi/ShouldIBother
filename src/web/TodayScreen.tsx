@@ -134,10 +134,17 @@ const GEMMA_STATUS_TEXT = {
 /** Gemma's status on Today (AC-013.5). */
 function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
   return (
-    <p className={`meta gemma-status ${gemma.status}`} role="status">
-      {GEMMA_STATUS_TEXT[gemma.status]}
-      {gemma.detail === "fake model" ? " (fake model)" : ""}
-    </p>
+    <>
+      <p className={`meta gemma-status ${gemma.status}`} role="status">
+        {GEMMA_STATUS_TEXT[gemma.status]}
+        {gemma.detail === "fake model" ? " (fake model)" : ""}
+      </p>
+      {gemma.warning === undefined ? null : (
+        <p className="meta gemma-status offline" role="status">
+          {gemma.warning}
+        </p>
+      )}
+    </>
   );
 }
 

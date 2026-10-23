@@ -16,6 +16,7 @@ import {
   type AudioWireSettings,
 } from "./llamacpp-wire.js";
 import { loopbackOrigin } from "./loopback.js";
+import { assertNoProxyForLoopback } from "./proxy-guard.js";
 
 export interface LlamaCppOptions {
   /** `http://127.0.0.1:8080`; any other host is refused at construction (AC-027.2). */
@@ -26,6 +27,8 @@ export interface LlamaCppOptions {
   /** A health check that takes longer than this is "offline". */
   readonly healthTimeoutMs?: number;
   readonly fetch?: typeof fetch;
+  /** The environment the proxy check reads; `process.env` unless a test says otherwise. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
@@ -55,6 +58,11 @@ export class LlamaCppAudioClient implements ModelClient {
       throw new NonLoopbackRuntimeError(
         `llama.cpp must be an http URL on 127.0.0.1 or [::1], got ${JSON.stringify(options.baseUrl)}`,
       );
+    }
+    // The global fetch may be routed through an environment proxy; a client given its own fetch
+    // (tests) is not.
+    if (options.fetch === undefined) {
+      assertNoProxyForLoopback("llama.cpp", options.env);
     }
     this.baseUrl = origin;
     this.settings = { model: options.model, temperature: options.temperature ?? 0 };

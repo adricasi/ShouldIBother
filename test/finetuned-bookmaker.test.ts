@@ -323,3 +323,150 @@ describe("main.ts wiring: the bookmaker's Ollama call carries the fine-tuned tag
     ]);
   });
 });
+
+describe("the fine-tuned bookmaker is warmed up and kept honest", () => {
+  const config = parseModelsConfig({
+    models: { e4b: { tag: BASE_TAG }, "e4b-ft": { tag: FT_TAG } },
+  });
+
+  /** An Ollama that can be switched between "everything pulled", "ft not pulled" and "down". */
+  function switchableOllama() {
+    const state = { down: false, ftPulled: true };
+    const loads: string[] = [];
+    const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {
+      if (state.down) {
+        return Promise.reject(new Error("connection refused"));
+      }
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/api/tags") {
+        return Promise.resolve(
+          Response.json({
+            models: [
+              { name: BASE_TAG, digest: "sha256:base" },
+              ...(state.ftPulled ? [{ name: FT_TAG, digest: "sha256:ft" }] : []),
+            ],
+          }),
+        );
+      }
+      const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as {
+        model: string;
+        messages: unknown[];
+      };
+      if (body.messages.length === 0) {
+        loads.push(body.model);
+      }
+      return Promise.resolve(Response.json({ model: body.model, message: { content: "{}" } }));
+    }) as typeof fetch;
+    return { state, loads, fetchImpl };
+  }
+
+  it("the warm-up loads the primary model and then the fine-tuned one, so both stay resident", async () => {
+    const { loads, fetchImpl } = switchableOllama();
+    const selection = await selectModel(config, {
+      useFake: false,
+      fake: () => new FakeModelClient(),
+      finetunedBookmaker: true,
+      fetch: fetchImpl,
+    });
+    const health = await selection.warmUp!();
+    expect(loads).toEqual([BASE_TAG, FT_TAG]);
+    expect(health.state).toBe("online");
+  });
+
+  it("without the flag the warm-up loads the primary model only", async () => {
+    const { loads, fetchImpl } = switchableOllama();
+    const selection = await selectModel(config, {
+      useFake: false,
+      fake: () => new FakeModelClient(),
+      fetch: fetchImpl,
+    });
+    await selection.warmUp!();
+    expect(loads).toEqual([BASE_TAG]);
+  });
+
+  it("a fine-tuned model that is not pulled shows in the warm-up result and the start notice", async () => {
+    const { state, fetchImpl } = switchableOllama();
+    state.ftPulled = false;
+    const selection = await selectModel(config, {
+      useFake: false,
+      fake: () => new FakeModelClient(),
+      finetunedBookmaker: true,
+      fetch: fetchImpl,
+    });
+    expect(selection.notice).toContain(`Fine-tuned bookmaker: ${FT_TAG} is not usable yet`);
+    expect(selection.notice).toContain("is not pulled");
+    const health = await selection.warmUp!();
+    expect(health.state).toBe("online");
+    expect(health.detail).toContain("fine-tuned bookmaker:");
+  });
+
+  it("AC-019.4: a digest unknown at start (Ollama came up later) is learned before the first bookmaker call", async () => {
+    const { state, fetchImpl } = switchableOllama();
+    state.down = true;
+    const selection = await selectModel(config, {
+      useFake: false,
+      fake: () => new FakeModelClient(),
+      finetunedBookmaker: true,
+      fetch: fetchImpl,
+    });
+    state.down = false;
+    const answered = await selection.jobModels["bookmaker"]!.chat({
+      job: "bookmaker",
+      messages: [{ role: "user", content: "x" }],
+      timeoutMs: 1000,
+    });
+    expect(answered).toMatchObject({ model: FT_TAG, modelDigest: "sha256:ft" });
+  });
+});
+
+describe("the status does not read plain online while the fine-tuned bookmaker cannot answer", () => {
+  let harness: CoreHarness | undefined;
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  it("shows a warning on Today and logs one line on the first failure", async () => {
+    const ft = new NamedFakeModel(FT_TAG, "sha256:ft");
+    ft.setHealth("offline");
+    const logLines: string[] = [];
+    harness = await createCoreHarness({
+      weatherProfile: FAKE_WEATHER_PROFILES.mild,
+      runner: { jobModels: { bookmaker: ft } },
+      logLines,
+    });
+    await pair(harness);
+    const gemma = async () =>
+      (await harness!.get("/api/today")).json<{
+        gemma: { status: string; warning?: string };
+      }>().gemma;
+    const first = await gemma();
+    expect(first.status).toBe("online");
+    expect(first.warning).toContain("The fine-tuned bookmaker is not available");
+    expect(first.warning).toContain("rule odds");
+    // Later checks of the same failure do not log again.
+    harness.clock.advance(60_000);
+    expect((await gemma()).warning).toBe(first.warning);
+    const warnings = logLines.filter((line) => line.includes("gemma_model_warning"));
+    expect(warnings).toHaveLength(1);
+
+    // It clears when the model comes back, and a new failure is logged again.
+    ft.setHealth("online");
+    harness.clock.advance(60_000);
+    expect((await gemma()).warning).toBeUndefined();
+    ft.setHealth("offline");
+    harness.clock.advance(60_000);
+    expect((await gemma()).warning).toBeDefined();
+    expect(logLines.filter((line) => line.includes("gemma_model_warning"))).toHaveLength(2);
+  });
+
+  it("shows no warning, and no key at all, when the fine-tuned model is healthy or not in use", async () => {
+    harness = await createCoreHarness({
+      weatherProfile: FAKE_WEATHER_PROFILES.mild,
+      runner: { jobModels: { bookmaker: new NamedFakeModel(FT_TAG, "sha256:ft") } },
+    });
+    await pair(harness);
+    const today = (await harness.get("/api/today")).json<{ gemma: Record<string, unknown> }>();
+    expect("warning" in today.gemma).toBe(false);
+  });
+});

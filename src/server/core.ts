@@ -182,7 +182,17 @@ export function createCore(deps: CoreDeps): Core {
   deps.photos.warn = (message) => {
     logEntry({ event: "photo_warning", message });
   };
-  const status = new GemmaStatusMonitor(deps.model, deps.now);
+  // A job with a model of its own (the fine-tuned bookmaker) shows up in the status when that
+  // model cannot answer, with one log line when it first fails.
+  const bookmakerModel = deps.runner?.jobModels?.["bookmaker"];
+  const status = new GemmaStatusMonitor(deps.model, deps.now, undefined, {
+    ...(bookmakerModel === undefined
+      ? {}
+      : { watched: [{ label: "The fine-tuned bookmaker", model: bookmakerModel }] }),
+    onWarning: (message) => {
+      logEntry({ event: "gemma_model_warning", message });
+    },
+  });
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
   resumeUnguardedCards(ledger);
@@ -228,6 +238,7 @@ export function createCore(deps: CoreDeps): Core {
           status: gemmaStatus.state,
           detail: gemmaStatus.detail ?? null,
           checked_at: new Date(gemmaStatus.checkedAt).toISOString(),
+          ...(gemmaStatus.warning === undefined ? {} : { warning: gemmaStatus.warning }),
         },
         points: { total: pointsTotal(ledger) },
         week: weekSavings(ledger),

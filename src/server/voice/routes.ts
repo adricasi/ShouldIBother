@@ -30,6 +30,9 @@ export interface VoicePreview {
   readonly duration_ms: number;
 }
 
+/** The audio job and the listener on its transcript. */
+const VOICE_JOBS = 2;
+
 const confirmBody = z.object({ chores: listenerOutputSchema.shape.chores }).strict();
 
 function kindOf(deps: Pick<LedgerDeps, "flags">, chore: ListenerChore): VoiceChoreKind {
@@ -83,8 +86,9 @@ export async function previewVoiceNote(deps: LedgerDeps, audio: Buffer): Promise
   const wav = inspectWav(audio);
   let heard;
   try {
-    heard = await runListenerAudio(deps.gemma, audio, {
-      bytes: audio.length,
+    // The model gets the canonical copy, which holds exactly the samples that were measured.
+    heard = await runListenerAudio(deps.gemma, wav.audio, {
+      bytes: wav.audio.length,
       durationMs: wav.durationMs,
     });
   } catch (error) {
@@ -130,7 +134,9 @@ export function voiceRoutes(deps: LedgerDeps): FastifyPluginAsync {
       if (!request.isMultipart()) {
         throw new HttpError(415, "Send the voice note as a multipart upload");
       }
-      assertGemmaCapacity(deps);
+      // Two jobs run back to back (the note, then its transcript): refuse before the upload is
+      // read rather than after the audio job ran.
+      assertGemmaCapacity(deps, VOICE_JOBS);
       return reply.send(await previewVoiceNote(deps, await readVoiceNote(request)));
     });
 

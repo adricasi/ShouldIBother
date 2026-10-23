@@ -80,6 +80,7 @@ export async function startServer(
       useFake: env["SIB_FAKE_MODEL"] === "1",
       fake: () => fakes.model,
       voice: flags.voice,
+      env,
       finetunedBookmaker: flags.finetunedBookmaker,
     });
     modelNotice = selection.notice;

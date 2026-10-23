@@ -60,6 +60,21 @@ interface Preview {
 const cardCount = (h: CoreHarness): number =>
   h.db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM cards").get()!.n;
 
+class RecordingAudioRuntime implements ModelClient {
+  readonly calls: ChatRequest[] = [];
+  chat(request: ChatRequest): Promise<ChatResponse> {
+    this.calls.push(request);
+    return Promise.resolve({
+      content: JSON.stringify({ status: "ok", transcript: "water the plants" }),
+      toolCalls: [],
+      model: "audio-runtime",
+    });
+  }
+  health(): Promise<ModelHealth> {
+    return Promise.resolve({ state: "online" });
+  }
+}
+
 const audioCalls = (model: FakeModelClient): ChatRequest[] =>
   model.calls.filter((call) => call.job === "listener-audio");
 
@@ -189,23 +204,8 @@ describe("AC-027.1: the transcript is shown with chores highlighted before any c
 });
 
 describe("AC-027.2: audio goes only to the local runtime", () => {
-  class RecordingRuntime implements ModelClient {
-    readonly calls: ChatRequest[] = [];
-    chat(request: ChatRequest): Promise<ChatResponse> {
-      this.calls.push(request);
-      return Promise.resolve({
-        content: JSON.stringify({ status: "ok", transcript: "water the plants" }),
-        toolCalls: [],
-        model: "audio-runtime",
-      });
-    }
-    health(): Promise<ModelHealth> {
-      return Promise.resolve({ state: "online" });
-    }
-  }
-
   it("sends the audio to the audio job's runtime only, never to the primary model", async () => {
-    const audioRuntime = new RecordingRuntime();
+    const audioRuntime = new RecordingAudioRuntime();
     const { h, model } = await setup({ runner: { jobModels: { "listener-audio": audioRuntime } } });
     const wav = syntheticWav({ seconds: 0.5 });
     expect((await upload(h, wav)).statusCode).toBe(200);
@@ -281,6 +281,39 @@ describe("limits on the upload", () => {
     const notMultipart = await h.post("/api/voice/transcript", { audio: "x" });
     expect(notMultipart.statusCode).toBe(415);
     expect(model.calls).toHaveLength(0);
+  });
+});
+
+describe("the model hears only what was measured", () => {
+  it("AC-027.2: sends a canonical WAV without the chunks and bytes that trail the data", async () => {
+    const audioRuntime = new RecordingAudioRuntime();
+    const { h } = await setup({ runner: { jobModels: { "listener-audio": audioRuntime } } });
+    const wav = syntheticWav({ seconds: 1 });
+    const trailing = Buffer.concat([
+      Buffer.from("LIST"),
+      Buffer.alloc(4, 0xff),
+      Buffer.alloc(50_000),
+    ]);
+    const response = await upload(h, Buffer.concat([wav, trailing]));
+    expect(response.statusCode).toBe(200);
+    expect(audioRuntime.calls).toHaveLength(1);
+    expect(Buffer.from(audioRuntime.calls[0]!.audio![0]!).equals(wav)).toBe(true);
+    const row = h.db
+      .prepare<[], { input_summary: string }>(
+        "SELECT input_summary FROM gemma_decisions WHERE job = 'listener-audio'",
+      )
+      .get();
+    expect(row?.input_summary).toContain(`${wav.length} bytes`);
+  });
+});
+
+describe("room for both jobs", () => {
+  it("answers 503 busy before reading the note when the queue cannot take the audio job and the listener", async () => {
+    const { h, model } = await setup({ runner: { maxQueued: 1 } });
+    const response = await upload(h, syntheticWav());
+    expect(response.statusCode).toBe(503);
+    expect(response.json<{ title: string }>().title).toBe("Gemma is busy");
+    expect(model.calls).toEqual([]);
   });
 });
 

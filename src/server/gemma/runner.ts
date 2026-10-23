@@ -260,6 +260,11 @@ export class JobRunner {
     }
   }
 
+  /** True when `jobs` more jobs fit in the queue now (a flow that runs several in a row). */
+  hasRoom(jobs: number): boolean {
+    return this.pending + jobs <= this.maxQueued;
+  }
+
   /** True when a new job would be refused (the queue holds `maxQueued` jobs already). */
   get full(): boolean {
     return this.pending >= this.maxQueued;

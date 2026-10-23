@@ -238,7 +238,10 @@ the laptop sends it to **Gemma 4 audio on a second local server, llama.cpp** (Ol
 audio is unreliable on NVIDIA, ADR-0004), shows the transcript with the weather chores
 highlighted, and makes the cards only when you tap "See odds for N chores". The audio goes only
 to `127.0.0.1`, is held in memory for the request and is never written to disk, logged or put in
-git; the decision log keeps its length and a hash.
+git. The decision log keeps the voice note's length, size and a hash, and not the transcript; the
+listener that reads the transcript still stores the chore labels it finds, as it does for typed
+capture. Set `NO_PROXY=127.0.0.1,localhost,::1` if you run Node with `NODE_USE_ENV_PROXY=1` and a
+proxy: the app refuses to start its model clients otherwise, so nothing local goes through a proxy.
 
 The flag is off by default; with it off there is no mic button, no route and no mention of voice
 in the privacy line. It needs two things on top of the normal setup:
@@ -256,9 +259,13 @@ in the privacy line. It needs two things on top of the normal setup:
    app: the mic then says "Voice is offline" until it answers. The request format the app speaks
    is **unverified** until you run it against your server: it is all in
    `src/server/model/llamacpp-wire.ts` (`TODO(builder): verify against llama.cpp server docs`).
-   Memory: Ollama's E4B and llama.cpp's audio model are two copies on one GPU, so unload one
-   (`ollama stop`) if it runs out of VRAM. Fallback stated in the post, not built: whisper.cpp for
-   the transcript, with the same listener after it.
+   Memory: Ollama's E4B and llama.cpp's audio model are two copies on one GPU. To keep Ollama's
+   models resident, start Ollama with `OLLAMA_MAX_LOADED_MODELS=2` (or more) and keep
+   `ollama.keepAlive` long (default `24h`); llama.cpp keeps its model loaded while it runs. If
+   the GPU runs out of VRAM, unload one (`ollama stop`) and expect the other to be reloaded on use.
+   TODO(builder): measure a voice note end to end with both loaded; each of its two jobs has its
+   own 45 s deadline from enqueue. Fallback stated in the post, not built: whisper.cpp for the
+   transcript, with the same listener after it.
 2. **HTTPS for the phone.** Browsers give the microphone only to secure pages, so over plain HTTP
    on the Wi-Fi the mic button is hidden and typed capture is all there is. Use
    [Tailscale Serve](#optional-https-with-tailscale-serve) and open the app from its `https://`
@@ -304,7 +311,7 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 
 | Flag | Default | What it does when on |
 |---|---|---|
-| `finetunedBookmaker` | off | The bookmaker job uses the fine-tuned E4B at `models.e4b-ft` in `config/models.json` (the same key `sib backtest` uses); the listener, inspector, judge and the other jobs stay on the primary model. With no `e4b-ft` entry nothing changes and the start notice says so. Each decision and each bet records the model that priced it. Two E4B models do not both fit in 8 GB of VRAM: expect Ollama to swap them between jobs (TODO(builder): measure it, and state here whether the adapter ships) |
+| `finetunedBookmaker` | off | The bookmaker job uses the fine-tuned E4B at `models.e4b-ft` in `config/models.json` (the same key `sib backtest` uses); the listener, inspector, judge and the other jobs stay on the primary model. With no `e4b-ft` entry nothing changes and the start notice says so. Each decision and each bet records the model that priced it. The warm-up at start loads both models, one after the other, with `ollama.keepAlive`. Two E4B models may not both fit in 8 GB of VRAM; to keep both resident start Ollama with `OLLAMA_MAX_LOADED_MODELS=2` (or more) and keep `ollama.keepAlive` long, otherwise Ollama swaps them between jobs. TODO(builder): measure the 45 s job deadline with both loaded (a swap counts against it), and state here whether the adapter ships. A fine-tuned model that is not pulled shows as a warning under "Gemma is online" on Today (cards use rule odds) and as one log line |
 | `safetyGuard` | off | Gemma safety guard on every card; an alert withdraws open bets on the card (the fixed heat/frost/storm backstop works without it) |
 | `laundryTonight` | off | The "laundry tonight" chore, offered from one hour before sunset to two hours after |
 | `score` | off | The Score screen: points, savings, judge overrule rate and Gemma-vs-rule calibration with N |

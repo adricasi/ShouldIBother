@@ -280,6 +280,8 @@ export const todaySchema = z.object({
     status: z.enum(["online", "waking", "offline"]),
     detail: z.string().nullable(),
     checked_at: z.string(),
+    /** A model one job depends on cannot answer (the fine-tuned bookmaker): cards use rule odds. */
+    warning: z.string().optional(),
   }),
   /** The forecast behind the odds: when it was fetched and how old that is (AC-014.3). */
   forecast: z

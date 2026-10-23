@@ -53,11 +53,27 @@ export function createBrowserRecorder(): VoiceRecorder {
   let chunks: Blob[] = [];
   /** Bumped by every start and cancel: a start that finds it changed was superseded. */
   let generation = 0;
+  /** The `stop()` waiting for the recorder to finish, so a recorder error can settle it. */
+  let failStop: ((error: Error) => void) | undefined;
 
+  /** Gives everything back: the recorder, the meter, the animation frame and the microphone. */
   const release = (): void => {
     if (frame !== undefined) {
       cancelAnimationFrame(frame);
       frame = undefined;
+    }
+    if (recorder !== undefined) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      if (recorder.state !== "inactive") {
+        recorder.onstop = null;
+        try {
+          recorder.stop();
+        } catch {
+          // Already stopping: nothing left to release.
+        }
+      }
+      recorder = undefined;
     }
     stream?.getTracks().forEach((track) => {
       track.stop();
@@ -69,6 +85,8 @@ export function createBrowserRecorder(): VoiceRecorder {
 
   return {
     async start(onLevel) {
+      // A start after a failed or abandoned one must not inherit its microphone.
+      release();
       generation += 1;
       const mine = generation;
       let granted: MediaStream;
@@ -86,24 +104,36 @@ export function createBrowserRecorder(): VoiceRecorder {
       }
       stream = granted;
       chunks = [];
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-      recorder.start();
-      meter = new AudioContext();
-      const analyser = meter.createAnalyser();
-      analyser.fftSize = 1024;
-      meter.createMediaStreamSource(stream).connect(analyser);
-      const samples = new Float32Array(analyser.fftSize);
-      const tick = (): void => {
-        analyser.getFloatTimeDomainData(samples);
-        onLevel(levelOf(samples));
-        frame = requestAnimationFrame(tick);
-      };
-      tick();
+      try {
+        recorder = new MediaRecorder(granted);
+        recorder.ondataavailable = (event: BlobEvent) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        recorder.onerror = () => {
+          const settle = failStop;
+          failStop = undefined;
+          release();
+          settle?.(new Error("The recording failed"));
+        };
+        recorder.start();
+        meter = new AudioContext();
+        const analyser = meter.createAnalyser();
+        analyser.fftSize = 1024;
+        meter.createMediaStreamSource(granted).connect(analyser);
+        const samples = new Float32Array(analyser.fftSize);
+        const tick = (): void => {
+          analyser.getFloatTimeDomainData(samples);
+          onLevel(levelOf(samples));
+          frame = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (error) {
+        // The microphone was granted but the setup failed: do not keep it open.
+        release();
+        throw error;
+      }
     },
 
     stop() {
@@ -112,7 +142,9 @@ export function createBrowserRecorder(): VoiceRecorder {
         return Promise.reject(new Error("Not recording"));
       }
       return new Promise<Blob>((resolve, reject) => {
+        failStop = reject;
         active.onstop = () => {
+          failStop = undefined;
           const recording = new Blob(chunks, { type: active.mimeType });
           chunks = [];
           release();
@@ -124,13 +156,11 @@ export function createBrowserRecorder(): VoiceRecorder {
 
     cancel() {
       generation += 1;
-      if (recorder !== undefined && recorder.state !== "inactive") {
-        recorder.onstop = null;
-        recorder.stop();
-      }
-      recorder = undefined;
+      const settle = failStop;
+      failStop = undefined;
       chunks = [];
       release();
+      settle?.(new Error("The recording was cancelled"));
     },
   };
 }
