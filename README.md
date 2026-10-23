@@ -85,7 +85,8 @@ entry in `models` that the app runs on, and `sib start` refuses to start if that
 }
 ```
 
-The `ollama`, `llamaCpp` (voice only, below), `gemma.toolUse` and `gemma.answerMode` keys in the
+The optional `models.e4b-ft` entry (same shape as `e4b`) names the fine-tuned bookmaker for the
+`finetunedBookmaker` flag. The `ollama`, `llamaCpp` (voice only, below), `gemma.toolUse` and `gemma.answerMode` keys in the
 same file already have working defaults. The digest is the reference for anyone comparing results; the backtest refuses to run if
 the pulled model's digest differs from the configured one. There is no script that pulls or
 verifies the models yet: compare `ollama list` with the table above by hand.
@@ -303,7 +304,7 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 
 | Flag | Default | What it does when on |
 |---|---|---|
-| `finetunedBookmaker` | off | Reserved for the fine-tuned E4B bookmaker (REQ-019). TODO(builder): nothing on `main` reads it yet; state here whether the adapter ships |
+| `finetunedBookmaker` | off | The bookmaker job uses the fine-tuned E4B at `models.e4b-ft` in `config/models.json` (the same key `sib backtest` uses); the listener, inspector, judge and the other jobs stay on the primary model. With no `e4b-ft` entry nothing changes and the start notice says so. Each decision and each bet records the model that priced it. Two E4B models do not both fit in 8 GB of VRAM: expect Ollama to swap them between jobs (TODO(builder): measure it, and state here whether the adapter ships) |
 | `safetyGuard` | off | Gemma safety guard on every card; an alert withdraws open bets on the card (the fixed heat/frost/storm backstop works without it) |
 | `laundryTonight` | off | The "laundry tonight" chore, offered from one hour before sunset to two hours after |
 | `score` | off | The Score screen: points, savings, judge overrule rate and Gemma-vs-rule calibration with N |

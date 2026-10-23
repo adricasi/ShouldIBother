@@ -1,5 +1,5 @@
 {
-  "_comment": "Placeholder until T-001/T-010 pin the Ollama tags and digests. models.<key> = {tag, quantization, digest}; primary names the one the app uses. With no model for primary, or no Ollama answering on 127.0.0.1, `sib start` uses the fake model and says so. gemma.toolUse: native | injected (the T-001 fallback: the app fetches the forecast and passes it as the tool result). gemma.answerMode: single_call | two_step. llamaCpp: the llama.cpp server that hears the voice notes (flag `voice`), 127.0.0.1 only.",
+  "_comment": "Placeholder until T-001/T-010 pin the Ollama tags and digests. models.<key> = {tag, quantization, digest}; primary names the one the app uses. With no model for primary, or no Ollama answering on 127.0.0.1, `sib start` uses the fake model and says so. gemma.toolUse: native | injected (the T-001 fallback: the app fetches the forecast and passes it as the tool result). gemma.answerMode: single_call | two_step. models.e4b-ft (optional, same shape): the fine-tuned bookmaker, used only while the finetunedBookmaker flag is on. llamaCpp: the llama.cpp server that hears the voice notes (flag `voice`), 127.0.0.1 only.",
   "primary": "e4b",
   "ollama": { "baseUrl": "http://127.0.0.1:11434", "keepAlive": "24h", "temperature": 0 },
   "llamaCpp": { "baseUrl": "http://127.0.0.1:8080", "model": "gemma4-audio" },

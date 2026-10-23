@@ -84,6 +84,20 @@ export function loadModelsConfig(path: string = DEFAULT_MODELS_PATH): ModelsConf
   return parseModelsConfig(existsSync(path) ? readJsonFile(path) : {});
 }
 
+/**
+ * The key in `models` of the fine-tuned E4B bookmaker (ADR-0006): the same key the backtest uses
+ * for its `e4b-ft` strategy, so one entry serves the evaluation and the live app.
+ */
+export const FINETUNED_MODEL_KEY = "e4b-ft";
+
+/**
+ * The Ollama tag of the fine-tuned bookmaker, or undefined while `config/models.json` has no
+ * `models.e4b-ft` entry (training has not produced one yet).
+ */
+export function finetunedModelTag(config: ModelsConfig): string | undefined {
+  return config.models[FINETUNED_MODEL_KEY]?.tag;
+}
+
 /** The Ollama tag of the primary model, or undefined while `config/models.json` names none. */
 export function primaryModelTag(config: ModelsConfig): string | undefined {
   return config.models[config.primary]?.tag;

@@ -1,5 +1,10 @@
 import type { ModelClient, ModelHealth } from "./client.js";
-import { primaryModelTag, type ModelsConfig } from "./config.js";
+import {
+  FINETUNED_MODEL_KEY,
+  finetunedModelTag,
+  primaryModelTag,
+  type ModelsConfig,
+} from "./config.js";
 import { LISTENER_AUDIO_JOB } from "../gemma/listener-audio.js";
 import { LlamaCppAudioClient } from "./llamacpp.js";
 import { OllamaClient } from "./ollama.js";
@@ -11,8 +16,9 @@ export interface ModelSelection {
   readonly notice: string;
   /**
    * Runtimes for single jobs (by job name), used instead of `model`: the llama.cpp audio client
-   * for the voice job while the `voice` flag is on. Empty on the fake model, which answers every
-   * job from fixtures.
+   * for the voice job while the `voice` flag is on, and the fine-tuned model for the bookmaker
+   * while `finetunedBookmaker` is on and `models.e4b-ft` exists. Empty on the fake model, which
+   * answers every job from fixtures.
    */
   readonly jobModels: Readonly<Partial<Record<string, ModelClient>>>;
   /** Loads the real model in the background (`ollama` mode only); never throws. */
@@ -27,6 +33,11 @@ export interface SelectOptions {
   readonly useFake: boolean;
   /** Builds the fake model; only called when `useFake` is true. */
   readonly fake: () => ModelClient;
+  /**
+   * Flag `finetunedBookmaker`: the bookmaker job uses the model at `models.e4b-ft` when the
+   * config has one (REQ-019). Every other job keeps the primary model. Ignored on the fake model.
+   */
+  readonly finetunedBookmaker?: boolean;
   /** Flag `voice`: also set up the llama.cpp audio client (REQ-027). Ignored on the fake model. */
   readonly voice?: boolean;
   readonly fetch?: typeof fetch;
@@ -77,17 +88,58 @@ export async function selectModel(
   });
   const health = await client.health();
   const where = `${tag} on Ollama at ${config.ollama.baseUrl}`;
+  const finetuned =
+    options.finetunedBookmaker === true ? await setUpFinetuned(config, options.fetch) : undefined;
   const voice = options.voice === true ? await setUpVoice(config, options.fetch) : undefined;
-  const notice =
+  const notices = [
     health.state === "offline"
       ? `Gemma: ${where} is not usable yet (${health.detail ?? "no answer"}). Cards show rule odds and "Gemma offline" until it is; settlements wait.`
-      : `Gemma: ${where}, loading it now (keep_alive ${String(config.ollama.keepAlive)}).`;
+      : `Gemma: ${where}, loading it now (keep_alive ${String(config.ollama.keepAlive)}).`,
+    ...(finetuned === undefined ? [] : [finetuned.notice]),
+    ...(voice === undefined ? [] : [voice.notice]),
+  ];
   return {
     model: client,
     mode: "ollama",
-    jobModels: voice === undefined ? {} : { [LISTENER_AUDIO_JOB]: voice.client },
-    notice: voice === undefined ? notice : `${notice}\n${voice.notice}`,
+    jobModels: {
+      ...(finetuned?.client === undefined ? {} : { bookmaker: finetuned.client }),
+      ...(voice === undefined ? {} : { [LISTENER_AUDIO_JOB]: voice.client }),
+    },
+    notice: notices.join("\n"),
     warmUp: () => client.warmUp(),
+  };
+}
+
+/**
+ * The fine-tuned bookmaker (flag `finetunedBookmaker`): a second Ollama client on the tag at
+ * `models.e4b-ft`. With no such entry nothing changes, and the notice says why.
+ */
+async function setUpFinetuned(
+  config: ModelsConfig,
+  fetchImpl: typeof fetch | undefined,
+): Promise<{ client: ModelClient | undefined; notice: string }> {
+  const tag = finetunedModelTag(config);
+  if (tag === undefined) {
+    return {
+      client: undefined,
+      notice: `Fine-tuned bookmaker: the flag is on but config/models.json has no models.${FINETUNED_MODEL_KEY}.tag, so the bookmaker uses ${primaryModelTag(config) ?? "the primary model"}.`,
+    };
+  }
+  const client = new OllamaClient({
+    baseUrl: config.ollama.baseUrl,
+    model: tag,
+    keepAlive: config.ollama.keepAlive,
+    temperature: config.ollama.temperature,
+    ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
+  });
+  // Learns the digest, so each bet it prices records the exact model version (AC-019.4).
+  const health = await client.health();
+  return {
+    client,
+    notice:
+      health.state === "offline"
+        ? `Fine-tuned bookmaker: ${tag} is not usable yet (${health.detail ?? "no answer"}). Cards show rule odds until it is.`
+        : `Fine-tuned bookmaker: ${tag} prices the cards; every other job stays on the primary model.`,
   };
 }
 

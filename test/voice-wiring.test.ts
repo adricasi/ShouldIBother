@@ -1,5 +1,4 @@
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +10,7 @@ import { startServer, type RunningServer } from "../src/server/main.js";
 
 import { LOCAL_ORIGIN, cookieHeaderFrom } from "./helpers.js";
 import { syntheticWav } from "./support/audio.js";
+import { startFakeRuntime, type FakeRuntime } from "./support/fake-runtime.js";
 import { multipartBody } from "./support/photos.js";
 
 /*
@@ -32,42 +32,9 @@ async function freePort(): Promise<number> {
   });
 }
 
-interface Fake {
-  readonly server: Server;
-  readonly port: number;
-  readonly bodies: string[];
-  readonly urls: string[];
-}
-
-async function fakeRuntime(answer: (url: string) => unknown): Promise<Fake> {
-  const bodies: string[] = [];
-  const urls: string[] = [];
-  const server = createHttpServer((request, response) => {
-    const chunks: Buffer[] = [];
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => {
-      urls.push(`${request.method ?? ""} ${request.url ?? ""}`);
-      bodies.push(Buffer.concat(chunks).toString("utf8"));
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify(answer(request.url ?? "")));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { server, port: (server.address() as AddressInfo).port, bodies, urls };
-}
-
-const close = (fake: Fake | undefined): Promise<void> =>
-  new Promise((resolve) => {
-    fake?.server.closeAllConnections();
-    fake?.server.close(() => {
-      resolve();
-    });
-    if (fake === undefined) resolve();
-  });
-
 let dir: string;
-let ollama: Fake | undefined;
-let llama: Fake | undefined;
+let ollama: FakeRuntime | undefined;
+let llama: FakeRuntime | undefined;
 let running: RunningServer | undefined;
 
 beforeEach(() => {
@@ -76,8 +43,8 @@ beforeEach(() => {
 afterEach(async () => {
   await running?.close();
   running = undefined;
-  await close(ollama);
-  await close(llama);
+  await ollama?.close();
+  await llama?.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -94,7 +61,7 @@ function configure(models: Record<string, unknown>, flags: Record<string, boolea
 
 describe("voice on the real runtime path", () => {
   it("AC-027.2: the note goes to llama.cpp on 127.0.0.1 and only the transcript text goes to Ollama", async () => {
-    ollama = await fakeRuntime((url) =>
+    ollama = await startFakeRuntime((url) =>
       url === "/api/tags"
         ? { models: [{ name: "gemma4:e4b", digest: "sha256:synthetic" }] }
         : {
@@ -107,7 +74,7 @@ describe("voice on the real runtime path", () => {
             },
           },
     );
-    llama = await fakeRuntime((url) =>
+    llama = await startFakeRuntime((url) =>
       url === "/health"
         ? { status: "ok" }
         : {
@@ -184,7 +151,7 @@ describe("voice on the real runtime path", () => {
   });
 
   it("AC-027.2: a llamaCpp.baseUrl that is not on this laptop stops the app from starting", async () => {
-    ollama = await fakeRuntime(() => ({ models: [] }));
+    ollama = await startFakeRuntime(() => ({ models: [] }));
     const configDir = configure(
       {
         primary: "e4b",
@@ -207,10 +174,10 @@ describe("voice on the real runtime path", () => {
   });
 
   it("with the voice flag off no llama.cpp client is built and nothing is asked of it", async () => {
-    ollama = await fakeRuntime((url) =>
+    ollama = await startFakeRuntime((url) =>
       url === "/api/tags" ? { models: [{ name: "gemma4:e4b" }] } : { message: { content: "{}" } },
     );
-    llama = await fakeRuntime(() => ({}));
+    llama = await startFakeRuntime(() => ({}));
     const configDir = configure(
       {
         primary: "e4b",
