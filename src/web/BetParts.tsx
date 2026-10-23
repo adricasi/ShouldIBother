@@ -232,22 +232,17 @@ export function SettledLine({
         <span className="meta">
           {formatOdds(bet.band_name, bet.odds)} · {bet.receipt.verdict_title}
         </span>
-        <details className="receipt-details">
-          <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
-          <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
-          {onAppeal === undefined ? null : (
-            <AppealAction
-              receipt={bet.receipt}
-              busy={busy}
-              working={appealing}
-              onAppeal={onAppeal}
-            />
-          )}
-        </details>
       </div>
       <span className={`line-points ${bet.result.points < 0 ? "minus" : "plus"}`}>
         {formatPoints(bet.result.points)}
       </span>
+      <details className="receipt-details">
+        <summary>{bet.receipt.outcome === "paid_out" ? "Receipt" : "Result"}</summary>
+        <ReceiptCard receipt={bet.receipt} animateStamp={animateStamp} />
+        {onAppeal === undefined ? null : (
+          <AppealAction receipt={bet.receipt} busy={busy} working={appealing} onAppeal={onAppeal} />
+        )}
+      </details>
     </li>
   );
 }

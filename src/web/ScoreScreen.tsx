@@ -10,6 +10,7 @@ import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { Achievements, RankHero } from "./RankParts.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
+import { Icon } from "./ui/Icon.js";
 import { ErrorState, LoadingState } from "./ui/States.js";
 
 export interface ScoreScreenProps {
@@ -98,18 +99,22 @@ function SavingsTiles({ savings }: { readonly savings: Score["savings"] }) {
       </h2>
       <dl className="stat-tiles score-tiles">
         <div>
+          <Icon name="check" />
           <dt>Chores skipped</dt>
           <dd>{savings.wins}</dd>
         </div>
         <div>
+          <Icon name="drop" />
           <dt>Water</dt>
           <dd>{formatLitres(savings.water_l)}</dd>
         </div>
         <div>
+          <Icon name="bolt" />
           <dt>Electricity</dt>
           <dd>{formatKwh(savings.electricity_kwh)}</dd>
         </div>
         <div>
+          <Icon name="clock" />
           <dt>Net time back</dt>
           <dd>{formatNetDuration(savings.net_time_s)}</dd>
         </div>
@@ -160,8 +165,26 @@ function JudgeLine({ judge }: { readonly judge: Score["judge"] }) {
   );
 }
 
+/**
+ * The sentence over the chart (mockup 08): the band Gemma used most that has enough bets to say
+ * anything, with how often doing nothing worked there and the N behind it. Undefined when no band
+ * has five bets yet, so a shaky share never becomes a headline (AC-020.3).
+ */
+export function calibrationHeadline(bands: readonly CalibrationBand[]): string | undefined {
+  const best = bands
+    .filter((band) => !band.too_few && band.actual_pct !== null)
+    .reduce<CalibrationBand | undefined>(
+      (most, band) => (most === undefined || band.n > most.n ? band : most),
+      undefined,
+    );
+  return best === undefined
+    ? undefined
+    : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
+}
+
 function Calibration({ calibration }: { readonly calibration: Score["calibration"] }) {
   const { lucky_wins: lucky } = calibration;
+  const headline = calibrationHeadline(calibration.gemma);
   return (
     <section aria-labelledby="honest-title">
       <h2 id="honest-title" className="section-title">
@@ -171,6 +194,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
         <p className="empty">{SCORE_EMPTY_TEXT}</p>
       ) : (
         <>
+          {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
             worked. Every win counts, lucky wins included. A band needs 5 bets before it says

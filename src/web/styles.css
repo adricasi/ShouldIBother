@@ -12,6 +12,8 @@
   /* Token proposals from the mockups: the big figures of Today and Score, the odds tile's band word. */
   --text-figure: 28px;
   --text-display: 42px;
+  --text-jumbo: 88px;
+  --tear-color: var(--color-card);
   --text-micro: 10px;
   --fab-width: calc(var(--space-6) * 3);
   --fab-lift: var(--space-5);
@@ -347,12 +349,13 @@ h3 {
   margin-bottom: calc(var(--space-4) + var(--tear-size));
 }
 
-.slip.ticket::after {
+.slip.ticket::after,
+.receipt::after {
   content: "";
   position: absolute;
   inset: 100% 0 auto;
   height: var(--tear-size);
-  background: conic-gradient(from 135deg at top, var(--color-card) 90deg, transparent 0);
+  background: conic-gradient(from 135deg at top, var(--tear-color) 90deg, transparent 0);
   background-size: calc(var(--tear-size) * 2) var(--tear-size);
 }
 
@@ -968,23 +971,22 @@ label.button.disabled {
   padding: var(--space-2) var(--space-3);
 }
 
+/* A receipt is paper like the slip: straight sides, a torn bottom edge (mockup 07). */
 .receipt {
+  position: relative;
   background: var(--color-card);
-  border: var(--border-hair) dashed var(--color-line);
   border-radius: 0;
-  padding: var(--space-4);
+  padding: var(--space-5) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: calc(var(--space-4) + var(--tear-size));
 }
 
-.receipt.paid {
-  border: var(--border-strong) solid var(--color-leaf);
-}
-
-.receipt.plain {
-  border-color: var(--color-ink-3-text);
+/* Inside a Slips row the paper is the card's own colour, so the receipt is the darker sheet. */
+.receipt-details .receipt {
+  --tear-color: var(--color-paper);
+  background: var(--color-paper);
 }
 
 .receipt-head {
@@ -994,8 +996,14 @@ label.button.disabled {
   gap: var(--space-3);
 }
 
+.receipt-head h3 {
+  font-size: var(--text-display);
+}
+
 .receipt-head .stamp {
   flex: none;
+  font-size: var(--text-figure);
+  border-width: 3px;
 }
 
 .receipt-total {
@@ -1015,8 +1023,8 @@ label.button.disabled {
 .receipt-figure {
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: var(--text-hero);
-  line-height: 1;
+  font-size: var(--text-jumbo);
+  line-height: 0.9;
 }
 
 .receipt-total.plus .receipt-figure {
@@ -1097,8 +1105,6 @@ label.button.disabled {
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
-  border-bottom: var(--border-hair) dashed var(--color-line);
-  padding-bottom: var(--space-2);
 }
 
 .receipt-rows dt {
@@ -1112,6 +1118,9 @@ label.button.disabled {
 .receipt-rows dd {
   margin: 0;
   text-align: right;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-small);
 }
 
 .receipt-rows .chips-static {
@@ -1180,10 +1189,16 @@ label.button.disabled {
 }
 
 .settled-line {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
+}
+
+/* The receipt opens across the whole row, not beside the tile. */
+.settled-line > .receipt-details {
+  grid-column: 1 / -1;
 }
 
 .settled-line + .settled-line {
@@ -1215,14 +1230,37 @@ label.button.disabled {
   text-decoration: underline;
 }
 
+/* Score tiles (mockup 08): four outlined tiles, an icon, the figure big, the label small. */
 .score-tiles {
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
 .score-tiles > div {
-  flex: 1 1 40%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  background: var(--color-card);
+  border: var(--border-hair) solid var(--color-ink);
+  border-radius: var(--radius-xs);
+  padding: var(--space-4);
+}
+
+.score-tiles dd {
+  order: 1;
+  font-size: var(--text-figure);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.score-tiles dt {
+  order: 2;
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  text-transform: none;
+  color: var(--color-ink-2);
 }
 
 .calibration {
@@ -1373,20 +1411,38 @@ label.button.disabled {
   color: var(--color-coral);
 }
 
-/* Rank hero and achievements on Score (REQ-025). */
+/* Rank hero and achievements on Score (REQ-025): the rank is a dark card, as in mockup 08. */
 .rank-hero {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  background: var(--color-leaf-soft);
+  background: var(--color-ink);
+  color: var(--color-card);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  padding: var(--space-5) var(--space-4);
 }
 
-/* ink-3-text is 4.39:1 on leaf-soft; the hero's small text uses ink-2 (checked in web-styles.test.ts). */
-.rank-hero .eyebrow,
+.rank-hero .eyebrow {
+  color: var(--color-sun);
+}
+
 .rank-hero .meta {
-  color: var(--color-ink-2);
+  color: var(--color-line);
+}
+
+.rank-points {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-hero);
+  line-height: 1;
+  color: var(--color-sun);
+}
+
+.rank-points span {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--text-small);
+  color: var(--color-card);
 }
 
 .rank-name {
@@ -1404,29 +1460,44 @@ label.button.disabled {
   background: var(--color-card);
 }
 
+.rank-hero .bar-fill {
+  background: var(--color-sun);
+}
+
 .achievements {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
 .achievements li {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  background: var(--color-card);
-  border-radius: var(--radius-md);
   padding: var(--space-3);
+  min-width: 0;
 }
 
-.achievements li.unlocked .icon {
-  color: var(--color-leaf);
+/* An unlocked achievement is a sun disc; a locked one is a dashed ring with a lock. */
+.badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(var(--space-6) * 2);
+  height: calc(var(--space-6) * 2);
+  border-radius: var(--radius-pill);
 }
 
-.achievements li.locked .icon {
+.achievements li.unlocked .badge {
+  background: var(--color-sun);
+  color: var(--color-ink);
+}
+
+.achievements li.locked .badge {
+  border: var(--border-strong) dashed var(--color-ink-3);
   color: var(--color-ink-3-text);
 }
 
@@ -1434,4 +1505,13 @@ label.button.disabled {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
+}
+
+.calibration-headline {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-figure);
+  line-height: 1.05;
+  text-transform: uppercase;
 }

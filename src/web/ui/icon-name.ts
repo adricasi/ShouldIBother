@@ -1,6 +1,7 @@
 /** The names of the icons the app draws (the glyphs are mapped in `Icon.tsx`). */
 export type IconName =
   | "arrow"
+  | "bolt"
   | "camera"
   | "check"
   | "clock"

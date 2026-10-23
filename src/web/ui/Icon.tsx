@@ -16,6 +16,7 @@ import {
   TriangleAlert,
   Trophy,
   Wind,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ import type { IconName } from "./icon-name.js";
 /** The Lucide glyphs the app uses (design-handoff §2, Icons): one place to add or swap one. */
 const GLYPHS = {
   arrow: ArrowRight,
+  bolt: Zap,
   camera: Camera,
   check: Check,
   clock: Clock,
