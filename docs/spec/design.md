@@ -72,7 +72,7 @@ flowchart LR
 | Ledger | Cards, quotes, bets, decisions, settlement state machine, points (pure), savings (pure, from a snapshot taken at bet time) | TypeScript + better-sqlite3 (transactions) | REQ-006–011, 016, 021–025 |
 | Scheduler | Every 60 s: mark due bets, fetch recorded weather (retry 30 min), auto-settle after 24 h, retry `awaiting_gemma` (a failed bet waits 2 min before the next try), rescue checks every 30 min (flagged); all state in SQLite, so restart-safe | `setInterval` in the server process | REQ-007, 008, 014, 022; NFR-003 |
 | Feature flags | `config/flags.json`; off by default; disabled features have no UI entry and no route | Fastify plugin registration per flag | REQ-029 |
-| CLI | `sib pair` · `sib forget-devices` · `sib delete-photos [--all-data]` · `sib export <dir>` · `sib snapshot` · `sib dataset` · `sib backtest` · `sib eval <job>` | Node bin entry (`src/cli.ts`) | REQ-001, 015, 018, 019 |
+| CLI | `sib pair` · `sib forget-devices` · `sib delete-photos [--all-data]` · `sib export <dir>` · `sib snapshot` · `sib dataset` · `sib backtest` · `sib eval <job>` · `sib flags` · `sib demo` | Node bin entry (`src/cli.ts`) | REQ-001, 015, 018, 019, 029 |
 | Backtest + eval | Replays Apr–Oct 2026: decisions at each chore's fixed decision time from Previous Runs day-1-lead forecasts (fallback Historical Forecast, labelled "short-lead"), outcomes from the outcome labels on the archive; runs rule, fixed routine, E2B, E4B base; the fine-tuned column comes from the hold-out evaluation (T-014); headline numbers on Sep–Oct; resumable, paused from 07:00; writes report + calibration + the fine-tune JSONL. As built (T-015): a skip is a band of "likely" (70%) or better for the rule and for Gemma; calibration covers every priced day; the fixed routine and the AC and heater seasons are invented (water every other day from 1 Apr, tumble-dry and bring in always, AC 1 Jun–30 Sep, heater 1 Nov–31 Mar; AC and heater savings count only in season); the savings baseline is every chore every day with a heat-pump dryer; headline and calibration use day-1 days only and fallback days are reported apart; the `get_forecast` tool serves 24 h of day-1 values from the decision hour; a day whose job times out is tried at most 3 times, then the rule odds stand; habits appear in reports only as a hash; exit codes 0 complete · 1 usage · 2 model unreachable · 3 paused · 4 incomplete | TypeScript; weather snapshot in `data-snapshots/` (CC BY 4.0) | REQ-018, 019; NFR-005, 012 |
 | Training | QLoRA on E4B (text-only), merge, GGUF convert, Ollama Modelfile import; seeds and versions pinned | Python in `training/` (uv; Unsloth or TRL + PEFT) | REQ-019; NFR-012 |
 | Model runtimes | Gemma 4 E4B (primary), E2B (backtest comparison), fine-tuned E4B; audio via llama.cpp | Ollama, llama.cpp server; both on 127.0.0.1 | REQ-003, 018, 019, 027 |
@@ -137,10 +137,10 @@ SQLite, one file in the data folder (default `~/.should-i-bother/`, `SIB_DATA_DI
 | `weather_cache` | key (endpoint, rounded lat/lon, range), fetched_at, body (JSON) | Forecast TTL 1 h |
 | `cash_outs` | bet_id, points (−10), cashed_out_at, alert_showing | (0011) A bet cashed out; its own table because `settlements.verdict` has a CHECK list and a cash-out has no verdict, evidence or multiplier ([ADR-0010](../adr/0010-cash-outs-and-achievements-live-in-their-own-tables.md)). Cascades with the bet |
 | `rescue_checks` | bet_id, checked_at, forecast_at, rule_band (NULL when the window cannot be priced), alert, reason | (0011) The latest forecast re-check of an open bet, one row per bet, replaced by the next check and removed at cash-out; cascades with the bet |
-| `household_profile` | id (1), status (completed · skipped), profile (JSON), updated_at | (0013) One row: the onboarding answers (household-private). No row means onboarding was never answered |
+| `household_profile` | id (1), status (completed · skipped), profile (JSON), updated_at, place_label (0015, nullable) | (0013) One row: the onboarding answers (household-private). No row means onboarding was never answered |
 | `achievements` | id, unlocked_at | (0014) One row per unlocked achievement; `unlocked_at` is the event time; no link to a bet, so deleting data does not take one back ([ADR-0010](../adr/0010-cash-outs-and-achievements-live-in-their-own-tables.md)) |
 
-Migrations as merged (`src/server/migrations/`): 0001 pairing_sessions · 0002 core_schema · 0003 bet_locks · 0004 card_notices · 0005 gemma_cards · 0006 card_photos · 0007 settle_progress · 0008 card_sunset (T-013) · 0009 unused · 0010 laundry_plan (T-022) · 0011 rescue (T-023) · 0012 appeals (T-024) · 0013 household_profile (T-025) · 0014 achievements (T-026). Each adds to the schema without rewriting existing rows.
+Migrations as merged (`src/server/migrations/`): 0001 pairing_sessions · 0002 core_schema · 0003 bet_locks · 0004 card_notices · 0005 gemma_cards · 0006 card_photos · 0007 settle_progress · 0008 card_sunset (T-013) · 0009 unused · 0010 laundry_plan (T-022) · 0011 rescue (T-023) · 0012 appeals (T-024) · 0013 household_profile (T-025) · 0014 achievements (T-026). Each adds to the schema without rewriting existing rows · 0015 place_label (T-033).
 
 Bet state machine: `open → due → (awaiting_weather) → (awaiting_gemma) → settled`; `open → undone` (up to and including 5 min after placing; the bet keeps its row with status `undone` so net time can leave it out); `open (before settle_at) → cashed_out` (flagged; do-it decisions cannot be cashed out); a safety-guard alert also moves `open → undone` (a withdrawal by the system). Auto-settle moves `due` to judging at settle_at + 24 h with ×0.5.
 
@@ -273,7 +273,7 @@ Model tool exposed to Gemma: `get_forecast({hours_ahead: 1..48})` → hourly pre
 | REQ-008 | Gemma jobs (Judge), Scheduler, Weather service, ADR-0008 |
 | REQ-009 | Points and savings |
 | REQ-010 | Web client, Interfaces (settle) |
-| REQ-011 | Points and savings, Data model (`savings_snapshot`) |
+| REQ-011 | Points and savings, Data model (`savings_snapshot`), Round 3 item 14 |
 | REQ-012 | Safety backstop, Gemma jobs (Safety guard) |
 | REQ-013 | Reliability (failure modes), Web client, Data model (`odds_source`) |
 | REQ-014 | Weather service, Reliability, ADR-0008, ADR-0009 |
@@ -284,10 +284,10 @@ Model tool exposed to Gemma: `get_forecast({hours_ahead: 1..48})` → hourly pre
 | REQ-019 | Training, Backtest + eval, ADR-0006 |
 | REQ-020 | Interfaces (`/api/score`), Web client |
 | REQ-021 | Gemma jobs (Laundry planner), Feature flags |
-| REQ-022–026 | Feature flags, Ledger, Scheduler, Web client |
+| REQ-022–026 | Feature flags, Ledger, Scheduler, Web client; AC-026.3: Round 3 item 15 |
 | REQ-027 | ModelClient (llama.cpp), ADR-0004 |
 | REQ-028 | Data model (`gemma_decisions`), Gemma jobs |
-| REQ-029 | Feature flags |
+| REQ-029 | Feature flags, Round 3 item 16 |
 | NFR-001 | Security design, ADR-0007 |
 | NFR-002 | Security design (calls that leave the device, data protection), Photo store |
 | NFR-003 | Scheduler, Reliability |
@@ -332,8 +332,8 @@ Approved by the builder after the merge of T-013 to T-026, so that this spec mat
 Approved by the builder on 2026-10-23 ("keep working until all project features are done, a final full functional solution ready for the presentation").
 
 12. **Figma fidelity** (PR #36; NFR-009, REQ-013, REQ-026, REQ-027): this replaces item 5 for the parts it covers. Today follows mockup 02: a greeting header with the points chip and rank name, a compact "This week the sky did" strip with a "How we count (assumptions)" disclosure, the weather board, one capture input, a horizontal chip row, a tab bar with a raised mic button where voice is available (one mic per screen; on wide layouts the mic sits in the capture bar), and a sidebar on wide screens. First run (empty app, `onboarding` on) follows mockup 01. Still deliberate: the bet is placed on the card (no modal sheet); Slips keep all three groups listed, with a jump control instead of a filter (AC-007.1); **no share button**, because a shared slip would carry chore text off the laptop (NFR-002).
-13. **Sloth mascot** (T-033; REQ-017, REQ-025): an inline SVG mascot (no external asset) on the receipt and on the Score rank card, decorative (`aria-hidden`), with a reduced-motion-safe entrance.
-14. **Savings estimate on the slip** (T-033; AC-011.7): `/api/today` cards that offer a do-nothing bet carry `savings_estimate` (minutes, litres, kWh and the assumption text), computed by the same savings function that settlement uses, from the household baseline in effect at the time; the bet's write-once `savings_snapshot` is unchanged.
+13. **Sloth mascot** (T-033; REQ-017, REQ-025; decoration only, no AC): an inline SVG mascot (no external asset) on the receipt and on the Score rank card, decorative (`aria-hidden`), with a reduced-motion-safe entrance.
+14. **Savings estimate on the slip** (T-033; AC-011.7): delivered through `/api/today` (the card view shown as the slip); cards that offer a do-nothing bet carry `savings_estimate` (minutes, litres, kWh and the assumption text), computed by the same savings function that settlement uses, from the household baseline in effect at the time; the bet's write-once `savings_snapshot` is unchanged.
 15. **Place label** (T-033; AC-026.3, REQ-024): `household_profile.place_label` (migration 0015, nullable text, ≤ 40 chars), set in onboarding next to the coordinates; shown in the board header; never part of any Open-Meteo request; exported and deleted with the profile.
-16. **Flags CLI and sample-data demo** (T-032, T-034; AC-029.3, AC-029.4): `sib flags [list|on <flag>…|off <flag>…|preset presentation]` edits `config/flags.json` and refuses unknown flags; `sib demo [--port N]` creates a temporary data folder (deleted on exit), seeds it with a synthetic household and about two weeks of synthetic cards, bets, settlements (photo, tap and auto evidence), cash-outs, appeals and achievements, then starts the server with `SIB_FAKE_MODEL=1`, `SIB_FAKE_WEATHER=1` and an in-memory flag override; the web client shows a "Sample data" banner whenever the server reports demo mode. The live data folder and `config/household.json` are never opened by `sib demo`.
+16. **Flags CLI and sample-data demo** (T-032, T-034; AC-029.3, AC-029.4, NFR-010): `sib flags [list|on <flag>…|off <flag>…|preset <name>]` edits `config/flags.json`, reads presets from `config/flags.presets.json` and refuses unknown flags; `sib demo [--port N]` creates a temporary data folder (deleted on exit), seeds it with a synthetic household and about two weeks of synthetic cards, bets, settlements (photo, tap and auto evidence), cash-outs, appeals and achievements, with `model_version = 'fake-demo'`, then starts the server with `SIB_FAKE_MODEL=1`, `SIB_FAKE_WEATHER=1` and the `presentation` preset applied in memory; the web client shows a fixed "Sample data" banner whenever the server reports demo mode, Score marks its tiles and chart "SAMPLE" and counts `fake-demo` rows only in demo mode, and `sib export` refuses in demo mode. The live data folder and `config/household.json` are never opened by `sib demo`.
 
