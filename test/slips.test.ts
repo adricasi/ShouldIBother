@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
+import { slipsSchema } from "../src/web/api.js";
 
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 
@@ -160,6 +161,20 @@ describe("REQ-007: Slips with countdown", () => {
     expect(result.settled.map((b) => b.id)).toEqual([second.id, first.id]);
     expect(result.settled.every((b) => b.result?.points === -50)).toBe(true);
     expect([...result.waiting, ...result.settle_now].map((b) => b.id)).not.toContain(undone.id);
+  });
+
+  it("every Slips line carries the bet's chore_type, waiting and settled", async () => {
+    await setup();
+    const settledBet = await freshBet();
+    harness.clock.current = Date.parse(settledBet.settle_at) + MINUTE;
+    harness.core.scheduler.tick();
+    await harness.post(`/api/bets/${settledBet.id}/settle`, { answer: "moist" });
+    const waitingBet = await freshBet();
+
+    const result = slipsSchema.parse(await slips());
+    expect(result.waiting.map((b) => [b.id, b.chore_type])).toEqual([[waitingBet.id, "plants"]]);
+    expect(result.settled.map((b) => [b.id, b.chore_type])).toEqual([[settledBet.id, "plants"]]);
+    expect(result.settled[0]?.receipt.chore_type).toBe("plants");
   });
 
   it("needs a session and sets no-store", async () => {

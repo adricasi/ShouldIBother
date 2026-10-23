@@ -167,6 +167,8 @@ export const settleSchema = z.object({
 export const receiptSchema = z.object({
   bet_id: z.number(),
   title: z.string(),
+  /** The bet's chore type; the icon comes from it, not from the title. */
+  chore_type: z.string(),
   kind: z.enum(["do_nothing", "do_it"]),
   outcome: z.enum(["paid_out", "loss", "do_it", "cash_out"]),
   verdict: z.string(),
@@ -236,6 +238,8 @@ export const betSchema = z.object({
   id: z.number(),
   card_id: z.number(),
   title: z.string(),
+  /** The bet's chore type (a bettable chore or `laundry_plan`); the icon comes from it. */
+  chore_type: z.string(),
   kind: z.enum(["do_nothing", "do_it"]),
   band: z.number(),
   band_name: z.string(),

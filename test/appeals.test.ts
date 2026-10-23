@@ -135,6 +135,20 @@ describe("REQ-023: appeal a verdict", () => {
     expect(slips.settled[0]!.receipt.appeal?.first.verdict).toBe("normal_loss");
   });
 
+  it("AC-023.1: the appealed receipt and its Slips line keep the bet's chore_type", async () => {
+    await setup();
+    const betId = await lostBet();
+    const { body } = await appeal(betId);
+    expect(body.receipt).toMatchObject({ chore_type: "plants" });
+    const slips = slipsSchema.parse((await harness.get("/api/slips")).json());
+    expect(slips.settled.map((bet) => [bet.chore_type, bet.receipt.chore_type])).toEqual([
+      ["plants", "plants"],
+    ]);
+    expect(
+      receiptSchema.parse((await harness.get(`/api/bets/${betId}/receipt`)).json()),
+    ).toMatchObject({ chore_type: "plants" });
+  });
+
   it("AC-023.1: the judge gets the new photo, the first verdict and the stored weather, under the appeal prompt, and the photo is stored as an appeal photo", async () => {
     await setup();
     const betId = await lostBet();

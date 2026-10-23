@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LAUNDRY_PLAN_SPEC, betChoreSpec, isChoreType } from "../src/domain/chores.js";
+import {
+  LAUNDRY_PLAN,
+  LAUNDRY_PLAN_SPEC,
+  betChoreSpec,
+  isChoreType,
+} from "../src/domain/chores.js";
 import {
   PLAN_DAY_KEYS,
   dryingWindow,
@@ -35,6 +40,7 @@ import {
   fakeSunsets,
   type FakeWeatherProfile,
 } from "../src/server/weather/fake.js";
+import { receiptSchema, slipsSchema } from "../src/web/api.js";
 import { OpenMeteoWeatherClient } from "../src/server/weather/open-meteo-client.js";
 import { PLANNER_FORECAST_DAYS } from "../src/server/weather/open-meteo.js";
 
@@ -222,7 +228,13 @@ async function placeBet(h: CoreHarness, planned: PlanCard) {
     kind: "do_nothing",
   });
   expect(response.statusCode).toBe(201);
-  return response.json<{ id: number; band: number; odds: number; odds_source: string }>();
+  return response.json<{
+    id: number;
+    band: number;
+    odds: number;
+    odds_source: string;
+    chore_type: string;
+  }>();
 }
 
 const betRow = (h: CoreHarness, betId: number) =>
@@ -601,6 +613,28 @@ describe("AC-021.4: a Skip today bet is a win only if the load dried outside on 
     });
     expect(settled.body.receipt?.saved).toMatchObject({ electricity_kwh: 2.2 });
     expect(settlementOf(h, bet.id)).toMatchObject({ verdict: "win", points: 15, evidence: "tap" });
+  });
+
+  it("a Skip today bet, its Slips line and its receipt carry the laundry_plan chore_type", async () => {
+    const h = await setup();
+    const bettable = await bettableCard(h);
+    const placed = await placeBet(h, bettable);
+    expect(placed).toMatchObject({ chore_type: LAUNDRY_PLAN });
+    const waiting = slipsSchema.parse((await h.get("/api/slips")).json());
+    expect(waiting.waiting.map((bet) => [bet.id, bet.chore_type])).toEqual([
+      [placed.id, "laundry_plan"],
+    ]);
+
+    h.clock.current = at(SATURDAY, "18:05");
+    await h.get("/api/today");
+    const settled = await tap(h, placed.id, "plan_dry");
+    expect(settled.body.receipt).toMatchObject({ title: "Skip washing today" });
+    const receipt = receiptSchema.parse((await h.get(`/api/bets/${placed.id}/receipt`)).json());
+    expect(receipt).toMatchObject({ chore_type: "laundry_plan" });
+    const slips = slipsSchema.parse((await h.get("/api/slips")).json());
+    expect(slips.settled.map((bet) => [bet.chore_type, bet.receipt.chore_type])).toEqual([
+      ["laundry_plan", "laundry_plan"],
+    ]);
   });
 
   it.each([

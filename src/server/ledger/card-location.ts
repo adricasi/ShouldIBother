@@ -25,6 +25,8 @@ export function stampCardLocation(deps: LocationDeps, cardId: number): void {
 /**
  * The request fields that name the place a card was made under, to spread into a weather request.
  * Empty for an older card, or while the flag is off: the client then uses the current location.
+ * A card stamped while the flag was on keeps its stamped place after the flag is turned off: the
+ * stamp is the place it was priced for, and the flag only stops new stamps.
  */
 export function cardLocationOf(card: {
   readonly location_lat: number | null;

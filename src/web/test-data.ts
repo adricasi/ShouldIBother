@@ -45,6 +45,7 @@ export const answerNeeded: BetSettle = {
 export const winReceipt: Receipt = {
   bet_id: 8,
   title: "Water plants",
+  chore_type: "plants",
   kind: "do_nothing",
   outcome: "paid_out",
   verdict: "win",

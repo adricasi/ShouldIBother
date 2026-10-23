@@ -27,7 +27,7 @@ import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
-import { stampCardLocation } from "./card-location.js";
+import { cardLocationOf, stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { FORECAST_PAST_HOURS, MAX_STORED_ANSWERS, parseAnswers } from "./forecast.js";
 import { FAILURE_NOTES, cardView, type CardView } from "./views.js";
@@ -228,6 +228,7 @@ async function planCard(deps: LedgerDeps, cardId: number, attempt: number): Prom
       fromMs: enqueuedAt,
       hours: PLAN_FORECAST_HOURS,
       pastHours: FORECAST_PAST_HOURS,
+      ...cardLocationOf(card),
     });
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
@@ -500,6 +501,7 @@ async function openSkipBet(deps: LedgerDeps, cardId: number, attempt: number): P
         fromMs: enqueuedAt,
         hours: PLAN_FORECAST_HOURS,
         pastHours: FORECAST_PAST_HOURS,
+        ...cardLocationOf(card),
       })
     ).hours;
   } catch (error) {

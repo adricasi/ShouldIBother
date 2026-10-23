@@ -51,6 +51,7 @@ const bet: Bet = {
   id: 7,
   card_id: 1,
   title: "Water plants",
+  chore_type: "plants",
   kind: "do_nothing",
   band: 3,
   band_name: "likely",
@@ -165,6 +166,26 @@ describe("Today screen", () => {
     expect(html).toContain("Undo (4 min left)");
     expect(html).toContain("Still moist, all fine");
     expect(html).toContain("Soil is dry");
+  });
+
+  it("the icon of a bet follows its chore type, not a word in its title", () => {
+    const iconsOf = (open: Bet): string[] => {
+      const line = screen({ ...emptyToday, open_bets: [open] }).split("waiting-line")[1] ?? "";
+      return /lucide-[a-z-]+/.exec(line)?.slice(0, 1) ?? [];
+    };
+    // A title that says nothing, and one that names a different chore than the type.
+    expect(iconsOf({ ...bet, title: "Chore", chore_type: "plants" })).toEqual(["lucide-sprout"]);
+    expect(iconsOf({ ...bet, title: "Water plants", chore_type: "heater" })).toEqual([
+      "lucide-thermometer",
+    ]);
+    // The planner's Skip today bet is a laundry bet.
+    expect(iconsOf({ ...bet, title: "Skip washing today", chore_type: "laundry_plan" })).toEqual([
+      "lucide-shirt",
+    ]);
+    // An unknown type still falls back to the words of the title.
+    expect(iconsOf({ ...bet, title: "Water plants", chore_type: "other_weather" })).toEqual([
+      "lucide-sprout",
+    ]);
   });
 
   it("AC-010.1: shows the PAID OUT receipt after a win and error notices as alerts", () => {
