@@ -48,8 +48,25 @@ export function Icon({ name }: { readonly name: IconName }) {
   return <Glyph className="icon" strokeWidth={1.8} aria-hidden="true" focusable="false" />;
 }
 
-/** The icon for a chore: its type when known, else a word in its title, else a neutral sparkle. */
+/** The icon of each chore type the server sends on cards, bets and receipts. */
+const CHORE_TYPE_ICONS: Readonly<Record<string, IconName>> = {
+  plants: "plant",
+  laundry_line: "shirt",
+  laundry_tonight: "shirt",
+  laundry_plan: "shirt",
+  ac: "thermo",
+  heater: "thermo",
+};
+
+/**
+ * The icon for a chore: by its type when the type is known, else a word in its title (a typed chore
+ * the app has no type for), else a neutral sparkle.
+ */
 export function choreIconName(title: string, choreType?: string): IconName {
+  const byType = choreType === undefined ? undefined : CHORE_TYPE_ICONS[choreType];
+  if (byType !== undefined) {
+    return byType;
+  }
   const text = `${choreType ?? ""} ${title}`.toLowerCase();
   if (/plant|water|sprout|basil/.test(text)) {
     return "plant";

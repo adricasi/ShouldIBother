@@ -79,7 +79,7 @@ export function WaitingLine({
   return (
     <li className="waiting-line">
       <ProgressRing fraction={elapsedFraction(Date.parse(bet.placed_at), settleAtMs, nowMs)}>
-        <Icon name={choreIconName(bet.title)} />
+        <Icon name={choreIconName(bet.title, bet.chore_type)} />
       </ProgressRing>
       <div className="line-main">
         <span className="line-title">
@@ -122,7 +122,7 @@ export function DueSlip({
   return (
     <article className="slip due" aria-label={`${bet.title}, ready to settle`}>
       <div className="slip-head">
-        <ChoreTile title={bet.title} />
+        <ChoreTile title={bet.title} choreType={bet.chore_type} />
         <div className="line-main">
           <h3>{bet.title}</h3>
           <p className="eyebrow">
@@ -216,7 +216,7 @@ export function SettledLine({
 }) {
   return (
     <li className="settled-line">
-      <ChoreTile title={bet.title} />
+      <ChoreTile title={bet.title} choreType={bet.chore_type} />
       <div className="line-main">
         <span className="line-title">
           {bet.title} · {betKindLabel(bet)}

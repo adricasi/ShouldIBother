@@ -21,6 +21,10 @@ beforeEach(() => {
   mkdirSync(configDir, { recursive: true });
   writeFileSync(`${configDir}server.example.json`, JSON.stringify({ port: 8787 }));
   writeFileSync(`${configDir}flags.json`, "{}");
+  writeFileSync(
+    `${configDir}household.example.json`,
+    JSON.stringify({ airConditioning: false, heaterThisSeason: false, dryer: "heat-pump" }),
+  );
 });
 
 afterEach(async () => {
