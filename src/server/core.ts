@@ -40,6 +40,7 @@ import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
 import { weatherBoardView } from "./ledger/weather-board.js";
+import { voiceRoutes } from "./voice/routes.js";
 import { MULTIPART_OPTIONS, photoRoutes, readUploadedPhoto } from "./photos/routes.js";
 import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
@@ -360,6 +361,10 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: appeals (REQ-023) have no route while `appeals` is off.
     if (deps.flags.appeals) {
       await app.register(appealRoutes(new Appealer(ledger)));
+    }
+    // Flagged: voice capture (REQ-027) has no routes while `voice` is off.
+    if (deps.flags.voice) {
+      await app.register(voiceRoutes(ledger));
     }
     // Flagged: the laundry planner (REQ-021) has no routes while `laundryPlanner` is off.
     if (deps.flags.laundryPlanner) {

@@ -17,6 +17,9 @@ import {
   type ListedModel,
   type WireSettings,
 } from "./ollama-wire.js";
+import { MAX_RESPONSE_BYTES, isTimeout, readLimited } from "./http.js";
+
+export { MAX_RESPONSE_BYTES };
 
 export interface OllamaOptions {
   /** `http://127.0.0.1:11434`; `config/models.json` only allows loopback addresses. */
@@ -35,46 +38,12 @@ export interface OllamaOptions {
   readonly fetch?: typeof fetch;
 }
 
-/** No answer from a local runtime is bigger than this; a larger body is refused unread. */
-export const MAX_RESPONSE_BYTES = 1_048_576;
 const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
 const DEFAULT_WARM_UP_TIMEOUT_MS = 120_000;
 
 /** `gemma4` and `gemma4:latest` are the same model in Ollama's listings. */
 function normaliseTag(name: string): string {
   return name.includes(":") ? name : `${name}:latest`;
-}
-
-/** Reads a response body as text, giving up when it grows past `maxBytes`. */
-async function readLimited(response: Response, maxBytes: number): Promise<string> {
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (declared > maxBytes) {
-    await response.body?.cancel();
-    throw new ModelUnavailableError("Ollama sent an answer that is too large");
-  }
-  if (response.body === null) {
-    return "";
-  }
-  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new ModelUnavailableError("Ollama sent an answer that is too large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function isTimeout(error: unknown): boolean {
-  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 }
 
 /**
@@ -131,7 +100,7 @@ export class OllamaClient implements ModelClient {
     }
     let payload: unknown;
     try {
-      const text = await readLimited(response, MAX_RESPONSE_BYTES);
+      const text = await readLimited(response, MAX_RESPONSE_BYTES, "Ollama");
       payload = text === "" ? undefined : JSON.parse(text);
     } catch (error) {
       if (error instanceof ModelUnavailableError) {

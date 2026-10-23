@@ -85,8 +85,8 @@ entry in `models` that the app runs on, and `sib start` refuses to start if that
 }
 ```
 
-The `ollama`, `gemma.toolUse` and `gemma.answerMode` keys in the same file already have working
-defaults. The digest is the reference for anyone comparing results; the backtest refuses to run if
+The `ollama`, `llamaCpp` (voice only, below), `gemma.toolUse` and `gemma.answerMode` keys in the
+same file already have working defaults. The digest is the reference for anyone comparing results; the backtest refuses to run if
 the pulled model's digest differs from the configured one. There is no script that pulls or
 verifies the models yet: compare `ollama list` with the table above by hand.
 
@@ -230,6 +230,39 @@ need a secure context do not: the microphone for voice capture (flag `voice`, of
 plain HTTP, and the app uses neither geolocation nor a live in-browser camera. Location is typed
 in `config/household.json` (or in onboarding) instead.
 
+## Optional: voice capture (flag `voice`)
+
+Say your chores instead of typing them (REQ-027). The phone records a short note (at most 20 s),
+the laptop sends it to **Gemma 4 audio on a second local server, llama.cpp** (Ollama's Gemma
+audio is unreliable on NVIDIA, ADR-0004), shows the transcript with the weather chores
+highlighted, and makes the cards only when you tap "See odds for N chores". The audio goes only
+to `127.0.0.1`, is held in memory for the request and is never written to disk, logged or put in
+git; the decision log keeps its length and a hash.
+
+The flag is off by default; with it off there is no mic button, no route and no mention of voice
+in the privacy line. It needs two things on top of the normal setup:
+
+1. **A llama.cpp server on 127.0.0.1 with the Gemma 4 audio model.** Start it by hand next to the
+   app (bind to loopback; never `--host 0.0.0.0`):
+
+   ```bash
+   # TODO(builder): exact model file, projector and flags are UNVERIFIED. Shape of the command:
+   llama-server -m <gemma-4-e4b gguf> --mmproj <audio projector gguf> --host 127.0.0.1 --port 8080
+   ```
+
+   `config/models.json` `llamaCpp.baseUrl` (default `http://127.0.0.1:8080`) says where to find it;
+   any host other than `127.0.0.1` or `[::1]` is an error at start. The server may start after the
+   app: the mic then says "Voice is offline" until it answers. The request format the app speaks
+   is **unverified** until you run it against your server: it is all in
+   `src/server/model/llamacpp-wire.ts` (`TODO(builder): verify against llama.cpp server docs`).
+   Memory: Ollama's E4B and llama.cpp's audio model are two copies on one GPU, so unload one
+   (`ollama stop`) if it runs out of VRAM. Fallback stated in the post, not built: whisper.cpp for
+   the transcript, with the same listener after it.
+2. **HTTPS for the phone.** Browsers give the microphone only to secure pages, so over plain HTTP
+   on the Wi-Fi the mic button is hidden and typed capture is all there is. Use
+   [Tailscale Serve](#optional-https-with-tailscale-serve) and open the app from its `https://`
+   origin.
+
 ## Run
 
 ```bash
@@ -282,7 +315,7 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 | `ranks` | off | Ranks and achievements; shown on Score, so it needs `score` on |
 | `heater` | off | The heater bet and the AC chore |
 | `splitFlap` | off | The split-flap weather board on Today |
-| `voice` | off | Voice capture through Gemma 4 audio. TODO(builder): not built yet on `main`; the flag does nothing |
+| `voice` | off | Voice capture through Gemma 4 audio on llama.cpp: the "Say your chores" button on Today, shown only on HTTPS (see [voice capture](#optional-voice-capture-flag-voice)). TODO(builder): the llama.cpp wire format is unverified until a live voice note works |
 
 ## Commands (`sib`)
 
@@ -391,7 +424,8 @@ Today:
   `~/.should-i-bother/` (`SIB_DATA_DIR` to change it). It lives outside the repository, is kept
   owner-only (folder 0700, database 0600) and is git-ignored if you point it inside the checkout.
 - Photos are re-encoded without metadata (no EXIF or GPS) and resized to 1024 px at most.
-- Gemma runs in Ollama on 127.0.0.1. No cloud model, no analytics, no telemetry.
+- Gemma runs in Ollama on 127.0.0.1 (and, with the `voice` flag, llama.cpp on 127.0.0.1 for voice
+  notes, held in memory only). No cloud model, no analytics, no telemetry.
 - **The only outbound call at runtime is to Open-Meteo**, with coordinates rounded to 2 decimals.
   Downloads during setup (the Ollama registry for the models, npm for packages) are the only other
   traffic. `docs/release-checklist.md` has the network-capture check.

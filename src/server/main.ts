@@ -79,6 +79,7 @@ export async function startServer(
     const selection = await selectModel(modelsConfig, {
       useFake: env["SIB_FAKE_MODEL"] === "1",
       fake: () => fakes.model,
+      voice: flags.voice,
     });
     modelNotice = selection.notice;
     const useFakeWeather = env["SIB_FAKE_WEATHER"] === "1";
@@ -104,7 +105,11 @@ export async function startServer(
       savings: loadSavings(),
       flags,
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
-      runner: { toolUse: modelsConfig.gemma.toolUse, answerMode: modelsConfig.gemma.answerMode },
+      runner: {
+        toolUse: modelsConfig.gemma.toolUse,
+        answerMode: modelsConfig.gemma.answerMode,
+        jobModels: selection.jobModels,
+      },
       onSchedulerError: (error) => {
         console.error("Scheduler pass failed", error);
       },

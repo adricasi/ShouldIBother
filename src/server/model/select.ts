@@ -1,5 +1,7 @@
 import type { ModelClient, ModelHealth } from "./client.js";
 import { primaryModelTag, type ModelsConfig } from "./config.js";
+import { LISTENER_AUDIO_JOB } from "../gemma/listener-audio.js";
+import { LlamaCppAudioClient } from "./llamacpp.js";
 import { OllamaClient } from "./ollama.js";
 
 export interface ModelSelection {
@@ -7,6 +9,12 @@ export interface ModelSelection {
   readonly mode: "ollama" | "fake";
   /** One line for the console: which model the app runs on and why. */
   readonly notice: string;
+  /**
+   * Runtimes for single jobs (by job name), used instead of `model`: the llama.cpp audio client
+   * for the voice job while the `voice` flag is on. Empty on the fake model, which answers every
+   * job from fixtures.
+   */
+  readonly jobModels: Readonly<Partial<Record<string, ModelClient>>>;
   /** Loads the real model in the background (`ollama` mode only); never throws. */
   readonly warmUp?: () => Promise<ModelHealth>;
 }
@@ -19,6 +27,8 @@ export interface SelectOptions {
   readonly useFake: boolean;
   /** Builds the fake model; only called when `useFake` is true. */
   readonly fake: () => ModelClient;
+  /** Flag `voice`: also set up the llama.cpp audio client (REQ-027). Ignored on the fake model. */
+  readonly voice?: boolean;
   readonly fetch?: typeof fetch;
 }
 
@@ -46,6 +56,7 @@ export async function selectModel(
     return {
       model: options.fake(),
       mode: "fake",
+      jobModels: {},
       notice: [
         "!!! FAKE MODEL (SIB_FAKE_MODEL=1) !!!",
         "Odds, listener results and verdicts come from recorded fixtures, NOT from Gemma.",
@@ -66,13 +77,37 @@ export async function selectModel(
   });
   const health = await client.health();
   const where = `${tag} on Ollama at ${config.ollama.baseUrl}`;
+  const voice = options.voice === true ? await setUpVoice(config, options.fetch) : undefined;
+  const notice =
+    health.state === "offline"
+      ? `Gemma: ${where} is not usable yet (${health.detail ?? "no answer"}). Cards show rule odds and "Gemma offline" until it is; settlements wait.`
+      : `Gemma: ${where}, loading it now (keep_alive ${String(config.ollama.keepAlive)}).`;
   return {
     model: client,
     mode: "ollama",
+    jobModels: voice === undefined ? {} : { [LISTENER_AUDIO_JOB]: voice.client },
+    notice: voice === undefined ? notice : `${notice}\n${voice.notice}`,
+    warmUp: () => client.warmUp(),
+  };
+}
+
+/** The voice job's runtime (flag `voice`): llama.cpp on 127.0.0.1, which may start after the app. */
+async function setUpVoice(
+  config: ModelsConfig,
+  fetchImpl: typeof fetch | undefined,
+): Promise<{ client: ModelClient; notice: string }> {
+  const client = new LlamaCppAudioClient({
+    baseUrl: config.llamaCpp.baseUrl,
+    model: config.llamaCpp.model,
+    ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
+  });
+  const health = await client.health();
+  const where = `llama.cpp audio at ${config.llamaCpp.baseUrl}`;
+  return {
+    client,
     notice:
       health.state === "offline"
-        ? `Gemma: ${where} is not usable yet (${health.detail ?? "no answer"}). Cards show rule odds and "Gemma offline" until it is; settlements wait.`
-        : `Gemma: ${where}, loading it now (keep_alive ${String(config.ollama.keepAlive)}).`,
-    warmUp: () => client.warmUp(),
+        ? `Voice: ${where} is not answering yet (${health.detail ?? "no answer"}). The mic shows an error until it is; typed capture works.`
+        : `Voice: ${where} is up.`,
   };
 }

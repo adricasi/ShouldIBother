@@ -30,6 +30,11 @@ export interface ChatRequest {
   readonly run?: number;
   readonly messages: readonly ChatMessage[];
   readonly images?: readonly Uint8Array[];
+  /**
+   * WAV audio for the jobs that listen (voice capture, REQ-027). Only the llama.cpp client sends
+   * it; it goes to a runtime on 127.0.0.1 and nowhere else, and is never stored or logged.
+   */
+  readonly audio?: readonly Uint8Array[];
   readonly tools?: readonly ToolDefinition[];
   /** JSON schema of the answer, derived from the job's zod schema. */
   readonly schema?: Readonly<Record<string, unknown>>;
@@ -70,7 +75,7 @@ export interface ModelHealth {
 
 /**
  * The seam between the jobs and the runtime (design.md, ModelClient). Implementations: Ollama
- * (`OllamaClient`), llama.cpp (audio, T-027) and `FakeModelClient`, which CI uses.
+ * (`OllamaClient`), llama.cpp (`LlamaCppAudioClient`, audio for voice capture) and `FakeModelClient`, which CI uses.
  */
 export interface ModelClient {
   chat(request: ChatRequest): Promise<ChatResponse>;

@@ -582,3 +582,40 @@ export const settleBetWithPhoto = (betId: number, file: File): Promise<SettleRes
 /** The tap on the judge's yes/no question (AC-008.5). */
 export const answerBetQuestion = (betId: number, yes: boolean): Promise<SettleResult> =>
   request(`/api/bets/${betId}/answer`, settleResultSchema, { method: "POST", body: { yes } });
+
+/** The chores Gemma found in a voice note, before any card exists (flag `voice`, AC-027.1). */
+export const voicePreviewSchema = z.object({
+  transcript: z.string(),
+  chores: z.array(
+    z.object({
+      label: z.string(),
+      chore_type: z.string(),
+      item: z.string().optional(),
+      kind: z.enum(["weather", "coming_later", "not_weather"]),
+    }),
+  ),
+  duration_ms: z.number(),
+});
+export type VoicePreview = z.infer<typeof voicePreviewSchema>;
+
+/** Sends one WAV voice note to the laptop; the answer is a transcript, not cards (AC-027.1). */
+export const transcribeVoiceNote = (wav: Blob): Promise<VoicePreview> => {
+  const form = new FormData();
+  form.append("audio", wav, "note.wav");
+  return request("/api/voice/transcript", voicePreviewSchema, { method: "POST", form });
+};
+
+/** The person confirmed the transcript: now the cards are made, as for typed capture. */
+export const confirmVoiceChores = (
+  chores: readonly { label: string; chore_type: string; item?: string | undefined }[],
+): Promise<Card[]> =>
+  request("/api/voice/cards", z.object({ cards: z.array(cardSchema) }), {
+    method: "POST",
+    body: {
+      chores: chores.map(({ label, chore_type, item }) => ({
+        label,
+        chore_type,
+        ...(item === undefined ? {} : { item }),
+      })),
+    },
+  }).then((result) => result.cards);

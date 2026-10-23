@@ -9,12 +9,15 @@ import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./fo
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
+import { VoiceCapture } from "./VoiceCapture.js";
 import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
 import { choreIconName, Icon } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
+
+const noCards = (): void => undefined;
 
 export interface QuickChip {
   readonly choreType: string;
@@ -57,6 +60,8 @@ export interface TodayScreenProps {
   readonly onPhoto?: (cardId: number, file: File) => void;
   /** Delete a photo and what was derived from it (AC-015.2). */
   readonly onDeletePhoto?: (photoId: string) => void;
+  /** Voice capture (flag `voice`): cards were made from a confirmed voice note (REQ-027). */
+  readonly onVoiceCards?: (cards: Card[]) => void;
   /** Reload Today after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
   /** Laundry planner (flag `laundryPlanner`): "Need anything washed before <day>?" (AC-021.2). */
@@ -440,6 +445,11 @@ export function TodayScreen(props: TodayScreenProps) {
               </button>
             ) : null}
           </div>
+          <VoiceCapture
+            enabled={today?.flags["voice"] === true && props.onVoiceCards !== undefined}
+            disabled={busy}
+            onCards={props.onVoiceCards ?? noCards}
+          />
           <CaptureForm busy={busy} onCapture={props.onCapture} />
         </section>
 

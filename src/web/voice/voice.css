@@ -1,0 +1,160 @@
+/* Voice capture sheet (REQ-027, mockup 03). Tokens only; motion honours prefers-reduced-motion. */
+.voice-mic {
+  margin-top: var(--space-3);
+}
+
+.voice-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--color-sky-deep);
+}
+
+.voice-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding: var(--space-3) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom));
+}
+
+.voice-grabber {
+  align-self: center;
+  width: calc(var(--space-6) * 2);
+  height: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+.voice-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+
+.voice-status:focus {
+  outline: none;
+}
+
+.voice-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-coral);
+}
+
+.voice-meter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: calc(var(--space-6) * 3);
+}
+
+.voice-bar {
+  flex: none;
+  width: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--color-leaf);
+  transition: height 80ms linear;
+}
+
+.voice-meter.still .voice-bar {
+  background: var(--color-ink-3);
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-bar {
+    transition: none;
+  }
+}
+
+.voice-time {
+  text-align: center;
+}
+
+.voice-transcript {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-title);
+  line-height: 1.15;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.voice-transcript mark {
+  background: none;
+}
+
+.voice-weather {
+  color: var(--color-leaf);
+}
+
+.voice-other {
+  color: var(--color-ink-3);
+}
+
+.voice-chores {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-4);
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+}
+
+.voice-chore {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: var(--border-hair) solid var(--color-line);
+}
+
+.voice-chore:first-child {
+  border-top: 0;
+}
+
+.voice-chore-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.voice-chore-note {
+  font-size: var(--text-small);
+  color: var(--color-leaf);
+  text-align: right;
+}
+
+.voice-chore.coming_later .voice-chore-note {
+  color: var(--color-amber-text);
+}
+
+.voice-chore.not_weather .voice-chore-label,
+.voice-chore.not_weather .voice-chore-note {
+  color: var(--color-ink-2);
+}
+
+.voice-error {
+  font-size: var(--text-body);
+  color: var(--color-coral);
+  font-weight: 600;
+}
