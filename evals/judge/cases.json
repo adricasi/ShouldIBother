@@ -1,0 +1,390 @@
+{
+  "_comment": "Staged synthetic cases for `sib eval`. Nothing here is household data. Weather is synthetic (src/eval/weather.ts); expect lists are informational and never change the exit code.",
+  "job": "judge",
+  "cases": [
+    {
+      "id": "plants-moist-after-rain",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 85,
+      "evidence": {
+        "kind": "tap",
+        "answer": "moist"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "plants-moist-dry-weather",
+      "note": "the tap beats the modelled weather",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "tap",
+        "answer": "moist"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "plants-dry-hot",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 35,
+      "evidence": {
+        "kind": "tap",
+        "answer": "dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["normal_loss", "small_loss"]
+    },
+    {
+      "id": "plants-dry-heatwave",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 15,
+      "evidence": {
+        "kind": "tap",
+        "answer": "dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 34,
+          "dryProbabilityPct": 0,
+          "sunshineSeconds": 3500
+        }
+      ],
+      "expect": ["normal_loss", "small_loss"]
+    },
+    {
+      "id": "plants-wilting",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "tap",
+        "answer": "wilting"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["harmful_loss"]
+    },
+    {
+      "id": "plants-dry-but-modelled-rain",
+      "note": "modelled rain can miss a local shower",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 85,
+      "evidence": {
+        "kind": "tap",
+        "answer": "dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["normal_loss", "small_loss"]
+    },
+    {
+      "id": "line-dry",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "tap",
+        "answer": "line_dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "line-damp",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "tap",
+        "answer": "line_damp"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["small_loss"]
+    },
+    {
+      "id": "line-wet-rain",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 85,
+      "evidence": {
+        "kind": "tap",
+        "answer": "line_wet"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["normal_loss"]
+    },
+    {
+      "id": "tonight-dry",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "tap",
+        "answer": "tonight_dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "tonight-damp-dew",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 35,
+      "evidence": {
+        "kind": "tap",
+        "answer": "tonight_damp"
+      },
+      "weather": [
+        {
+          "temperatureC": 17,
+          "dewSpreadC": 1,
+          "relativeHumidityPct": 95
+        }
+      ],
+      "expect": ["small_loss"]
+    },
+    {
+      "id": "tonight-wet-rain",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "tap",
+        "answer": "tonight_wet"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["normal_loss"]
+    },
+    {
+      "id": "ac-fine",
+      "chore": "ac",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "tap",
+        "answer": "ac_fine"
+      },
+      "weather": [
+        {
+          "temperatureC": 20
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "ac-warm-with-followup",
+      "note": "an earlier question and its answer are part of the evidence",
+      "chore": "ac",
+      "kind": "do_nothing",
+      "odds": 35,
+      "evidence": {
+        "kind": "tap",
+        "answer": "ac_warm"
+      },
+      "weather": [
+        {
+          "temperatureC": 26
+        }
+      ],
+      "followups": [
+        {
+          "question": "Was the bedroom window open?",
+          "yes": true
+        }
+      ],
+      "expect": ["small_loss", "normal_loss"]
+    },
+    {
+      "id": "heater-fine",
+      "chore": "heater",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "tap",
+        "answer": "heater_fine"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "sunshineSeconds": 3000
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "heater-cold-no-weather",
+      "note": "no recorded weather available",
+      "chore": "heater",
+      "kind": "do_nothing",
+      "odds": 15,
+      "evidence": {
+        "kind": "tap",
+        "answer": "heater_cold"
+      },
+      "weather": null,
+      "expect": ["small_loss", "normal_loss"]
+    },
+    {
+      "id": "plan-dried",
+      "note": "Skip today bet",
+      "chore": "laundry_plan",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "tap",
+        "answer": "plan_dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "weather-only-rain",
+      "note": "nobody answered for 24 hours: the weather record decides",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "weather"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "canAsk": false,
+      "expect": ["win"]
+    },
+    {
+      "id": "do-it-would-have",
+      "note": "the person watered; would the rain have done it?",
+      "chore": "plants",
+      "kind": "do_it",
+      "odds": 70,
+      "evidence": {
+        "kind": "weather"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "canAsk": false,
+      "expect": ["weather_would_have"]
+    },
+    {
+      "id": "do-it-would-not",
+      "chore": "plants",
+      "kind": "do_it",
+      "odds": 35,
+      "evidence": {
+        "kind": "weather"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "canAsk": false,
+      "expect": ["weather_would_not"]
+    }
+  ]
+}

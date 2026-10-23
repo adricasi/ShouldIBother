@@ -86,6 +86,35 @@ npm run sib -- delete-photos --all-data    # asks first; also removes the databa
 ```
 The export folder holds household data: keep it out of the repository.
 
+## Evaluating Gemma (`sib eval`)
+`sib eval <job>` runs a staged case set through the real job function and job runner on the model
+in `config/models.json` (or on the fixtures with `SIB_FAKE_MODEL=1`, which only proves the
+pipeline), and checks the target of NFR-004: at least 19 of 20 schema-valid answers, the bookmaker
+calling `get_forecast`, and photo judgement (inspector + bookmaker) within 15 s in 19 of 20.
+
+```bash
+npm run sib -- eval listener                 # also: bookmaker, safety, laundry-planner, judge (taps)
+npm run sib -- eval inspector --photos ~/eval-photos            # photo + the bookmaker that follows it
+npm run sib -- eval judge --cases evals/judge/photo-cases.json --photos ~/eval-photos
+npm run sib -- eval bookmaker --out ~/sib-evals/bookmaker-1 --record-fixtures ~/sib-evals/fixtures
+```
+It prints a table (valid, tool use, model calls, retries, job time per case) and a summary with the
+model tag and digest, prompt version and date, then writes `report.json` and `report.md` to `--out`
+(default `<data folder>/evals/<job>-<date>/`; a folder inside the repository is refused unless git
+ignores it, and an existing report is never overwritten). Exit codes: 0 target met, 1 bad input,
+2 Gemma unreachable, 3 target missed.
+
+The 20-case sets are in `evals/<job>/cases.json`: synthetic text and synthetic weather, no household
+data. The photo sets name the files you stage in the `--photos` folder (each case says what to
+photograph; photos are never committed): `inspector-01-plants-dry-soil.jpg` ... `inspector-20-sign-in-photo.jpg`
+and `judge-NN-before-<what>.jpg` / `judge-NN-after-<what>.jpg` (see `evals/judge/photo-cases.json`).
+Photos go through the app's own pipeline first (at most 1024 px, no metadata).
+
+`--record-fixtures <dir>` also writes the model's raw answers as `<dir>/<job>/<case>.json`, in the
+format of `test/fixtures/gemma/` but under the fake's own model name. They are candidates: read each
+one, then copy the good ones into `test/fixtures/gemma/` yourself. The command never overwrites a
+file and never writes into that folder.
+
 ## Weather and attribution
 Odds come from the Open-Meteo forecast for the neighbourhood coordinates in `config/household.json`
 (`location`, rounded to 2 decimals before every request). The weather client calls only the four

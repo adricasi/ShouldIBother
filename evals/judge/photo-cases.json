@@ -1,0 +1,429 @@
+{
+  "_comment": "Staged synthetic cases for `sib eval`. Nothing here is household data. Weather is synthetic (src/eval/weather.ts); expect lists are informational and never change the exit code. Photo set: the builder stages the before and after photos named in each case in the --photos folder; they are never committed. Run with --cases evals/judge/photo-cases.json --photos <dir>.",
+  "job": "judge",
+  "cases": [
+    {
+      "id": "plants-moist",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-01-before-moist.jpg",
+        "after": "judge-01-after-moist.jpg",
+        "staging": "before: pot with dark moist soil. after: same pot next morning, soil still dark and moist, leaves upright"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "plants-dry",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-02-before-dry.jpg",
+        "after": "judge-02-after-dry.jpg",
+        "staging": "before: pot with dark moist soil. after: same pot, soil now pale and cracked, leaves upright"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["normal_loss", "small_loss"]
+    },
+    {
+      "id": "plants-slightly-dry",
+      "note": "borderline",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-03-after-slightly-dry.jpg",
+        "staging": "pot whose top 1 cm is dry, deeper soil still dark, leaves upright"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["small_loss", "win"]
+    },
+    {
+      "id": "plants-wilted",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 35,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-04-before-wilted.jpg",
+        "after": "judge-04-after-wilted.jpg",
+        "staging": "before: healthy upright plant. after: the same plant with clearly drooping leaves"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["harmful_loss"]
+    },
+    {
+      "id": "plants-after-only-moist",
+      "note": "no before photo",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 85,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-05-after-after-only-moist.jpg",
+        "staging": "pot with moist soil, no before photo"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "plants-brown-leaves",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 15,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-06-before-brown-leaves.jpg",
+        "after": "judge-06-after-brown-leaves.jpg",
+        "staging": "before: green plant. after: the same plant with crisp brown edges on most leaves"
+      },
+      "weather": [
+        {
+          "temperatureC": 31,
+          "dryProbabilityPct": 0
+        }
+      ],
+      "expect": ["harmful_loss", "normal_loss"]
+    },
+    {
+      "id": "plants-blurred",
+      "note": "should ask for a better photo",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-07-after-blurred.jpg",
+        "staging": "a deliberately blurred photo of a pot"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "canAsk": true,
+      "expect": ["unsure"]
+    },
+    {
+      "id": "plants-wrong-thing",
+      "note": "the after photo shows something else",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-08-before-wrong-thing.jpg",
+        "after": "judge-08-after-wrong-thing.jpg",
+        "staging": "before: pot with moist soil. after: a photo of a kitchen shelf, no plants"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "canAsk": true,
+      "expect": ["unsure"]
+    },
+    {
+      "id": "plants-rained-on",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-09-before-rained-on.jpg",
+        "after": "judge-09-after-rained-on.jpg",
+        "staging": "before: pot with pale dry soil. after: the pot with dark wet soil and water beads on the leaves after rain"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "plants-two-pots",
+      "note": "mixed result",
+      "chore": "plants",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-10-before-two-pots.jpg",
+        "after": "judge-10-after-two-pots.jpg",
+        "staging": "before: two pots. after: two pots, one with moist soil and one with dry soil"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["small_loss", "normal_loss", "unsure"]
+    },
+    {
+      "id": "line-dry",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-11-before-dry.jpg",
+        "after": "judge-11-after-dry.jpg",
+        "staging": "before: damp shirts on the line. after: the same shirts, light and dry in the afternoon"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "line-damp",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-12-before-damp.jpg",
+        "after": "judge-12-after-damp.jpg",
+        "staging": "before: wet towels on the line. after: towels still visibly damp"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["small_loss"]
+    },
+    {
+      "id": "line-soaked",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 85,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-13-before-soaked.jpg",
+        "after": "judge-13-after-soaked.jpg",
+        "staging": "before: dry shirts on the line. after: the shirts dripping wet after rain"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["normal_loss"]
+    },
+    {
+      "id": "line-empty",
+      "note": "nothing to judge",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-14-after-empty.jpg",
+        "staging": "an empty line, no washing"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "canAsk": true,
+      "expect": ["unsure"]
+    },
+    {
+      "id": "line-after-only-dry",
+      "note": "no before photo",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-15-after-after-only-dry.jpg",
+        "staging": "dry shirts on a rack"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "line-bright-sun-glare",
+      "note": "hard light",
+      "chore": "laundry_line",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "after": "judge-16-after-bright-sun-glare.jpg",
+        "staging": "washing photographed against bright sun, partly in silhouette"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 0,
+          "windKmh": 30,
+          "relativeHumidityPct": 30,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "canAsk": true,
+      "expect": ["win", "small_loss", "unsure"]
+    },
+    {
+      "id": "tonight-dry-morning",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 50,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-17-before-dry-morning.jpg",
+        "after": "judge-17-after-dry-morning.jpg",
+        "staging": "before: sheets on the line at dusk. after: the same sheets next morning, dry"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "expect": ["win"]
+    },
+    {
+      "id": "tonight-dew-damp",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 35,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-18-before-dew-damp.jpg",
+        "after": "judge-18-after-dew-damp.jpg",
+        "staging": "before: sheets on the line at dusk. after: the sheets next morning with a visible damp sheen"
+      },
+      "weather": [
+        {
+          "temperatureC": 17,
+          "dewSpreadC": 1,
+          "relativeHumidityPct": 95
+        }
+      ],
+      "expect": ["small_loss"]
+    },
+    {
+      "id": "tonight-rained-on",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-19-before-rained-on.jpg",
+        "after": "judge-19-after-rained-on.jpg",
+        "staging": "before: shirts on the line at dusk. after: the shirts next morning, soaked, with puddles below"
+      },
+      "weather": [
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 5,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["normal_loss"]
+    },
+    {
+      "id": "tonight-fallen",
+      "note": "damage that is not weather",
+      "chore": "laundry_tonight",
+      "kind": "do_nothing",
+      "odds": 70,
+      "evidence": {
+        "kind": "photo",
+        "before": "judge-20-before-fallen.jpg",
+        "after": "judge-20-after-fallen.jpg",
+        "staging": "before: shirts on the line at dusk. after: the line next morning with a shirt fallen on the dirty floor"
+      },
+      "weather": [
+        {
+          "temperatureC": 22,
+          "dryProbabilityPct": 5
+        }
+      ],
+      "canAsk": true,
+      "expect": ["small_loss", "normal_loss", "harmful_loss", "unsure"]
+    }
+  ]
+}

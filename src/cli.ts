@@ -2,12 +2,13 @@
 import { createInterface } from "node:readline/promises";
 
 import { backtestCommand } from "./backtest/harness/command.js";
+import { evalCommand } from "./eval/command.js";
 import { deletePhotosCommand, exportCommand, type Confirm } from "./server/data-commands.js";
 import { forgetDevicesCommand, pairCommand, startServer } from "./server/main.js";
 import { loadRuntime } from "./server/runtime.js";
 
 const USAGE =
-  "Usage: sib start | pair | forget-devices | delete-photos [--all-data] | export <dir> | backtest [options]";
+  "Usage: sib start | pair | forget-devices | delete-photos [--all-data] | export <dir> | backtest [options] | eval <job> [options]";
 
 /** Asks on the console and accepts only the exact word (AC-015.3). */
 const confirm: Confirm = async (question, expected) => {
@@ -72,6 +73,8 @@ async function main(args: readonly string[]): Promise<number> {
     }
     case "backtest":
       return await backtestCommand(args.slice(1), print);
+    case "eval":
+      return await evalCommand(args.slice(1), print);
     default:
       console.error(command === undefined ? USAGE : `Unknown command: ${command}\n${USAGE}`);
       return 1;

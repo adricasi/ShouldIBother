@@ -1,0 +1,830 @@
+{
+  "_comment": "Staged synthetic cases for `sib eval`. Nothing here is household data. Weather is synthetic (src/eval/weather.ts); expect lists are informational and never change the exit code.",
+  "job": "laundry-planner",
+  "cases": [
+    {
+      "id": "all-dry-breezy",
+      "text": "a load of towels",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "expect": ["wash_today"]
+    },
+    {
+      "id": "rain-today-dry-later",
+      "text": "mixed colours",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["skip_today"]
+    },
+    {
+      "id": "rain-all-week",
+      "text": "the school uniforms",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        }
+      ],
+      "expect": ["no_good_day"]
+    },
+    {
+      "id": "humid-today-breezy-tomorrow",
+      "text": "bedsheets",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["skip_today"]
+    },
+    {
+      "id": "all-mild",
+      "note": "no day is clearly better than today",
+      "text": "a small load",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["wash_today"]
+    },
+    {
+      "id": "afternoon-short-window",
+      "note": "only four drying hours left today",
+      "text": "work shirts",
+      "now": "2026-07-14 14:00",
+      "weather": [
+        {
+          "hours": 10,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ]
+    },
+    {
+      "id": "late-afternoon",
+      "note": "one drying hour left today",
+      "text": "gym clothes",
+      "now": "2026-07-14 17:00",
+      "weather": [
+        {
+          "hours": 7,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["skip_today", "wash_today"]
+    },
+    {
+      "id": "evening-no-window",
+      "note": "today has no drying hours left",
+      "text": "pyjamas",
+      "now": "2026-07-14 19:00",
+      "weather": [
+        {
+          "hours": 5,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["skip_today"]
+    },
+    {
+      "id": "only-day-three",
+      "note": "the best day is the last one",
+      "text": "duvet cover",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 21,
+          "dryProbabilityPct": 60,
+          "windKmh": 10,
+          "relativeHumidityPct": 65,
+          "sunshineSeconds": 1200
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "expect": ["skip_today"]
+    },
+    {
+      "id": "alternating",
+      "text": "jeans",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "expect": ["skip_today"]
+    },
+    {
+      "id": "heatwave-all-dry",
+      "note": "heatwave: great for drying; the safety guard is a different job",
+      "text": "beach towels",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 36,
+          "dryProbabilityPct": 0,
+          "windKmh": 20,
+          "relativeHumidityPct": 25,
+          "sunshineSeconds": 3600
+        },
+        {
+          "hours": 24,
+          "temperatureC": 36,
+          "dryProbabilityPct": 0,
+          "windKmh": 20,
+          "relativeHumidityPct": 25,
+          "sunshineSeconds": 3600
+        },
+        {
+          "hours": 24,
+          "temperatureC": 36,
+          "dryProbabilityPct": 0,
+          "windKmh": 20,
+          "relativeHumidityPct": 25,
+          "sunshineSeconds": 3600
+        },
+        {
+          "temperatureC": 36,
+          "dryProbabilityPct": 0,
+          "windKmh": 20,
+          "relativeHumidityPct": 25,
+          "sunshineSeconds": 3600
+        }
+      ],
+      "expect": ["wash_today"]
+    },
+    {
+      "id": "storm-tomorrow",
+      "note": "storm on day_1",
+      "text": "cushion covers",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 20,
+          "dryProbabilityPct": 60,
+          "gustKmh": 80,
+          "weatherCode": 95,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 3
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["wash_today"]
+    },
+    {
+      "id": "covered-balcony-answer",
+      "note": "the person says the line is covered, which changes how much rain matters",
+      "text": "winter jumpers",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "answers": [
+        {
+          "question": "Is the washing line under a roof?",
+          "yes": true
+        }
+      ]
+    },
+    {
+      "id": "humid-all-week",
+      "note": "nothing dries well",
+      "text": "swimming kit",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 10,
+          "windKmh": 3,
+          "relativeHumidityPct": 85,
+          "sunshineSeconds": 600
+        }
+      ]
+    },
+    {
+      "id": "showery-all-week",
+      "note": "high rain probability everywhere",
+      "text": "children's clothes",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 21,
+          "dryProbabilityPct": 60,
+          "windKmh": 10,
+          "relativeHumidityPct": 65,
+          "sunshineSeconds": 1200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 21,
+          "dryProbabilityPct": 60,
+          "windKmh": 10,
+          "relativeHumidityPct": 65,
+          "sunshineSeconds": 1200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 21,
+          "dryProbabilityPct": 60,
+          "windKmh": 10,
+          "relativeHumidityPct": 65,
+          "sunshineSeconds": 1200
+        },
+        {
+          "temperatureC": 21,
+          "dryProbabilityPct": 60,
+          "windKmh": 10,
+          "relativeHumidityPct": 65,
+          "sunshineSeconds": 1200
+        }
+      ]
+    },
+    {
+      "id": "big-load",
+      "text": "a big load of towels and sheets",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "expect": ["wash_today"]
+    },
+    {
+      "id": "vague-wording",
+      "note": "ambiguous request",
+      "text": "maybe wash something",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ]
+    },
+    {
+      "id": "cold-winter",
+      "note": "cold and damp",
+      "text": "woollen blankets",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 8,
+          "dryProbabilityPct": 10,
+          "windKmh": 5,
+          "relativeHumidityPct": 70,
+          "sunshineSeconds": 900
+        },
+        {
+          "hours": 24,
+          "temperatureC": 8,
+          "dryProbabilityPct": 10,
+          "windKmh": 5,
+          "relativeHumidityPct": 70,
+          "sunshineSeconds": 900
+        },
+        {
+          "hours": 24,
+          "temperatureC": 8,
+          "dryProbabilityPct": 10,
+          "windKmh": 5,
+          "relativeHumidityPct": 70,
+          "sunshineSeconds": 900
+        },
+        {
+          "temperatureC": 8,
+          "dryProbabilityPct": 10,
+          "windKmh": 5,
+          "relativeHumidityPct": 70,
+          "sunshineSeconds": 900
+        }
+      ],
+      "expect": ["no_good_day"]
+    },
+    {
+      "id": "slightly-better-tomorrow",
+      "note": "tomorrow is better but today is fine",
+      "text": "t-shirts",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "hours": 24,
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        },
+        {
+          "temperatureC": 24,
+          "dryProbabilityPct": 5,
+          "windKmh": 12,
+          "relativeHumidityPct": 55,
+          "sunshineSeconds": 2400
+        }
+      ],
+      "expect": ["wash_today", "skip_today"]
+    },
+    {
+      "id": "rain-today-and-tomorrow",
+      "text": "bath mats",
+      "now": "2026-07-14 08:00",
+      "weather": [
+        {
+          "hours": 16,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 3,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 19,
+          "dryProbabilityPct": 40,
+          "rain": {
+            "startsAfterHours": 10,
+            "hours": 6,
+            "mmPerHour": 1
+          }
+        },
+        {
+          "hours": 24,
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        },
+        {
+          "temperatureC": 27,
+          "dryProbabilityPct": 0,
+          "windKmh": 25,
+          "relativeHumidityPct": 35,
+          "sunshineSeconds": 3200
+        }
+      ],
+      "expect": ["skip_today"]
+    }
+  ]
+}
