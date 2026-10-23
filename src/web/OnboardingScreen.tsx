@@ -172,12 +172,15 @@ function Choice({
 
 function Form({
   initial,
+  initialPlaceLabel,
   state,
   busy,
   onSave,
   onSkip,
 }: {
   readonly initial: Onboarding["household"];
+  /** The optional place label stored with the answers (AC-026.3). */
+  readonly initialPlaceLabel: string;
   readonly state: Onboarding["state"];
   readonly busy: boolean;
   readonly onSave: OnboardingScreenProps["onSave"];
@@ -189,6 +192,7 @@ function Form({
   const [heater, setHeater] = useState(initial.heaterThisSeason);
   const [latitude, setLatitude] = useState(String(initial.location.latitude));
   const [longitude, setLongitude] = useState(String(initial.location.longitude));
+  const [placeLabel, setPlaceLabel] = useState(initialPlaceLabel);
   const [editingPlace, setEditingPlace] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const latitudeBad = invalid && parseCoordinate(latitude, 90) === undefined;
@@ -220,6 +224,8 @@ function Form({
       airConditioning,
       heaterThisSeason: heater,
       location: { latitude: lat, longitude: lon },
+      // Blank means none: left out, which the server reads as no label (AC-026.3).
+      ...(placeLabel.trim() === "" ? {} : { place_label: placeLabel.trim() }),
     });
   };
 
@@ -297,10 +303,23 @@ function Form({
         <div className="place-row">
           <Icon name="pin" />
           <span className="place-text">
-            {parseCoordinate(latitude, 90) === undefined ||
-            parseCoordinate(longitude, 180) === undefined
-              ? "Check the coordinates"
-              : `${latitude.trim()}, ${longitude.trim()}`}
+            {placeLabel.trim() !== "" ? (
+              <>
+                {placeLabel.trim()}
+                <span className="place-coords">
+                  {" "}
+                  {parseCoordinate(latitude, 90) === undefined ||
+                  parseCoordinate(longitude, 180) === undefined
+                    ? "Check the coordinates"
+                    : `${latitude.trim()}, ${longitude.trim()}`}
+                </span>
+              </>
+            ) : parseCoordinate(latitude, 90) === undefined ||
+              parseCoordinate(longitude, 180) === undefined ? (
+              "Check the coordinates"
+            ) : (
+              `${latitude.trim()}, ${longitude.trim()}`
+            )}
           </span>
           <button
             type="button"
@@ -320,6 +339,22 @@ function Form({
             Gràcia, Barcelona.
           </p>
           <div className="coordinates">
+            <label htmlFor="onboarding-place">Place name (optional)</label>
+            <input
+              id="onboarding-place"
+              type="text"
+              maxLength={40}
+              autoComplete="off"
+              value={placeLabel}
+              aria-describedby="place-help"
+              onChange={(event) => {
+                setPlaceLabel(event.target.value);
+              }}
+            />
+            <p className="meta" id="place-help">
+              Shown on the weather board, for example Gràcia · Barcelona. It stays on your computer
+              and is never sent to the forecast service.
+            </p>
             <label htmlFor="onboarding-latitude">Latitude</label>
             <input
               id="onboarding-latitude"
@@ -426,8 +461,9 @@ export function OnboardingScreen({
         ) : (
           <Form
             // A saved or skipped answer starts the form again from what the server holds.
-            key={`${onboarding.state}-${JSON.stringify(onboarding.household)}`}
+            key={`${onboarding.state}-${JSON.stringify(onboarding.household)}-${onboarding.place_label ?? ""}`}
             initial={onboarding.household}
+            initialPlaceLabel={onboarding.place_label ?? ""}
             state={onboarding.state}
             busy={busy}
             onSave={onSave}

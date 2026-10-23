@@ -71,7 +71,14 @@ export function WeatherBoard({
     <section className="weather-board" aria-labelledby="weather-board-title">
       <div className="board-head">
         <h2 id="weather-board-title" className="eyebrow">
-          Weather board
+          {board.place_label === undefined ? (
+            "Weather board"
+          ) : (
+            <>
+              <span className="sr-only">Weather board · </span>
+              {board.place_label}
+            </>
+          )}
         </h2>
         <p className="eyebrow board-live">
           {forecast?.stale === true ? null : <span className="live-dot" aria-hidden="true" />}

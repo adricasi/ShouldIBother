@@ -94,7 +94,7 @@ describe("migration 0014: achievements", () => {
     db.exec(
       "INSERT INTO cards (input_text, chore_type, kind, created_at) VALUES ('Water plants', 'plants', 'weather', 1)",
     );
-    expect(migrate(db, MIGRATIONS)).toEqual([14]);
+    expect(migrate(db, MIGRATIONS)).toEqual(ids.filter((id) => id > 13));
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 1 });
     expect(db.prepare("SELECT COUNT(*) AS n FROM achievements").get()).toEqual({ n: 0 });
     expect(() =>

@@ -102,3 +102,26 @@ describe("fonts are self-hosted", () => {
     }
   });
 });
+
+describe("the sloth mascot's stylesheet (design.md Round 3, item 13)", () => {
+  const sloth = postcss.parse(read("../src/web/ui/sloth.css"));
+
+  it("moves only while the device allows motion: every animation sits in prefers-reduced-motion: no-preference", () => {
+    const outside: string[] = [];
+    let inside = 0;
+    sloth.walkDecls("animation", (declaration) => {
+      const rule = declaration.parent;
+      const query = rule?.parent;
+      if (
+        query?.type === "atrule" &&
+        (query as postcss.AtRule).params.includes("prefers-reduced-motion: no-preference")
+      ) {
+        inside += 1;
+      } else {
+        outside.push(declaration.value);
+      }
+    });
+    expect(outside).toEqual([]);
+    expect(inside).toBeGreaterThan(0);
+  });
+});

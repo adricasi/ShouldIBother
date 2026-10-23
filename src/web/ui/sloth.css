@@ -1,0 +1,97 @@
+/* The sloth mascot: colours from the tokens only. Motion only when the device allows it. */
+.sloth {
+  display: block;
+  width: calc(var(--space-6) * 5);
+  height: auto;
+  overflow: visible;
+}
+
+.sloth-branch {
+  fill: var(--color-ink-2);
+}
+
+.sloth-leaf {
+  fill: var(--color-leaf);
+}
+
+.sloth-bark {
+  fill: var(--color-bark);
+}
+
+.sloth-arm {
+  fill: none;
+  stroke: var(--color-bark);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.sloth-claw {
+  fill: none;
+  stroke: var(--color-card);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.sloth-belly {
+  fill: var(--color-line);
+}
+
+.sloth-face {
+  fill: var(--color-card);
+}
+
+.sloth-patch {
+  fill: var(--color-ink-2);
+}
+
+.sloth-eye {
+  fill: none;
+  stroke: var(--color-card);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.sloth-nose {
+  fill: var(--color-ink);
+}
+
+/* The mouth is drawn with the eye style but must read dark on the pale face. */
+.sloth-eye:last-of-type {
+  stroke: var(--color-ink);
+}
+
+.sloth-hang {
+  transform-origin: 50% 8%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sloth {
+    animation: sloth-enter 420ms ease-out both;
+  }
+
+  .sloth-hang {
+    animation: sloth-sway 4.5s ease-in-out 420ms infinite alternate;
+  }
+}
+
+@keyframes sloth-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--space-4) * -1));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sloth-sway {
+  from {
+    transform: rotate(-2deg);
+  }
+
+  to {
+    transform: rotate(2deg);
+  }
+}

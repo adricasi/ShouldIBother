@@ -55,9 +55,10 @@ export function buildExport(db: Db, nowMs: number) {
   const cashOuts = all<Record<string, unknown>>("SELECT * FROM cash_outs ORDER BY bet_id");
   // The person's own onboarding answers (flag `onboarding`); the key is there only with a row.
   const profile = db
-    .prepare<[], { status: string; profile: string | null; updated_at: number }>(
-      "SELECT status, profile, updated_at FROM household_profile WHERE id = 1",
-    )
+    .prepare<
+      [],
+      { status: string; profile: string | null; place_label: string | null; updated_at: number }
+    >("SELECT status, profile, place_label, updated_at FROM household_profile WHERE id = 1")
     .get();
   // Unlocked achievements (REQ-025): the key is there only when there are rows, like cash_outs.
   const achievements = all<Record<string, unknown>>("SELECT * FROM achievements ORDER BY id");
@@ -81,6 +82,8 @@ export function buildExport(db: Db, nowMs: number) {
           household_profile: {
             status: profile.status,
             answers: parseAnswers(profile.profile),
+            // The place label (AC-026.3) is the person's own text: exported with the answers.
+            place_label: profile.place_label,
             updated_at: iso(profile.updated_at),
           },
         }),

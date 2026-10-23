@@ -85,6 +85,9 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   expect(await focusRingProblems(page), "first open: focus").toEqual([]);
 
   await page.getByRole("checkbox", { name: /Balcony plants/ }).check();
+  // The optional place name sits with the coordinates, behind Change (AC-024.1, AC-026.3).
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByLabel("Place name (optional)").fill("Test Quarter · Nowhere");
   await page.getByRole("button", { name: "Start lazing" }).click();
 
   await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeAttached();
@@ -108,6 +111,9 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await page.keyboard.press("Enter");
   const slip = page.getByRole("article", { name: /^Water plants, / });
   await expect(slip).toBeVisible();
+  // What a win would save, as an estimate (AC-011.7); the place name heads the board (AC-026.3).
+  await expect(slip.getByText(/saves ~5 min/i)).toBeVisible();
+  await expect(page.locator("#weather-board-title")).toContainText("Test Quarter · Nowhere");
   await expect(slip.getByText("Gemma's odds")).toBeVisible();
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();

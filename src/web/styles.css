@@ -1549,3 +1549,48 @@ label.button.disabled {
   line-height: 1.05;
   text-transform: uppercase;
 }
+
+/* The savings estimate of a bet slip (AC-011.7): a green mono line, the assumption under it. */
+.saves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.saves-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-leaf);
+}
+
+/* The mascot hangs over the receipt of a win (mockup 07) and from the rank card (mockup 08). */
+.receipt-sloth {
+  margin: 0 auto calc(var(--space-2) * -1);
+  width: calc(var(--space-6) * 5);
+}
+
+.rank-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.rank-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.rank-sloth {
+  flex: none;
+  width: calc(var(--space-6) * 4);
+  margin: calc(var(--space-5) * -1) calc(var(--space-2) * -1) calc(var(--space-4) * -1) 0;
+}
