@@ -16,6 +16,8 @@ import "@fontsource/ibm-plex-mono/latin-600.css";
 // The shared stylesheet comes first: the stylesheets beside each screen build on it and win ties.
 import "./styles.css";
 import { App } from "./App.js";
+// Last: the wide-screen layout overrides what the screens above set for a phone.
+import "./desktop.css";
 
 const root = document.getElementById("root");
 if (root === null) {

@@ -120,5 +120,18 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await expect(page.getByRole("heading", { level: 1, name: "Household" })).toBeAttached();
   await expectScreenIsSound(page, "household");
 
+  // A wide screen: the tab bar is a sidebar and Today has two columns, still sound (mockups D1, D2).
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("link", { name: "Today" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeAttached();
+  const sidebar = await page.getByRole("navigation", { name: "Main" }).boundingBox();
+  expect(sidebar?.x).toBe(0);
+  expect(sidebar?.height).toBeGreaterThanOrEqual(900);
+  const week = await page.locator(".week").boundingBox();
+  const slips = await page.locator("#slips-title").boundingBox();
+  expect(week?.x ?? 0).toBeGreaterThan(slips?.x ?? 0);
+  await expectScreenIsSound(page, "today, wide");
+  expect(await focusRingProblems(page), "today, wide: focus").toEqual([]);
+
   expect(problems).toEqual([]);
 });

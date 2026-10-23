@@ -301,3 +301,37 @@ describe("Content-Security-Policy: no eval probe", () => {
     expect(z.core.globalConfig.jitless).toBe(true);
   });
 });
+
+describe("Wide screens keep the phone's reading and focus order (mockups D1, D2)", () => {
+  it("lists the week, the board, the capture bar, the slips, Waiting and Settle now in that order", () => {
+    const html = screen({
+      ...today,
+      flags: { splitFlap: true },
+      weather_board: null,
+    });
+    const order = [
+      'id="week-title"',
+      'id="weather-board-title"',
+      'id="chips-title"',
+      'id="slips-title"',
+      'id="waiting-title"',
+      'id="due-title"',
+    ].map((marker) => html.indexOf(marker));
+    expect(order.every((position) => position > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("puts the two column wrappers around the same sections, so the desktop grid needs no reordering", () => {
+    const html = screen(today);
+    expect(html).toContain('<div class="today-columns">');
+    expect(html).toContain('<div class="today-main">');
+    expect(html).toContain('class="today-waiting"');
+    expect(html).toContain('class="today-due"');
+  });
+
+  it("the sidebar brand is decoration, hidden from screen readers", () => {
+    const html = renderToStaticMarkup(<Nav flags={{}} />);
+    expect(html).toContain('<p class="brand" aria-hidden="true">');
+    expect(html).toContain("Should I Bother?");
+  });
+});

@@ -70,6 +70,14 @@ export function Nav({ flags, current = "today", entries = FLAGGED_ENTRIES, fab }
         ];
   return (
     <nav className="tabbar" aria-label="Main">
+      {/* The brand shows only in the sidebar of a wide screen (desktop.css); a phone has the tab bar. */}
+      <p className="brand" aria-hidden="true">
+        <span className="brand-mark">zZ</span>
+        <span className="brand-name">
+          Should I Bother?
+          <span className="brand-sub">The Lazy Bookie</span>
+        </span>
+      </p>
       <ul>{items}</ul>
     </nav>
   );

@@ -302,114 +302,120 @@ export function TodayScreen(props: TodayScreenProps) {
   };
   return (
     <PrivacyProvider voice={today?.flags["voice"] === true}>
-      <main className="screen">
+      <main className="screen today-screen">
         <TodayHeader today={today} rankName={props.rankName} />
 
-        {today === undefined ? null : (
-          <WeekStrip totals={today.week.totals} from={today.week.from} to={today.week.to} />
-        )}
+        <div className="today-columns">
+          {today === undefined ? null : (
+            <WeekStrip totals={today.week.totals} from={today.week.from} to={today.week.to} />
+          )}
+          <div className="today-main">
+            {today?.flags["splitFlap"] === true ? (
+              <WeatherBoard
+                board={today.weather_board ?? null}
+                now={today.now}
+                forecast={today.forecast}
+              />
+            ) : today?.forecast == null ? null : (
+              <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
+                {today.forecast.age_label}
+                {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
+              </p>
+            )}
 
-        {today?.flags["splitFlap"] === true ? (
-          <WeatherBoard
-            board={today.weather_board ?? null}
-            now={today.now}
-            forecast={today.forecast}
-          />
-        ) : today?.forecast == null ? null : (
-          <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
-            {today.forecast.age_label}
-            {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
-          </p>
-        )}
+            {today === undefined && notice?.kind === "error" ? (
+              <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>
+                {notice.text} Your bets are safe; this screen tries again every 30 seconds.
+              </ErrorState>
+            ) : (
+              <NoticeBanner notice={notice} />
+            )}
 
-        {today === undefined && notice?.kind === "error" ? (
-          <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>
-            {notice.text} Your bets are safe; this screen tries again every 30 seconds.
-          </ErrorState>
-        ) : (
-          <NoticeBanner notice={notice} />
-        )}
+            {props.prompt}
 
-        {props.prompt}
-
-        <section aria-labelledby="chips-title" className="capture">
-          <h2 id="chips-title" className="sr-only">
-            What is on your list?
-          </h2>
-          <CaptureBar busy={busy} onCapture={props.onCapture} micSlot={props.voiceControl} />
-          <QuickChips chips={chips} busy={busy} onPick={props.onQuickCard} />
-        </section>
-
-        {today === undefined ? (
-          notice?.kind === "error" ? null : (
-            <LoadingState what="today's slips" />
-          )
-        ) : (
-          <>
-            <section aria-labelledby="slips-title">
-              <h2 id="slips-title" className="section-title">
-                Today&apos;s slips
+            <section aria-labelledby="chips-title" className="capture">
+              <h2 id="chips-title" className="sr-only">
+                What is on your list?
               </h2>
-              {today.cards.length === 0 ? (
-                <EmptyState icon="sun">No chores yet. Tap a chip to get odds.</EmptyState>
-              ) : (
-                today.cards.map((card) => (
-                  <CardSlip
-                    key={card.id}
-                    card={card}
-                    busy={busy}
-                    onBet={props.onBet}
-                    onDoIt={props.onDoIt}
-                    onRetry={props.onRetry}
-                    onAnswer={props.onAnswer}
-                    photoActions={photoActions}
-                    plannerActions={plannerActions}
+              <CaptureBar busy={busy} onCapture={props.onCapture} micSlot={props.voiceControl} />
+              <QuickChips chips={chips} busy={busy} onPick={props.onQuickCard} />
+            </section>
+
+            {today === undefined ? (
+              notice?.kind === "error" ? null : (
+                <LoadingState what="today's slips" />
+              )
+            ) : (
+              <>
+                <section aria-labelledby="slips-title">
+                  <h2 id="slips-title" className="section-title">
+                    Today&apos;s slips
+                  </h2>
+                  {today.cards.length === 0 ? (
+                    <EmptyState icon="sun">No chores yet. Tap a chip to get odds.</EmptyState>
+                  ) : (
+                    today.cards.map((card) => (
+                      <CardSlip
+                        key={card.id}
+                        card={card}
+                        busy={busy}
+                        onBet={props.onBet}
+                        onDoIt={props.onDoIt}
+                        onRetry={props.onRetry}
+                        onAnswer={props.onAnswer}
+                        photoActions={photoActions}
+                        plannerActions={plannerActions}
+                      />
+                    ))
+                  )}
+                </section>
+              </>
+            )}
+          </div>
+          {today === undefined ? null : (
+            <>
+              <section aria-labelledby="waiting-title" className="today-waiting">
+                <h2 id="waiting-title" className="section-title">
+                  Waiting
+                </h2>
+                {today.open_bets.length === 0 ? (
+                  <EmptyState icon="clock">Open bets wait here until they settle.</EmptyState>
+                ) : (
+                  <ul className="waiting">
+                    {today.open_bets.map((bet) => (
+                      <WaitingLine
+                        key={bet.id}
+                        bet={bet}
+                        nowMs={props.nowMs}
+                        busy={busy}
+                        onUndo={props.onUndo}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section aria-labelledby="due-title" className="today-due">
+                <h2 id="due-title" className="section-title">
+                  Settle now
+                </h2>
+                {today.due_bets.length === 0 && settledResults.length === 0 ? (
+                  <EmptyState icon="ticket">Bets ready to settle appear here.</EmptyState>
+                ) : null}
+                {today.due_bets.map((bet) => (
+                  <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
+                ))}
+                {settledResults.map((receipt) => (
+                  <ReceiptCard
+                    key={receipt.bet_id}
+                    receipt={receipt}
+                    animateStamp={isStampAnimated(today.flags)}
                   />
-                ))
-              )}
-            </section>
-
-            <section aria-labelledby="waiting-title">
-              <h2 id="waiting-title" className="section-title">
-                Waiting
-              </h2>
-              {today.open_bets.length === 0 ? (
-                <EmptyState icon="clock">Open bets wait here until they settle.</EmptyState>
-              ) : (
-                <ul className="waiting">
-                  {today.open_bets.map((bet) => (
-                    <WaitingLine
-                      key={bet.id}
-                      bet={bet}
-                      nowMs={props.nowMs}
-                      busy={busy}
-                      onUndo={props.onUndo}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section aria-labelledby="due-title">
-              <h2 id="due-title" className="section-title">
-                Settle now
-              </h2>
-              {today.due_bets.length === 0 && settledResults.length === 0 ? (
-                <EmptyState icon="ticket">Bets ready to settle appear here.</EmptyState>
-              ) : null}
-              {today.due_bets.map((bet) => (
-                <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
-              ))}
-              {settledResults.map((receipt) => (
-                <ReceiptCard
-                  key={receipt.bet_id}
-                  receipt={receipt}
-                  animateStamp={isStampAnimated(today.flags)}
-                />
-              ))}
-            </section>
-          </>
-        )}
+                ))}
+              </section>
+            </>
+          )}
+        </div>
         {today === undefined ? null : <p className="meta attribution">{today.attribution}</p>}
       </main>
       <Nav flags={today?.flags ?? {}} fab={props.voiceFab} />
