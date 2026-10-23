@@ -4,25 +4,22 @@ import { z } from "zod";
 
 import { CONFIG_DIR, readJsonFile } from "../config.js";
 
-/** Literal loopback addresses only: a name like `localhost` can be pointed elsewhere. */
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]"]);
+import { loopbackOrigin } from "./loopback.js";
 
-/** Ollama stays on 127.0.0.1 (NFR-001, AGENTS.md): any other host in config is an error. */
-const ollamaUrl = z.string().transform((value, ctx) => {
-  try {
-    const url = new URL(value);
-    if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) {
-      return url.origin;
+/** A runtime stays on 127.0.0.1 (NFR-001, AGENTS.md): any other host in config is an error. */
+function loopbackUrl(runtime: string) {
+  return z.string().transform((value, ctx) => {
+    const origin = loopbackOrigin(value);
+    if (origin !== undefined) {
+      return origin;
     }
-  } catch {
-    // reported below
-  }
-  ctx.addIssue({
-    code: "custom",
-    message: `Ollama must be an http URL on 127.0.0.1 or [::1], got ${JSON.stringify(value)}`,
+    ctx.addIssue({
+      code: "custom",
+      message: `${runtime} must be an http URL on 127.0.0.1 or [::1], got ${JSON.stringify(value)}`,
+    });
+    return z.NEVER;
   });
-  return z.NEVER;
-});
+}
 
 const modelEntrySchema = z
   .object({
@@ -41,10 +38,19 @@ export const modelsConfigSchema = z
     primary: z.string().min(1).default("e4b"),
     ollama: z
       .object({
-        baseUrl: ollamaUrl.default("http://127.0.0.1:11434"),
+        baseUrl: loopbackUrl("Ollama").default("http://127.0.0.1:11434"),
         /** How long Ollama keeps the model loaded; long for the live week (design.md). */
         keepAlive: z.union([z.string().min(1), z.number()]).default("24h"),
         temperature: z.number().min(0).max(2).default(0),
+      })
+      .strict()
+      .prefault({}),
+    /** The llama.cpp server for voice capture (flag `voice`, REQ-027); 127.0.0.1 only. */
+    llamaCpp: z
+      .object({
+        baseUrl: loopbackUrl("llama.cpp").default("http://127.0.0.1:8080"),
+        /** Name recorded with each voice decision; llama.cpp serves the one model it was started with. */
+        model: z.string().min(1).default("gemma4-audio"),
       })
       .strict()
       .prefault({}),
@@ -76,6 +82,20 @@ export function parseModelsConfig(raw: unknown): ModelsConfig {
 /** A missing file is the defaults: no model named, so the app runs on the fake model. */
 export function loadModelsConfig(path: string = DEFAULT_MODELS_PATH): ModelsConfig {
   return parseModelsConfig(existsSync(path) ? readJsonFile(path) : {});
+}
+
+/**
+ * The key in `models` of the fine-tuned E4B bookmaker (ADR-0006): the same key the backtest uses
+ * for its `e4b-ft` strategy, so one entry serves the evaluation and the live app.
+ */
+export const FINETUNED_MODEL_KEY = "e4b-ft";
+
+/**
+ * The Ollama tag of the fine-tuned bookmaker, or undefined while `config/models.json` has no
+ * `models.e4b-ft` entry (training has not produced one yet).
+ */
+export function finetunedModelTag(config: ModelsConfig): string | undefined {
+  return config.models[FINETUNED_MODEL_KEY]?.tag;
 }
 
 /** The Ollama tag of the primary model, or undefined while `config/models.json` names none. */

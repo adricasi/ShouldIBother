@@ -1,0 +1,14 @@
+{
+  "description": "Invalid JSON first, a good transcript on the retry.",
+  "steps": [
+    {
+      "content": "Sure! Here is what they said:"
+    },
+    {
+      "content": {
+        "status": "ok",
+        "transcript": "Water the tomatoes tonight"
+      }
+    }
+  ]
+}

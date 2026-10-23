@@ -369,6 +369,10 @@ export function App() {
         });
         return made;
       }}
+      onVoiceCards={() => {
+        // The cards exist already (the sheet made them); reload Today to show them.
+        void act(() => Promise.resolve(undefined));
+      }}
       onRetry={(cardId) => {
         void act(async () => {
           await retryCard(cardId);

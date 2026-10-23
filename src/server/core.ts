@@ -40,6 +40,7 @@ import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
 import { weatherBoardView } from "./ledger/weather-board.js";
+import { voiceRoutes } from "./voice/routes.js";
 import { MULTIPART_OPTIONS, photoRoutes, readUploadedPhoto } from "./photos/routes.js";
 import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
@@ -181,7 +182,17 @@ export function createCore(deps: CoreDeps): Core {
   deps.photos.warn = (message) => {
     logEntry({ event: "photo_warning", message });
   };
-  const status = new GemmaStatusMonitor(deps.model, deps.now);
+  // A job with a model of its own (the fine-tuned bookmaker) shows up in the status when that
+  // model cannot answer, with one log line when it first fails.
+  const bookmakerModel = deps.runner?.jobModels?.["bookmaker"];
+  const status = new GemmaStatusMonitor(deps.model, deps.now, undefined, {
+    ...(bookmakerModel === undefined
+      ? {}
+      : { watched: [{ label: "The fine-tuned bookmaker", model: bookmakerModel }] }),
+    onWarning: (message) => {
+      logEntry({ event: "gemma_model_warning", message });
+    },
+  });
   // A card still "thinking" lost its job with the previous process (NFR-003).
   recoverThinkingCards(ledger);
   resumeUnguardedCards(ledger);
@@ -227,6 +238,7 @@ export function createCore(deps: CoreDeps): Core {
           status: gemmaStatus.state,
           detail: gemmaStatus.detail ?? null,
           checked_at: new Date(gemmaStatus.checkedAt).toISOString(),
+          ...(gemmaStatus.warning === undefined ? {} : { warning: gemmaStatus.warning }),
         },
         points: { total: pointsTotal(ledger) },
         week: weekSavings(ledger),
@@ -360,6 +372,10 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: appeals (REQ-023) have no route while `appeals` is off.
     if (deps.flags.appeals) {
       await app.register(appealRoutes(new Appealer(ledger)));
+    }
+    // Flagged: voice capture (REQ-027) has no routes while `voice` is off.
+    if (deps.flags.voice) {
+      await app.register(voiceRoutes(ledger));
     }
     // Flagged: the laundry planner (REQ-021) has no routes while `laundryPlanner` is off.
     if (deps.flags.laundryPlanner) {
