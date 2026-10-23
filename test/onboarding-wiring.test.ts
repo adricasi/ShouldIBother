@@ -10,6 +10,7 @@ import { startServer, type RunningServer } from "../src/server/main.js";
 
 import { cookieHeaderFrom } from "./helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
+import { multipartBody, syntheticPhoto } from "./support/photos.js";
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -47,6 +48,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await running?.close();
   running = undefined;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   await server.stop();
   rmSync(dir, { recursive: true, force: true });
@@ -176,5 +178,56 @@ describe("main.ts wiring: the household baseline comes from the configDir startS
     expect(server.forecastRequests.map((url) => url.searchParams.get("latitude"))).toEqual([
       "48.86",
     ]);
+  });
+});
+
+describe("main.ts wiring: with onboarding off, refetches ask for the current (default) location", () => {
+  it("AC-029.2: a forecast refetched after the cache expires, for a photo, names the same place as the first", async () => {
+    // Only the clock is faked, so the 1 h forecast cache can expire between the two requests.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    const configDir = join(dir, "config") + "/";
+    mkdirSync(configDir);
+    writeFileSync(`${configDir}flags.json`, "{}");
+    for (const name of ["models.json", "server.example.json", "household.example.json"]) {
+      copyFileSync(`${CONFIG_DIR}${name}`, `${configDir}${name}`);
+    }
+    const port = await freePort();
+    running = await startServer(
+      { SIB_DATA_DIR: join(dir, "data"), SIB_FAKE_MODEL: "1", SIB_PORT: String(port) },
+      { configDir, output: () => undefined },
+    );
+    const { app, runtime } = running;
+    const host = `localhost:${String(port)}`;
+    const origin = `http://${host}`;
+    const { token } = runtime.store.issuePairingToken();
+    const cookie = cookieHeaderFrom(
+      await app.inject({ method: "GET", url: `/pair?token=${token}`, headers: { host } }),
+    );
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/cards/quick",
+      payload: { chore_type: "plants" },
+      headers: { host, origin, cookie },
+    });
+    expect(created.statusCode).toBe(201);
+
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+    const multipart = multipartBody(await syntheticPhoto());
+    const photo = await app.inject({
+      method: "POST",
+      url: `/api/cards/${created.json<{ id: number }>().id}/photo`,
+      payload: multipart.payload,
+      headers: { host, origin, cookie, ...multipart.headers },
+    });
+    expect(photo.statusCode).toBe(201);
+    await vi.waitFor(() => {
+      expect(server.forecastRequests.length).toBeGreaterThanOrEqual(2);
+    });
+
+    const places = server.forecastRequests.map(
+      (url) =>
+        `${url.searchParams.get("latitude") ?? ""},${url.searchParams.get("longitude") ?? ""}`,
+    );
+    expect(new Set(places)).toEqual(new Set(["41.4,2.16"]));
   });
 });

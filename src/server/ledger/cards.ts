@@ -196,6 +196,7 @@ export async function createChoreCard(
 
   let forecast;
   try {
+    // Deliberately the current location: the card does not exist yet and is stamped afterwards.
     forecast = await deps.weather.getForecast({
       fromMs: now,
       hours: FORECAST_HOURS,

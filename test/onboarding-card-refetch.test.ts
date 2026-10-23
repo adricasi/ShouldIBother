@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { judgeScenarioFromAnswer } from "../src/server/fakes.js";
@@ -245,6 +249,45 @@ describe("AC-014.1: a card's own forecast refetches keep asking for the place th
     allPlaces().length = 0;
     await h.post(`/api/cards/${created.id}/retry`, {});
     await h.idle();
+    expect(allPlaces().length).toBeGreaterThan(0);
+    expect(allPlaces().every((place) => place === undefined)).toBe(true);
+  });
+
+  it("a card stamped while the flag was on keeps its place after the flag is turned off", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-flag-off-"));
+    try {
+      const dbPath = join(dir, "should-i-bother.db");
+      const first = await setup({ flags: { onboarding: true }, dbPath });
+      await moveTo(first.h, PLACE_A);
+      first.model.setScenario("bookmaker", "offline");
+      const created = await newCard(first.h);
+      await first.h.idle();
+      await first.h.close();
+      harness = undefined;
+
+      // The same database, restarted with the flag off and no household location of its own.
+      const { h, model } = await setup({ flags: {}, dbPath });
+      model.setScenario("bookmaker", "ok");
+      allPlaces().length = 0;
+      expect((await h.post(`/api/cards/${created.id}/retry`, {})).statusCode).toBe(200);
+      await h.idle();
+      onlyPlaceA(allPlaces());
+    } finally {
+      await harness?.close();
+      harness = undefined;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-029.2: with the flag off a photo's refetch names no place either", async () => {
+    const { h, model } = await setup();
+    model.setScenario("bookmaker", "unlikely-24h");
+    const created = await newCard(h);
+    await h.idle();
+    allPlaces().length = 0;
+    expect((await uploadPhoto(h, created.id, await syntheticPhoto())).statusCode).toBe(201);
+    await h.idle();
+    expect(model.calls.some((call) => call.job === "inspector")).toBe(true);
     expect(allPlaces().length).toBeGreaterThan(0);
     expect(allPlaces().every((place) => place === undefined)).toBe(true);
   });
