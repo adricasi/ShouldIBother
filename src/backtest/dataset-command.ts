@@ -29,10 +29,22 @@ import {
   TRAIN_FILE,
   buildFinetuneDataset,
 } from "./finetune-dataset.js";
-import { loadSyntheticHabits, readHabitsFile, type Habits } from "./habits.js";
-import { writeFileAtomic } from "./harness/store.js";
-import { HouseholdLeakError, loadHouseholdProbes } from "./household-guard.js";
-import { OutputInsideRepositoryError, assertNotCommittable } from "./output-guard.js";
+import {
+  loadSyntheticHabits,
+  looksLikeHouseholdData,
+  readHabitsFile,
+  type Habits,
+} from "./habits.js";
+import {
+  HouseholdConfigError,
+  HouseholdLeakError,
+  loadHouseholdProbes,
+} from "./household-guard.js";
+import {
+  OutputInsideRepositoryError,
+  assertNotCommittable,
+  writeFileExclusive,
+} from "./output-guard.js";
 import { SnapshotLocationError, dataFolder, findSnapshotDirectory } from "./snapshot-location.js";
 import { readSnapshot } from "./snapshot.js";
 
@@ -58,6 +70,20 @@ export interface DatasetDeps {
 
 class UsageError extends Error {
   override readonly name = "UsageError";
+}
+
+function firstLine(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n")[0] ?? message;
+}
+
+/** Turns any failure while reading a config file into a one-line error. */
+function reading<T>(what: string, read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    throw new UsageError(`Cannot read ${what}: ${firstLine(error)}`);
+  }
 }
 
 function promptFor(version: string | undefined): Prompt {
@@ -122,12 +148,24 @@ export async function datasetCommand(
 
   try {
     const prompt = promptFor(values["prompt-version"]);
-    const habits = readHabits(
-      values.habits === undefined ? undefined : resolve(cwd, values.habits),
+    const habitsPath = values.habits === undefined ? undefined : resolve(cwd, values.habits);
+    if (habitsPath !== undefined && looksLikeHouseholdData(habitsPath, { home, env })) {
+      // The guard below would catch a value, not a household file with other words: refuse the file.
+      throw new UsageError(
+        `Refusing --habits ${habitsPath}: it looks like household data (the data folder or a household.json). ` +
+          "The dataset may carry a synthetic profile only (AC-019.6); household data must not leave the laptop.",
+      );
+    }
+    const habits = readHabits(habitsPath);
+    const rulesText = reading("config/rules.json", () =>
+      readFileSync(join(configDir, "rules.json"), "utf8"),
     );
-    const rulesText = readFileSync(join(configDir, "rules.json"), "utf8");
-    const rules = parseRulesConfig(JSON.parse(rulesText) as unknown);
-    const models = loadModelsConfig(join(configDir, "models.json"));
+    const rules = reading("config/rules.json", () =>
+      parseRulesConfig(JSON.parse(rulesText) as unknown),
+    );
+    const models = reading("config/models.json", () =>
+      loadModelsConfig(join(configDir, "models.json")),
+    );
     const probes = loadHouseholdProbes(configDir);
 
     let snapshotDirectory: string;
@@ -151,6 +189,7 @@ export async function datasetCommand(
       values.out ?? join(dataFolder({ home, env }), "datasets", basename(snapshotDirectory)),
     );
     const files = [TRAIN_FILE, HOLDOUT_FILE, MANIFEST_FILE].map((name) => join(out, name));
+    // Early, to fail before the build; checked again right before anything is created or written.
     assertNotCommittable(files);
 
     log(`Building the dataset from ${snapshotDirectory} with ${prompt.version} ...`);
@@ -167,10 +206,20 @@ export async function datasetCommand(
       probes,
     );
 
-    mkdirSync(out, { recursive: true });
-    writeFileAtomic(join(out, TRAIN_FILE), build.trainJsonl);
-    writeFileAtomic(join(out, HOLDOUT_FILE), build.holdoutJsonl);
-    writeFileAtomic(join(out, MANIFEST_FILE), build.manifestJson);
+    assertNotCommittable(files);
+    try {
+      mkdirSync(out, { recursive: true });
+      // The folder exists now: what it really is (a symlink, say) can be checked once more.
+      assertNotCommittable(files);
+      writeFileExclusive(join(out, TRAIN_FILE), build.trainJsonl);
+      writeFileExclusive(join(out, HOLDOUT_FILE), build.holdoutJsonl);
+      writeFileExclusive(join(out, MANIFEST_FILE), build.manifestJson);
+    } catch (error) {
+      if (error instanceof OutputInsideRepositoryError) {
+        throw error;
+      }
+      throw new UsageError(`Cannot write the dataset to ${out}: ${firstLine(error)}`);
+    }
 
     const rows = build.manifest.rows;
     log(`Dataset written to ${out}`);
@@ -190,6 +239,10 @@ export async function datasetCommand(
   } catch (error) {
     if (error instanceof UsageError) {
       log(`${error.message}\n${DATASET_USAGE}`);
+      return 1;
+    }
+    if (error instanceof HouseholdConfigError) {
+      log(`Dataset NOT written. ${error.message}`);
       return 1;
     }
     if (error instanceof HouseholdLeakError) {

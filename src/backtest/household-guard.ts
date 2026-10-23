@@ -4,9 +4,14 @@
  * `config/household.json` appears in a row, the build fails.
  *
  * What counts as "a value": every string of three or more characters (whole words, ignoring case)
- * and every number with decimals, also rounded to 2 decimals (the coordinates). Booleans and whole
- * numbers say nothing identifying and would match everywhere, so they are not searched; the habit
- * profile is a fixed committed file, and its test checks it against the household's possible values.
+ * and every number with decimals, by its absolute value as written and rounded to 2, 3 and 4
+ * decimals (and to 1 decimal from 10 up: a one-decimal longitude such as 2.2 would match any
+ * rainfall figure), with `.` or `,` as the decimal separator. Booleans and whole numbers say
+ * nothing identifying and would match everywhere, so they are not searched; the habit profile is a
+ * fixed committed file, and its test checks it against the household's possible values.
+ *
+ * Only `config/household.json` is checked. The onboarding profile in the database
+ * (`household_profile`) is not probed: the dataset command never opens the database.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -16,6 +21,11 @@ export interface HouseholdProbe {
   /** Where the value sits in household.json, e.g. `location.latitude`; never the value itself. */
   readonly path: string;
   readonly pattern: RegExp;
+}
+
+/** `household.json` is missing or not valid JSON; the message never carries file content. */
+export class HouseholdConfigError extends Error {
+  override readonly name = "HouseholdConfigError";
 }
 
 export class HouseholdLeakError extends Error {
@@ -48,8 +58,19 @@ function walk(value: unknown, path: string, out: HouseholdProbe[]): void {
     }
   } else if (typeof value === "number") {
     if (Number.isFinite(value) && !Number.isInteger(value)) {
-      for (const form of new Set([String(value), value.toFixed(2)])) {
-        out.push({ path, pattern: new RegExp(`(?<![\\d.])${escapeRegExp(form)}(?!\\d)`) });
+      const abs = Math.abs(value);
+      const forms = new Set([String(abs), abs.toFixed(2), abs.toFixed(3), abs.toFixed(4)]);
+      if (abs >= 10) {
+        forms.add(abs.toFixed(1));
+      }
+      for (const form of forms) {
+        const [whole, decimals] = form.split(".");
+        if (whole !== undefined && decimals !== undefined) {
+          out.push({
+            path,
+            pattern: new RegExp(`(?<![\\d.,])${whole}[.,]${decimals}(?!\\d)`),
+          });
+        }
       }
     }
   } else if (Array.isArray(value)) {
@@ -87,10 +108,12 @@ export function loadHouseholdProbes(configDir: string): HouseholdProbe[] {
     let parsed: unknown;
     try {
       parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    } catch (error) {
-      throw new Error(`Cannot read ${path} for the household check: ${String(error)}`, {
-        cause: error,
-      });
+    } catch {
+      // No `cause` and no parser text: a JSON error quotes the file, which is household data.
+      throw new HouseholdConfigError(`${path} is not valid JSON (or cannot be read).`);
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new HouseholdConfigError(`${path} is not a JSON object.`);
     }
     // Keys that start with "_" are comments, not values.
     const values = Object.fromEntries(

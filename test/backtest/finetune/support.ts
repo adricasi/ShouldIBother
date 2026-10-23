@@ -54,7 +54,11 @@ export function exampleProbes() {
 export function buildWith(
   snapshot: WeatherSnapshot,
   probes = exampleProbes(),
-  overrides: { habits?: Record<string, string | boolean> } = {},
+  overrides: {
+    habits?: Record<string, string | boolean>;
+    toolUse?: "native" | "injected";
+    answerMode?: "single_call" | "two_step";
+  } = {},
 ): Promise<FinetuneBuild> {
   return buildFinetuneDataset(
     snapshot,
@@ -63,8 +67,8 @@ export function buildWith(
       rules: RULES,
       rulesSha256: "0".repeat(64),
       habits: overrides.habits ?? loadSyntheticHabits(),
-      toolUse: "native",
-      answerMode: "single_call",
+      toolUse: overrides.toolUse ?? "native",
+      answerMode: overrides.answerMode ?? "single_call",
     },
     probes,
   );

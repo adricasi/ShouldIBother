@@ -5,10 +5,15 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
+
+import { CONFIG_DIR } from "../server/config.js";
+
+import { dataFolder } from "./snapshot-location.js";
 
 export type Habits = Readonly<Record<string, string | boolean>>;
 
@@ -42,4 +47,31 @@ export function habitsDigest(habits: Habits): string | null {
   return entries.length === 0
     ? null
     : createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+}
+
+/**
+ * True when a habits file looks like household data: under the data folder (`~/.should-i-bother/`
+ * or `SIB_DATA_DIR`), named `household.json`, or the app's own `config/household.json`. A file like
+ * that must not feed a backtest or a dataset (AC-018.4, AC-019.6, NFR-002).
+ */
+export function looksLikeHouseholdData(
+  path: string,
+  context: {
+    readonly home: string;
+    readonly env: Readonly<Record<string, string | undefined>>;
+  },
+): boolean {
+  const real = (() => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return path; // reported when the file is read
+    }
+  })();
+  const folders = [join(context.home, ".should-i-bother"), dataFolder(context)];
+  return (
+    folders.some((folder) => real === folder || real.startsWith(`${folder}${sep}`)) ||
+    real === join(CONFIG_DIR, "household.json") ||
+    basename(real) === "household.json"
+  );
 }

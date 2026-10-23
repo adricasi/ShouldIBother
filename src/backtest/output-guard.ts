@@ -4,24 +4,50 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 export class OutputInsideRepositoryError extends Error {
   override readonly name = "OutputInsideRepositoryError";
 }
 
-/** The nearest existing ancestor of `path` (the path itself when it exists). */
+function lexists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The nearest existing ancestor of `path` (the path itself when it exists). A dangling symlink on
+ * the way is refused: it would send the files to a place that does not exist yet, unchecked.
+ */
 function existingAncestor(path: string): string {
   let current = path;
   while (!existsSync(current)) {
+    if (lexists(current)) {
+      throw new OutputInsideRepositoryError(
+        `${current} is a symlink to a place that does not exist, so where the files would go can not be checked. Use a real folder.`,
+      );
+    }
     const parent = dirname(current);
     if (parent === current) {
       break;
     }
     current = parent;
   }
-  return current;
+  // A file on the way (writing there fails later, with its own message): look at its folder.
+  return statSync(current).isDirectory() ? current : dirname(current);
 }
 
 /** True when `folder` or a parent has a `.git` entry: git's own check can fail (ownership). */
@@ -97,4 +123,16 @@ export function assertNotCommittable(files: readonly string[]): void {
       );
     }
   }
+}
+
+/**
+ * Writes `content` to `path` through `<path>.tmp`, created exclusively (`wx`) after removing any
+ * leftover, so a symlink planted at the temporary name is never followed; the rename then replaces
+ * whatever is at `path`, a symlink included, instead of writing through it.
+ */
+export function writeFileExclusive(path: string, content: string): void {
+  const temporary = `${path}.tmp`;
+  rmSync(temporary, { force: true });
+  writeFileSync(temporary, content, { flag: "wx" });
+  renameSync(temporary, path);
 }

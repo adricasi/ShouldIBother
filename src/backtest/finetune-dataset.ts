@@ -22,6 +22,7 @@ import type { Band } from "../domain/bands.js";
 import { CHORES } from "../domain/chores.js";
 import { OUTCOME_CHORES, madridWallTimeToEpochMs, type OutcomeChore } from "../domain/outcomes.js";
 import type { RulesConfig } from "../domain/rules/index.js";
+import { madridParts } from "../domain/time.js";
 import { migrate, openDatabase } from "../server/db.js";
 import {
   BAND_NAMES,
@@ -50,7 +51,7 @@ import {
   type Split,
   type TrainingRow,
 } from "./dataset.js";
-import { sortedHabits, type Habits } from "./habits.js";
+import { habitsDigest, loadSyntheticHabits, sortedHabits, type Habits } from "./habits.js";
 import { TOOL_HORIZON_HOURS, assertNoLookahead, buildCases } from "./harness/cases.js";
 import { bookmakerInputFor } from "./harness/gemma-strategy.js";
 import type { BacktestCase, DecisionInput } from "./harness/types.js";
@@ -262,6 +263,8 @@ class ScriptedBookmaker implements ModelClient {
 
   chat(request: ChatRequest): Promise<ChatResponse> {
     if ((request.tools?.length ?? 0) > 0) {
+      // `hours_ahead: 24` is what the trained model must emit: the backtest serves 24 h of day-1
+      // values from the decision hour (TOOL_HORIZON_HOURS), and a larger ask would not see more.
       return Promise.resolve({
         content: "",
         toolCalls: [{ name: GET_FORECAST.name, arguments: { hours_ahead: TOOL_HORIZON_HOURS } }],
@@ -410,6 +413,15 @@ export interface Manifest {
     readonly holdout: { readonly from: string; readonly to: string };
   };
   readonly habit_profile: Readonly<Record<string, string | boolean>>;
+  /**
+   * Where the habits come from and what the live app sends: until onboarding feeds the
+   * bookmaker, the live data message carries `habits: {}`, while these rows carry the profile.
+   */
+  readonly habits: {
+    readonly profile: "synthetic" | "custom";
+    readonly digest: string | null;
+    readonly live_sends: "{}";
+  };
   readonly conversation: {
     readonly tool_use: ToolUseMode;
     readonly answer_mode: AnswerMode;
@@ -472,6 +484,17 @@ function countRows(
       ROW_SKIP_REASONS.map((reason) => [reason, skipped.filter((r) => r === reason).length]),
     ) as Record<RowSkipReason, number>,
   };
+}
+
+/** "2026-10-22 11:00 Europe/Madrid" for an ISO instant; text that is no instant is kept. */
+function madridLocal(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) {
+    return iso;
+  }
+  const t = madridParts(ms);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${t.year}-${pad(t.month)}-${pad(t.day)} ${pad(t.hour)}:${pad(t.minute)} Europe/Madrid`;
 }
 
 function toJsonl(rows: readonly unknown[]): string {
@@ -617,7 +640,7 @@ export async function buildFinetuneDataset(
       start_date: snapshot.startDate,
       end_date: snapshot.endDate,
       requested_end_date: snapshot.requestedEndDate,
-      fetched_at: snapshot.fetchedAt,
+      fetched_at: madridLocal(snapshot.fetchedAt),
       sha256: sha256(serializeSnapshot(snapshot)),
     },
     periods: {
@@ -625,13 +648,31 @@ export async function buildFinetuneDataset(
       holdout: { from: HOLDOUT_START_DATE, to: snapshot.endDate },
     },
     habit_profile: sortedHabits(options.habits),
+    habits: {
+      profile:
+        habitsDigest(options.habits) === habitsDigest(loadSyntheticHabits())
+          ? "synthetic"
+          : "custom",
+      digest: habitsDigest(options.habits),
+      live_sends: "{}",
+    },
     conversation: {
       tool_use: options.toolUse,
       answer_mode: options.answerMode,
       tool_horizon_hours: TOOL_HORIZON_HOURS,
     },
     rows: {
-      train: countRows(train, (row) => row.meta.target?.band ?? nameOf(0), skipped.train, "target"),
+      train: countRows(
+        train,
+        (row) => {
+          if (row.meta.target === undefined) {
+            throw new DatasetBuildError(`${row.id}: a training row has no target`);
+          }
+          return row.meta.target.band;
+        },
+        skipped.train,
+        "target",
+      ),
       holdout: countRows(holdout, (row) => row.meta.rule_band, skipped.holdout, "rule"),
     },
     dataset_skips: { ...dataset.counts.skipReasons },

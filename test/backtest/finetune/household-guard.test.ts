@@ -49,6 +49,26 @@ describe("the household probes", () => {
   });
 });
 
+describe("coordinates are found however they are rounded or written", () => {
+  const probes = householdProbes({ location: { latitude: 41.3874, longitude: -2.1701 } });
+  const hits = (text: string): string[] => householdHits({ text }, probes);
+
+  it("finds rounded, comma-separated and negative forms", () => {
+    expect(hits("lat 41.387")).toEqual(["location.latitude"]);
+    expect(hits("lat 41.4")).toEqual(["location.latitude"]);
+    expect(hits("lat 41,3874")).toEqual(["location.latitude"]);
+    expect(hits("lon 2.17")).toEqual(["location.longitude"]);
+    expect(hits("lon -2.1701")).toEqual(["location.longitude"]);
+    expect(hits("lon 2,17")).toEqual(["location.longitude"]);
+  });
+
+  it("does not take a one-decimal longitude for rainfall, or a longer number for a coordinate", () => {
+    expect(hits("2.2 mm of rain, 2.1 mm")).toEqual([]);
+    expect(hits("141.4 and 41.39 5")).toEqual(["location.latitude"]);
+    expect(hits("41.4000 and 241,387")).toEqual([]);
+  });
+});
+
 describe("AC-019.8: a household value in a row fails the dataset build", () => {
   it("fails with the row and the household.json path, never the value", () => {
     const probes = householdProbes(PLANTED);

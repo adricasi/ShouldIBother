@@ -344,14 +344,23 @@ npm run sib -- dataset    # snapshot -> ~/.should-i-bother/datasets/<same name>/
 - `snapshot` fetches 1 Apr 2026 to yesterday for Gràcia (`--start`, `--end`, `--out` change that);
   the end date in the folder name is the archive's last complete day, which is where the hold-out
   ends. Both commands refuse a folder inside a git working tree unless git ignores it.
-- `dataset` uses the latest `prompts/bookmaker.vN.md` the app uses (`BOOKMAKER_PROMPT`), so after
-  T-010 freezes the prompt, run the same command again; `--prompt-version <n>` picks another one.
-  The habits in every row are the fixed synthetic profile in `training/habits.synthetic.json`
-  (`--habits <file>` replaces it). The build stops, and writes nothing, if a value from
-  `config/household.json` appears in a row (AC-019.8). The same inputs give the same bytes.
+- `dataset` builds with the prompt the app runs (`BOOKMAKER_PROMPT`, today `bookmaker.v1`). When
+  T-010 freezes a later `prompts/bookmaker.vN.md`, run `sib dataset --prompt-version N` (or raise
+  the version in `src/server/gemma/bookmaker.ts`); the manifest records the version and its hash.
+- Habits: every row carries the fixed synthetic profile in `training/habits.synthetic.json`, while
+  the live app sends `habits: {}` until onboarding feeds the bookmaker (the manifest says so under
+  `habits`). T-014 also evaluates the fine-tuned model with habits `{}`. `--habits <file>` replaces
+  the profile, but a file in the data folder or named `household.json` is refused.
+- The build stops, and writes nothing, if a value from `config/household.json` appears in a row or
+  the manifest (AC-019.8): strings as whole words, and decimal numbers as written or rounded to
+  2-4 decimals (1 from 10 up), with `.` or `,`. The onboarding profile in the database is not
+  checked: this command never opens the database. The same inputs give the same bytes.
+- `sib backtest` now shows the same synthetic habits by default. A run started with the old
+  default (no habits) refuses to resume; `--habits <file containing {}>` reproduces the old
+  behaviour, `--restart` starts over.
 - Each line of `train.jsonl` is `{id, split, chore, date, messages, tools, meta}`: `messages` is the
-  conversation the live bookmaker has (system prompt, data message, the `get_forecast` call, its
-  result) plus the answer as the last `assistant` message; `tools` is the tool definition; `meta`
+  conversation the live bookmaker has (system prompt, data message, the `get_forecast` call with
+  `hours_ahead: 24`, which the trained model must emit, and its result) plus the answer as the last `assistant` message; `tools` is the tool definition; `meta`
   holds the rule band and the target (training only). `holdout.jsonl` has the same rows without the
   answer and the target, ending at the tool result, and `meta.outcome_delivered` is the label for
   the evaluation. Training rows never show an hour of 1 Sep or later; rows whose forecast needed a

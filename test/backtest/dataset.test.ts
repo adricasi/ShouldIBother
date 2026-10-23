@@ -15,6 +15,7 @@ import {
 } from "../../src/backtest/index.js";
 import {
   OUTCOME_CHORES,
+  addDays,
   dateRange,
   madridDateOf,
   type OutcomeChore,
@@ -201,7 +202,24 @@ describe("outcomes and labelled fallbacks in rows (AC-018.1, AC-018.2)", () => {
         previousRunsNullDates: ["2026-04-20"],
       }),
     );
-    const labelled = fallback.train.filter((r) => r.forecastQuality !== "day1_previous_runs");
+    // A training day without day-1 values is left out, not labelled: it is neither a row nor a
+    // neighbour of another row (see the next describe block).
+    expect(fallback.train.some((r) => r.date === "2026-04-20")).toBe(false);
+    // plants decide the evening before and read the next morning, so 19 Apr reaches into 20 Apr
+    expect(skippedFor(fallback, "plants", "short_lead_forecast")).toEqual([
+      "2026-04-19",
+      "2026-04-20",
+    ]);
+
+    // Hold-out days keep their label, for the evaluation.
+    const late = buildDataset(
+      await syntheticSnapshot({
+        startDate: "2026-08-24",
+        requestedEndDate: "2026-09-06",
+        previousRunsNullDates: ["2026-09-02"],
+      }),
+    );
+    const labelled = late.holdout.filter((r) => r.forecastQuality !== "day1_previous_runs");
     expect(labelled.length).toBeGreaterThan(0);
     expect(
       labelled.every((r) => r.forecastQualityLabel === "short-lead forecast (optimistic)"),
@@ -377,5 +395,47 @@ describe("NFR-012: reproducibility", () => {
         expect(all.has(date) !== skipped.has(date)).toBe(true);
       }
     }
+  });
+});
+
+describe("short-lead training days are not neighbours (AGENTS.md: day-1 lead only)", () => {
+  // 15 days whose day-1 values are missing (so they are short-lead days) and whose weather is
+  // either all wet or all dry: if they counted as neighbours, other targets would move.
+  const days = dateRange("2026-05-10", "2026-05-24");
+  const inDays = (timeMs: number): boolean => days.includes(madridDateOf(timeMs));
+  const weather =
+    (wet: boolean) =>
+    (timeMs: number, variable: string, value: number): number => {
+      if (!inDays(timeMs)) return value;
+      if (variable === "precipitation") return wet ? 30 : 0;
+      if (variable === "precipitation_probability") return wet ? 95 : 0;
+      if (variable === "et0_fao_evapotranspiration") return wet ? 0 : 0.5;
+      return value;
+    };
+  const build = async (wet: boolean, shortLead: boolean) =>
+    buildDataset(
+      await syntheticSnapshot({
+        requestedEndDate: "2026-07-15",
+        archiveOverride: weather(wet),
+        forecastOverride: weather(wet),
+        ...(shortLead ? { previousRunsNullDates: days } : {}),
+      }),
+    );
+
+  it("gives every other training row the same target whatever the short-lead days looked like", async () => {
+    const wet = await build(true, true);
+    const dry = await build(false, true);
+    expect(JSON.stringify(wet.train)).toBe(JSON.stringify(dry.train));
+    expect(wet.train.some((r) => days.includes(r.date))).toBe(false);
+    expect(skippedFor(wet, "plants", "short_lead_forecast")).toEqual([
+      addDays(days[0]!, -1),
+      ...days,
+    ]);
+  });
+
+  it("would move targets if those days were day-1 days (the check can fail)", async () => {
+    const wet = await build(true, false);
+    const dry = await build(false, false);
+    expect(JSON.stringify(wet.train)).not.toBe(JSON.stringify(dry.train));
   });
 });

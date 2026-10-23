@@ -1,6 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -178,6 +187,121 @@ describe("sib dataset", () => {
     expect(existsSync(join(ignored, "manifest.json"))).toBe(true);
   });
 
+  it("C1: refuses a habits file that is household data, and writes nothing", async () => {
+    const { directory } = await snapshotOnDisk();
+    const home = tempDir();
+    mkdirSync(join(home, ".should-i-bother"));
+    const inDataFolder = join(home, ".should-i-bother", "profile.json");
+    const named = join(tempDir(), "household.json");
+    for (const path of [inDataFolder, named]) {
+      writeFileSync(path, JSON.stringify({ dryer: "an invented value" }));
+      const out = outDir();
+      const { code, text } = await run(["--snapshot", directory, "--out", out, "--habits", path], {
+        configDir: configDirWith(),
+        homeDir: home,
+        env: {},
+      });
+      expect(code, path).toBe(1);
+      expect(text).toContain("Refusing --habits");
+      expect(readdirSync(out)).toEqual([]);
+    }
+    // a profile anywhere else is accepted
+    const plain = join(tempDir(), "profile.json");
+    writeFileSync(plain, JSON.stringify({ garden: "a window box" }));
+    const ok = await run(["--snapshot", directory, "--out", outDir(), "--habits", plain], {
+      configDir: configDirWith(),
+      homeDir: home,
+      env: {},
+    });
+    expect(ok.code, ok.text).toBe(0);
+  });
+
+  it("C3: a malformed household.json stops the build with one line and no file content", async () => {
+    const { directory } = await snapshotOnDisk();
+    const configDir = configDirWith();
+    writeFileSync(join(configDir, "household.json"), '{"dryer": "snippet-zz-private", "x": ');
+    const out = outDir();
+    const { code, text } = await run(["--snapshot", directory, "--out", out], { configDir });
+    expect(code).toBe(1);
+    expect(text).toContain("Dataset NOT written");
+    expect(text).toContain("is not valid JSON");
+    expect(text).not.toContain("snippet-zz-private");
+    expect(text.split("\n")).toHaveLength(1);
+    expect(readdirSync(out)).toEqual([]);
+  });
+
+  it("C4: config and write failures are one line and exit 1", async () => {
+    const { directory } = await snapshotOnDisk();
+
+    const noRules = configDirWith();
+    rmSync(join(noRules, "rules.json"));
+    const missing = await run(["--snapshot", directory, "--out", outDir()], { configDir: noRules });
+    expect(missing.code).toBe(1);
+    expect(missing.text).toMatch(/^Cannot read config\/rules\.json: /);
+    expect(missing.text).not.toContain("    at ");
+
+    const badModels = configDirWith();
+    writeFileSync(join(badModels, "models.json"), "{nope");
+    const broken = await run(["--snapshot", directory, "--out", outDir()], {
+      configDir: badModels,
+    });
+    expect(broken.code).toBe(1);
+    expect(broken.text).toMatch(/^Cannot read config\/models\.json: /);
+
+    const file = join(tempDir(), "a-file");
+    writeFileSync(file, "x");
+    const blocked = await run(["--snapshot", directory, "--out", join(file, "sub")], {
+      configDir: configDirWith(),
+    });
+    expect(blocked.code).toBe(1);
+    expect(blocked.text).toMatch(/Cannot write the dataset to /);
+  });
+
+  it("C5: a symlinked --out is judged by where it points", async () => {
+    const { directory } = await snapshotOnDisk();
+    const configDir = configDirWith();
+    const repo = tempDir();
+    git(repo, "init", "-q");
+    mkdirSync(join(repo, "tracked"));
+    const links = tempDir();
+
+    const toRepo = join(links, "to-repo");
+    symlinkSync(join(repo, "tracked"), toRepo);
+    const refused = await run(["--snapshot", directory, "--out", toRepo], { configDir });
+    expect(refused.code).toBe(1);
+    expect(refused.text).toMatch(/inside the git working tree/);
+    expect(readdirSync(join(repo, "tracked"))).toEqual([]);
+
+    const dangling = join(links, "dangling");
+    symlinkSync(join(repo, "not-yet"), dangling);
+    const gone = await run(["--snapshot", directory, "--out", dangling], { configDir });
+    expect(gone.code).toBe(1);
+    expect(gone.text).toMatch(/symlink to a place that does not exist/);
+    expect(existsSync(join(repo, "not-yet"))).toBe(false);
+
+    const elsewhere = tempDir();
+    const toOutside = join(links, "to-outside");
+    symlinkSync(elsewhere, toOutside);
+    const fine = await run(["--snapshot", directory, "--out", toOutside], { configDir });
+    expect(fine.code, fine.text).toBe(0);
+    expect(existsSync(join(elsewhere, "manifest.json"))).toBe(true);
+  });
+
+  it("C5: a symlink planted at the temporary file name is not written through", async () => {
+    const { directory } = await snapshotOnDisk();
+    const out = outDir();
+    const victim = join(tempDir(), "victim.txt");
+    writeFileSync(victim, "untouched");
+    symlinkSync(victim, join(out, "train.jsonl.tmp"));
+    const { code, text } = await run(["--snapshot", directory, "--out", out], {
+      configDir: configDirWith(),
+    });
+    expect(code, text).toBe(0);
+    expect(readFileSync(victim, "utf8")).toBe("untouched");
+    expect(lstatSync(join(out, "train.jsonl")).isFile()).toBe(true);
+    expect(existsSync(join(out, "train.jsonl.tmp"))).toBe(false);
+  });
+
   it("builds from another prompt version and says when there is none", async () => {
     const { directory } = await snapshotOnDisk();
     const configDir = configDirWith();
@@ -305,6 +429,21 @@ describe("sib snapshot", () => {
 });
 
 describe("sib backtest: the default habits are the fixed synthetic profile", () => {
+  it("C6: a run made with {} habits (the old default) refuses to resume with the new default", async () => {
+    const { directory } = await snapshotOnDisk();
+    const out = tempDir();
+    const empty = join(tempDir(), "none.json");
+    writeFileSync(empty, "{}");
+    const base = ["--snapshot", directory, "--out", out, "--fake-model", "--strategies", "rule"];
+    const deps = { env: {}, homeDir: tempDir() };
+    expect(await backtestCommand([...base, "--habits", empty], () => undefined, deps)).toBe(0);
+    const lines: string[] = [];
+    expect(await backtestCommand(base, (line) => lines.push(line), deps)).toBe(1);
+    expect(lines.join("\n")).toMatch(/different habits.*--restart/s);
+    // the old behaviour is still one flag away
+    expect(await backtestCommand([...base, "--habits", empty], () => undefined, deps)).toBe(0);
+  });
+
   it("shows the synthetic habits to the bookmaker and records them as a count and a hash", async () => {
     const { directory } = await snapshotOnDisk();
     const out = tempDir();

@@ -5,8 +5,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   parseSnapshot,
   serializeSnapshot,
-  sortedHabits,
+  habitsDigest,
   loadSyntheticHabits,
+  sortedHabits,
   toTemplateMessage,
   type FinetuneBuild,
   type FinetuneRow,
@@ -188,7 +189,8 @@ describe("AC-019.6: a row is the conversation the live bookmaker has", () => {
     expect(rows.some((row) => row.chore === "laundry_line")).toBe(false);
     expect(rows.some((row) => row.chore === "laundry_tonight")).toBe(false);
     expect(rows.some((row) => row.chore === "plants")).toBe(true);
-    expect(result.manifest.rows.train.skipped.fallback_forecast).toBeGreaterThan(0);
+    // training days are dropped by the T-011 dataset, hold-out days by the row builder
+    expect(result.manifest.dataset_skips["short_lead_forecast"]).toBeGreaterThan(0);
     expect(result.manifest.rows.holdout.skipped.fallback_forecast).toBeGreaterThan(0);
   });
 
@@ -321,6 +323,80 @@ describe("AC-019.7: the manifest", () => {
       ].sort(),
     );
     expect(build.manifest.dataset_skips).toMatchObject({ outside_periods: 10 });
+  });
+});
+
+describe("the manifest says what the live app sends and when the snapshot was made", () => {
+  it("records that the rows carry the synthetic profile while the live app sends {}", () => {
+    expect(build.manifest.habits).toEqual({
+      profile: "synthetic",
+      digest: habitsDigest(loadSyntheticHabits()),
+      live_sends: "{}",
+    });
+  });
+
+  it("marks another profile as custom", async () => {
+    const slice = await syntheticSnapshot({
+      startDate: "2026-08-24",
+      requestedEndDate: "2026-09-06",
+    });
+    const custom = await buildWith(slice, undefined, { habits: { garden: "a window box" } });
+    expect(custom.manifest.habits.profile).toBe("custom");
+    expect(custom.manifest.habits.digest).toBe(habitsDigest({ garden: "a window box" }));
+  });
+
+  it("writes the fetch time in Europe/Madrid", () => {
+    // the synthetic snapshot was fetched at 2026-10-22T09:00:00Z, which is 11:00 in Madrid (CEST)
+    expect(build.manifest.snapshot.fetched_at).toBe("2026-10-22 11:00 Europe/Madrid");
+  });
+});
+
+describe("the other T-001 fallbacks give rows the live job would send", () => {
+  let slice: WeatherSnapshot;
+  beforeAll(async () => {
+    slice = await syntheticSnapshot({ startDate: "2026-08-24", requestedEndDate: "2026-09-06" });
+  });
+
+  it("two_step rows are the same conversation as single_call rows", async () => {
+    const single = await buildWith(slice);
+    const twoStep = await buildWith(slice, undefined, { answerMode: "two_step" });
+    expect(twoStep.trainJsonl).toBe(single.trainJsonl);
+    expect(twoStep.holdoutJsonl).toBe(single.holdoutJsonl);
+    expect(twoStep.manifest.conversation.answer_mode).toBe("two_step");
+  });
+
+  it("injected rows carry the app-made call, as the live job sends it", async () => {
+    const injected = await buildWith(slice, undefined, { toolUse: "injected" });
+    const rows = parseLines(injected.trainJsonl);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(injected.manifest.conversation.tool_use).toBe("injected");
+
+    const decisions = buildCases(slice, RULES, { fallback: "none" }).cases;
+    for (const chore of OUTCOME_CHORES) {
+      const row = rows.find((candidate) => candidate.chore === chore);
+      expect(row, chore).toBeDefined();
+      const decision = decisions.find((c) => c.key === row?.id);
+      const db = openDatabase(":memory:");
+      migrate(db, MIGRATIONS);
+      db.pragma("foreign_keys = OFF");
+      const fake = new FakeModelClient({ scenario: () => "backtest-toss-up" });
+      const runner = new JobRunner({ model: fake, db, now: Date.now, toolUse: "injected" });
+      await runBookmaker(
+        runner,
+        bookmakerInputFor(decision!.input, {
+          rules: RULES,
+          habits: loadSyntheticHabits(),
+          cardId: 1,
+        }),
+        BOOKMAKER_PROMPT,
+      );
+      db.close();
+      // injected: no tool offered, one call, with the app's own tool call in the conversation
+      expect(fake.calls[0]?.tools).toBeUndefined();
+      expect(row?.messages.slice(0, 4)).toEqual(
+        (fake.calls[0]?.messages ?? []).map(toTemplateMessage),
+      );
+    }
   });
 });
 

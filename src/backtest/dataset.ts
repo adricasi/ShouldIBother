@@ -87,6 +87,7 @@ export type SkipReason =
   | "recorded_weather_forecast"
   | "window_crosses_split"
   | "no_sunset"
+  | "short_lead_forecast"
   | "incomplete_archive_window"
   | "incomplete_forecast";
 
@@ -124,6 +125,7 @@ const SKIP_REASONS: readonly SkipReason[] = [
   "recorded_weather_forecast",
   "window_crosses_split",
   "no_sunset",
+  "short_lead_forecast",
   "incomplete_archive_window",
   "incomplete_forecast",
 ];
@@ -230,6 +232,13 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
         outcome,
       };
       if (split === "train") {
+        // Training rows and their neighbours are day-1 forecasts only: a Historical Forecast value
+        // comes from a run started after the decision, so such a day neither gets a target nor
+        // counts as a neighbour of another (AGENTS.md, AC-018.1). Hold-out days keep the label.
+        if (forecast.quality !== "day1_previous_runs") {
+          skip("short_lead_forecast");
+          continue;
+        }
         trainingDays.push({ ...base, split: "train" });
       } else {
         holdoutRows.push({ ...base, split: "holdout" });

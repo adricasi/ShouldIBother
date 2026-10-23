@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -30,7 +30,13 @@ import type { ModelClient } from "../../server/model/client.js";
 import { loadModelsConfig, type ModelsConfig } from "../../server/model/config.js";
 import { OllamaClient } from "../../server/model/ollama.js";
 import { loadSavings } from "../../server/savings.js";
-import { habitsDigest, loadSyntheticHabits, readHabitsFile, type Habits } from "../habits.js";
+import {
+  habitsDigest,
+  loadSyntheticHabits,
+  looksLikeHouseholdData,
+  readHabitsFile,
+  type Habits,
+} from "../habits.js";
 import { SnapshotLocationError, findSnapshotDirectory } from "../snapshot-location.js";
 import { readSnapshot, serializeSnapshot } from "../snapshot.js";
 
@@ -200,22 +206,10 @@ function readHabits(path: string | undefined): Habits {
 }
 
 /** A warning when the habits file looks like household data, which must not enter a backtest. */
-function habitsWarning(path: string, home: string): string | undefined {
-  let real = path;
-  try {
-    real = realpathSync(path);
-  } catch {
-    // reported when the file is read
-  }
-  const household = join(CONFIG_DIR, "household.json");
-  if (
-    real.startsWith(join(home, ".should-i-bother")) ||
-    real === household ||
-    basename(real) === "household.json"
-  ) {
-    return `WARNING: ${path} looks like household data. The backtest must use a synthetic profile only (AC-018.4, AC-019.6); household data must not leave the laptop.`;
-  }
-  return undefined;
+function habitsWarning(path: string, home: string, env: BacktestDeps["env"]): string | undefined {
+  return looksLikeHouseholdData(path, { home, env: env ?? {} })
+    ? `WARNING: ${path} looks like household data. The backtest must use a synthetic profile only (AC-018.4, AC-019.6); household data must not leave the laptop.`
+    : undefined;
 }
 
 async function createModel(
@@ -304,7 +298,7 @@ export async function backtestCommand(
     const pauseAtMs = parsePauseAt(values["pause-at"], now());
     const habitsPath = values.habits === undefined ? undefined : resolve(cwd, values.habits);
     if (habitsPath !== undefined) {
-      const warning = habitsWarning(habitsPath, home);
+      const warning = habitsWarning(habitsPath, home, env);
       if (warning !== undefined) {
         log(warning);
       }
@@ -382,6 +376,9 @@ export async function backtestCommand(
       savings: sha256(JSON.stringify(catalogue)),
       prompt: method.bookmakerPrompt,
       model: method.model,
+      // The default is the synthetic profile (T-031); before that it was none ({}). A run made
+      // with the old default has another hash here, so it refuses to resume: `--habits <file
+      // containing {}>` reproduces the old behaviour, `--restart` starts over.
       habits: method.habits.sha256,
       skipFromBand: SKIP_FROM_BAND,
       dryer: BACKTEST_DRYER,
