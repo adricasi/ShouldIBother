@@ -14,6 +14,7 @@ import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
+import { cardLocationOf } from "./card-location.js";
 import { ruleBandOrFallback, ruleQuoteAt, ruleWindowAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import {
@@ -119,6 +120,7 @@ async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
         fromMs: nowMs,
         hours: FORECAST_HOURS,
         pastHours: FORECAST_PAST_HOURS,
+        ...cardLocationOf(card),
       })
     ).hours;
   } catch (error) {
@@ -310,6 +312,7 @@ async function guardCard(deps: LedgerDeps, cardId: number): Promise<boolean> {
         fromMs: enqueuedAt,
         hours: FORECAST_HOURS,
         pastHours: FORECAST_PAST_HOURS,
+        ...cardLocationOf(card),
       })
     ).hours;
   } catch (error) {

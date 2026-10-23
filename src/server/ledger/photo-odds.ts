@@ -14,6 +14,7 @@ import { runInspector, type Observation } from "../gemma/inspector.js";
 import { JobQueueFullError, type JobFailure } from "../gemma/runner.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
+import { cardLocationOf } from "./card-location.js";
 import { ruleBandOrFallback, ruleQuoteAt, ruleWindowAt } from "./chore-rules.js";
 import type { LedgerDeps } from "./deps.js";
 import {
@@ -189,6 +190,7 @@ async function bookmakeWithPhoto(
         fromMs: nowMs,
         hours: FORECAST_HOURS,
         pastHours: FORECAST_PAST_HOURS,
+        ...cardLocationOf(card),
       })
     ).hours;
   } catch (error) {
