@@ -19,7 +19,7 @@ for the DEV Hacktoberfest Open-Source AI Challenge, Week 3 "Slow and Steady".
 
 Contents: [What you need](#what-you-need) · [Set up](#set-up) · [Phone access](#phone-access-over-wi-fi) ·
 [Pair a phone](#pair-a-phone) · [Tailscale Serve](#optional-https-with-tailscale-serve) ·
-[Run](#run) · [Feature flags](#feature-flags) · [Commands](#commands-sib) · [Privacy](#privacy-and-your-data) ·
+[Run](#run) · [Feature flags](#feature-flags) · [Presentation](#presentation) · [Commands](#commands-sib) · [Privacy](#privacy-and-your-data) ·
 [Testing](#testing) · [Licences](#licences) · [Spec and ADRs](#specification-and-decisions)
 
 ## What you need
@@ -325,6 +325,37 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 | `splitFlap` | off | The split-flap weather board on Today |
 | `voice` | off | Voice capture through Gemma 4 audio on llama.cpp: the "Say your chores" button on Today, shown only on HTTPS (see [voice capture](#optional-voice-capture-flag-voice)). TODO(builder): the llama.cpp wire format is unverified until a live voice note works |
 
+## Presentation
+
+For a rehearsal or the final demo, turn on every feature that is merged and checked with one command
+(AC-029.3):
+
+```bash
+npm run sib -- flags                       # list the flags and their state
+npm run sib -- flags preset presentation   # every flag on except voice and finetunedBookmaker
+npm run sib -- flags on voice              # a single flag (also: off <flag>...)
+```
+
+The preset is the explicit list of flag names in `config/flags.presets.json`, which you edit. The
+`presentation` list leaves out `voice` and `finetunedBookmaker`, so they stay as they are unless
+you name them (`flags preset presentation voice`), because both need checks on the laptop first.
+Unknown flag names (on the command line or in the presets file) are refused and nothing is
+written. `sib demo` uses the same preset in memory. The file is replaced atomically and the
+committed defaults stay off: do not commit your local `config/flags.json`. A running app reads the
+flags at start, so **restart the app to apply** a change.
+
+Laptop checks before you turn on the two excluded flags:
+
+- `voice` (T-028): a llama.cpp server with the Gemma 4 audio model and its projector runs on
+  127.0.0.1 and answers (`llamaCpp.baseUrl` in `config/models.json`), and the phone opens the app
+  from an `https://` origin ([Tailscale Serve](#optional-https-with-tailscale-serve)), because the
+  microphone needs a secure page. Record one voice note end to end first; the wire format is
+  unverified until one works.
+- `finetunedBookmaker` (T-012, T-014): the QLoRA adapter is trained and loaded into Ollama, the
+  `models.e4b-ft` entry in `config/models.json` names it and `ollama list` shows it, and the
+  hold-out result on Sep-Oct is in hand (`sib backtest`, `sib eval bookmaker`). With the entry
+  missing nothing changes and the start notice says so.
+
 ## Commands (`sib`)
 
 `sib` is the built binary (`node dist/cli.js`, or `npm link` to get `sib` on your PATH). In
@@ -337,6 +368,7 @@ development run the same commands through npm: `npm run sib -- <command>`.
 | `sib forget-devices` | Sign out every device and cancel pending links |
 | `sib export <dir>` | Write `export.json` (bets, decisions, verdicts, totals, onboarding profile, achievements) and the photos to a new, empty folder |
 | `sib delete-photos [--all-data]` | Asks first; removes every photo and what Gemma read from it. With `--all-data` it also removes the database and its WAL files |
+| `sib flags [list\|on\|off\|preset]` | List the feature flags, or turn them on or off in `config/flags.json`; `flags preset presentation` is described under [Presentation](#presentation) |
 | `sib backtest [options]` | Replays the weather snapshot with the rule, a fixed routine, E2B and E4B (and the fine-tuned model) and writes a report; resumable, `--help` lists the options |
 | `sib snapshot [options]` | Downloads the Open-Meteo snapshot (Previous Runs, Historical Forecast, archive) for the backtest and the fine-tune into the data folder. Details below |
 | `sib dataset [options]` | Builds `train.jsonl`, `holdout.jsonl` and `manifest.json` for the fine-tune from the snapshot, offline. Details below |
