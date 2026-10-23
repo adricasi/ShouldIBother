@@ -36,7 +36,10 @@ export const WEB_ROOT = fileURLToPath(new URL("../../dist/web/", import.meta.url
 export interface StartOptions {
   /** Where the summary, pairing banner and pairing lines go; stderr by default. */
   readonly output?: (text: string) => void;
-  /** Directory with `server.json` and `flags.json`; the repository's `config/` by default. */
+  /**
+   * Directory with `server.json`, `flags.json`, `models.json` and `household.json`; the
+   * repository's `config/` by default.
+   */
   readonly configDir?: string;
 }
 
@@ -67,7 +70,7 @@ export async function startServer(
     const flags = loadFlags(`${configDir}flags.json`);
     const now = Date.now;
     const fakes = createFakeServices(now);
-    const household = loadHousehold();
+    const household = loadHousehold(configDir);
     // Onboarding answers (flag `onboarding`) replace the baseline, location included.
     const householdStore = flags.onboarding
       ? new HouseholdStore(runtime.db, household, now, (entry) => appRef?.log.warn(entry))
