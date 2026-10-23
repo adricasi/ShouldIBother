@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -46,6 +46,8 @@ export class TestServer {
   private readonly appDir = mkdtempSync(join(tmpdir(), TEMP_PREFIX));
   /** The pairing link printed at the first start. */
   pairUrl = "";
+  /** The pairing link printed at the latest start (a restart prints a new one). */
+  latestPairUrl = "";
 
   get origin(): string {
     return `http://127.0.0.1:${this.port}`;
@@ -99,9 +101,23 @@ export class TestServer {
         reject(new Error(`The server exited with ${String(code)}:\n${output}`));
       });
     });
+    this.latestPairUrl = link;
     if (this.pairUrl === "") {
       this.pairUrl = link;
     }
+  }
+
+  /**
+   * Turns feature flags on or off in the server's own copy of `config/flags.json` (never the
+   * repository's). The server must be stopped; the next start reads them.
+   */
+  setFlags(flags: Readonly<Record<string, boolean>>): void {
+    if (this.port === 0) {
+      throw new Error("Start the server once before setting flags: the app copy is made then.");
+    }
+    const path = join(this.appDir, "config/flags.json");
+    const current = JSON.parse(readFileSync(path, { encoding: "utf8" })) as Record<string, boolean>;
+    writeFileSync(path, JSON.stringify({ ...current, ...flags }, null, 2));
   }
 
   async stop(): Promise<void> {

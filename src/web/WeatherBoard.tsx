@@ -27,6 +27,17 @@ function barsLabel(board: WeatherBoardData): string {
   return `Hourly drying conditions ${range}; taller is better. ${window}`;
 }
 
+/** How old the forecast is, or that a newer one could not be fetched (AC-014.3). */
+function ForecastAge({ forecast }: { readonly forecast: NonNullable<Today["forecast"]> }) {
+  return (
+    <p className={`board-age forecast-age${forecast.stale ? " stale" : ""}`}>
+      {forecast.stale
+        ? "Open-Meteo could not be reached for a newer forecast."
+        : forecast.age_label}
+    </p>
+  );
+}
+
 /**
  * The weather board of Today (flag `splitFlap`, REQ-026): the temperature and the condition on
  * split-flap tiles, rain and wind in words, and today's daylight hours as bars with the lazy
@@ -51,6 +62,7 @@ export function WeatherBoard({
           Weather board
         </h2>
         <p>No forecast yet. It appears here after your first chore gets odds.</p>
+        {forecast == null ? null : <ForecastAge forecast={forecast} />}
       </section>
     );
   }
@@ -61,7 +73,8 @@ export function WeatherBoard({
         <h2 id="weather-board-title" className="eyebrow">
           Weather board
         </h2>
-        <p className="eyebrow">
+        <p className="eyebrow board-live">
+          {forecast?.stale === true ? null : <span className="live-dot" aria-hidden="true" />}
           {forecast?.stale === true ? forecast.age_label : `Now ${formatClock(now)}`}
         </p>
       </div>
@@ -109,6 +122,7 @@ export function WeatherBoard({
         )}
         <span className="board-source">Bars: how well the line would dry</span>
       </p>
+      {forecast == null ? null : <ForecastAge forecast={forecast} />}
     </section>
   );
 }

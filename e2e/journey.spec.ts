@@ -59,7 +59,7 @@ async function expectTouchTargets(page: Page): Promise<void> {
   const small = await page.evaluate(() => {
     const found: string[] = [];
     for (const element of document.querySelectorAll<HTMLElement>(
-      "button, a[href], label.button, summary, textarea",
+      "button, a[href], label.button, summary, textarea, input:not(.photo-input)",
     )) {
       const box = element.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) {
@@ -85,7 +85,7 @@ test("capture, bet, settle at phone width", async ({ page }) => {
 
   // Pair this browser, as the phone does with the one-time link.
   await page.goto(server.pairUrl);
-  await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeVisible();
   session = await page.context().storageState();
 
   // Today, empty: states, no chores yet.
@@ -111,7 +111,9 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   await expectTouchTargets(page);
   await expectNoSideScroll(page);
 
-  // Bet: do nothing.
+  // Bet: do nothing, once the slip shows Gemma's odds. The rule odds it starts with are replaced
+  // by Gemma's a moment later; a bet placed on the old quote is refused ("The odds changed").
+  await expect(slip.getByText("Gemma's odds")).toBeVisible();
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByText(/Bet placed/)).toBeVisible();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();
@@ -167,7 +169,7 @@ test("the axe check really sees a violation (so a pass means something)", async 
   expect(await axeViolations(page)).toContainEqual(expect.stringContaining("image-alt"));
 });
 
-for (const width of [375, 768, 1280]) {
+for (const width of [320, 375, 768, 1280]) {
   test(`Today and Slips fit at ${width} px`, async ({ browser }) => {
     expect(session).toBeDefined();
     const context = await browser.newContext({
@@ -176,7 +178,7 @@ for (const width of [375, 768, 1280]) {
     });
     const page = await context.newPage();
     await page.goto(`${server.origin}/#/today`);
-    await expect(page.getByRole("heading", { level: 1, name: "The Lazy Bookie" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Today", exact: true })).toBeVisible();
     await expectNoSideScroll(page);
     await shot(page, `w${width}-today`);
     await expectNoViolations(page);

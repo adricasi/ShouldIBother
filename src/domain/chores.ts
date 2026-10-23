@@ -200,15 +200,18 @@ export function describeNextOffer(nowMs: number, nextAtMs: number): string {
   return `${sameDay ? "today" : "tomorrow"} at ${time}`;
 }
 
-/** The card text for a chore that cannot be offered now (AC-016.4), from the chore's own offer hours. */
+/**
+ * The card text for a chore that cannot be offered now (AC-016.4), from the chore's own offer
+ * hours. It does not repeat the chore's title: the card shows that above it.
+ */
 export function offerNotice(choreType: ChoreType, nowMs: number, nextAtMs: number): string {
-  const { title, offerWindow } = CHORES[choreType];
+  const { offerWindow } = CHORES[choreType];
   const hours = (hour: number): string => `${String(hour).padStart(2, "0")}:00`;
   const open =
     offerWindow === undefined
       ? ""
-      : ` is offered from ${hours(offerWindow.fromHour)} to ${hours(offerWindow.toHour)}`;
-  return `${title}${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
+      : `Offered from ${hours(offerWindow.fromHour)} to ${hours(offerWindow.toHour)}. `;
+  return `${open}Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
 }
 
 /**
@@ -251,11 +254,10 @@ export function laundryTonightOffer(
 
 /** The card text when laundry tonight cannot be offered now (AC-016.2). */
 export function laundryTonightNotice(nowMs: number, nextAtMs: number | undefined): string {
-  const open = "is offered from 1 h before to 2 h after sunset";
-  const { title } = CHORES.laundry_tonight;
+  const open = "Offered from 1 h before to 2 h after sunset.";
   return nextAtMs === undefined
-    ? `${title} ${open}. Next chance: tomorrow evening.`
-    : `${title} ${open}. Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
+    ? `${open} Next chance: tomorrow evening.`
+    : `${open} Next chance: ${describeNextOffer(nowMs, nextAtMs)}.`;
 }
 
 /**

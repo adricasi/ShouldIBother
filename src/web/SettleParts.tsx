@@ -198,8 +198,10 @@ export function ReceiptCard({
 }
 
 /**
- * "This week the sky did": net time back with both parts, water and electricity for Monday to
- * Sunday, each with the assumption behind it (AC-011.3, AC-011.5, AC-011.6).
+ * "This week the sky did": net time back, water and electricity for Monday to Sunday as one
+ * compact strip (mockup 02). Each figure's assumption stays one tap away under "How we count"
+ * (AC-011.3, AC-011.5, AC-011.6): both parts of net time, the dates and the assumption behind
+ * every won bet.
  */
 export function WeekStrip({
   totals,
@@ -213,13 +215,10 @@ export function WeekStrip({
   const betsText = `${totals.bets} ${totals.bets === 1 ? "bet" : "bets"}`;
   return (
     <section className="week" aria-labelledby="week-title">
-      <h2 id="week-title" className="section-title">
+      <h2 id="week-title" className="week-title">
         This week the sky did
       </h2>
-      <p className="meta">
-        Monday {from} to Sunday {to}
-      </p>
-      <dl className="stat-tiles">
+      <dl className="week-figures">
         <div>
           <dt>Net time back</dt>
           <dd>{formatNetDuration(totals.net_time_s)}</dd>
@@ -233,21 +232,27 @@ export function WeekStrip({
           <dd>{formatKwh(totals.electricity_kwh)}</dd>
         </div>
       </dl>
-      <p className="meta">
-        {formatDuration(totals.time_saved_s)} saved, minus {formatDuration(totals.app_time_s)} spent
-        on {betsText}.
-      </p>
-      {totals.assumptions.length === 0 ? (
-        <p className="meta">Won bets add their savings here, with the assumption behind each.</p>
-      ) : (
-        <ul className="assumptions">
-          {totals.assumptions.map((item) => (
-            <li key={`${item.chore_type}-${item.assumption}`} className="meta">
-              {item.assumption} ({item.basis}), {item.wins} won
-            </li>
-          ))}
-        </ul>
-      )}
+      <details className="week-notes">
+        <summary>How we count (assumptions)</summary>
+        <p className="meta">
+          Monday {from} to Sunday {to}
+        </p>
+        <p className="meta">
+          {formatDuration(totals.time_saved_s)} saved, minus {formatDuration(totals.app_time_s)}{" "}
+          spent on {betsText}.
+        </p>
+        {totals.assumptions.length === 0 ? (
+          <p className="meta">Won bets add their savings here, with the assumption behind each.</p>
+        ) : (
+          <ul className="assumptions">
+            {totals.assumptions.map((item) => (
+              <li key={`${item.chore_type}-${item.assumption}`} className="meta">
+                {item.assumption} ({item.basis}), {item.wins} won
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
     </section>
   );
 }

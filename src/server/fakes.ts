@@ -26,7 +26,18 @@ const JUDGE_SCENARIO_BY_ANSWER: Readonly<Record<string, string>> = {
   plan_wet: "normal-loss",
 };
 
+/**
+ * The planner's day_0 has no drying hours once the afternoon window has closed (after 18:00
+ * Madrid), and the planner's check then needs it scored "very_unlikely". The data block says so
+ * with `"drying_window":null` in the day_0 entry.
+ */
+const DAY_0_CLOSED = /"key":"day_0"[^{}]*"drying_window":null/;
+
 export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
+  if (request.job === "laundry-planner") {
+    const text = request.messages.map((message) => message.content).join("\n");
+    return DAY_0_CLOSED.test(text) ? "ok-day0-closed" : "ok";
+  }
   if (request.job !== "judge") {
     return "ok";
   }

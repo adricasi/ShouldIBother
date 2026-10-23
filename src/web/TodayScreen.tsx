@@ -1,28 +1,26 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { PLANNER_CHIP, type Card, type Receipt, type Today } from "./api.js";
 import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
 import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
 import { PlanDays, PlannerSlip, type PlannerActions } from "./PlannerParts.js";
-import { formatLongDate, formatOdds, formatPoints, formatSettleTime } from "./format.js";
+import { formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { isStampAnimated } from "./stamp.js";
+import { CaptureBar, QuickChips, TodayHeader, type ChipSpec } from "./TodayParts.js";
 import { VoiceCapture } from "./VoiceCapture.js";
 import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
-import { choreIconName, Icon } from "./ui/Icon.js";
+import { Icon } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 
 const noCards = (): void => undefined;
 
-export interface QuickChip {
-  readonly choreType: string;
-  readonly label: string;
-}
+export type QuickChip = ChipSpec;
 
 /** The chips for the Must chores; the typed sentence (the listener) covers everything else. */
 export const QUICK_CHIPS: readonly QuickChip[] = [
@@ -60,8 +58,12 @@ export interface TodayScreenProps {
   readonly onPhoto?: (cardId: number, file: File) => void;
   /** Delete a photo and what was derived from it (AC-015.2). */
   readonly onDeletePhoto?: (photoId: string) => void;
+  /** The rank for the points total (flag `ranks`), shown in the points chip. */
+  readonly rankName?: string;
   /** Voice capture (flag `voice`): cards were made from a confirmed voice note (REQ-027). */
   readonly onVoiceCards?: (cards: Card[]) => void;
+  /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
+  readonly voiceFab?: ReactNode;
   /** Reload Today after a failed first load (the error state's Try again). */
   readonly onReload?: () => void;
   /** Laundry planner (flag `laundryPlanner`): "Need anything washed before <day>?" (AC-021.2). */
@@ -77,74 +79,6 @@ function OddsTile({ odds, bandName }: { odds: number; bandName: string }) {
       <span className="odds-figure">{odds}%</span>
       <span className="odds-band">{bandName}</span>
     </div>
-  );
-}
-
-/** The longest sentence the listener reads (AC-002.1). */
-const MAX_CAPTURE_CHARS = 500;
-
-function CaptureForm({
-  busy,
-  onCapture,
-}: {
-  busy: boolean;
-  onCapture: (text: string) => Promise<boolean>;
-}) {
-  const [text, setText] = useState("");
-  const submit = (event: FormEvent): void => {
-    event.preventDefault();
-    const sentence = text.trim();
-    if (sentence === "") {
-      return;
-    }
-    // The text stays in the box unless the cards were made, so a failed read can be rephrased.
-    void onCapture(sentence).then((made) => {
-      if (made) {
-        setText("");
-      }
-    });
-  };
-  return (
-    <form className="capture" onSubmit={submit}>
-      <label htmlFor="capture-text" className="meta">
-        Or type your chores in one sentence
-      </label>
-      <textarea
-        id="capture-text"
-        value={text}
-        maxLength={MAX_CAPTURE_CHARS}
-        rows={2}
-        onChange={(event) => {
-          setText(event.target.value);
-        }}
-      />
-      <button type="submit" className="button secondary" disabled={busy || text.trim() === ""}>
-        Get odds
-      </button>
-    </form>
-  );
-}
-
-const GEMMA_STATUS_TEXT = {
-  online: "Gemma is online",
-  waking: "Gemma is waking up",
-  offline: "Gemma is offline, rule odds only",
-} as const;
-
-/** Gemma's status on Today (AC-013.5). */
-function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
-  return (
-    <>
-      <p className={`meta gemma-status ${gemma.status}`} role="status">
-        {GEMMA_STATUS_TEXT[gemma.status]}
-        {gemma.detail === "fake model" ? " (fake model)" : ""}
-      </p>
-      {gemma.warning === undefined ? null : (
-        <p className="meta gemma-status offline" role="status">
-          {gemma.warning}
-        </p>
-      )}
-    </>
   );
 }
 
@@ -264,11 +198,11 @@ function CardSlip({
         <div className="slip-head">
           <ChoreTile title={card.title} choreType={card.chore_type} />
           <div className="line-main">
-            <p className="eyebrow">Lazy Bookie · No bet</p>
             <h3>{card.title}</h3>
+            <p>{card.notice}</p>
           </div>
+          <span className="pill muted">No bet</span>
         </div>
-        <p>{card.notice}</p>
       </article>
     );
   }
@@ -354,6 +288,13 @@ export function TodayScreen(props: TodayScreenProps) {
       ? undefined
       : { onNeed: props.onPlanNeed, onFollow: props.onPlanFollow };
   const settledResults = Object.values(results);
+  const chips: QuickChip[] = [
+    ...QUICK_CHIPS,
+    ...(today?.flags["heater"] === true ? [HEATER_CHIP] : []),
+    ...(today?.flags["laundryPlanner"] === true
+      ? [{ choreType: PLANNER_CHIP, label: "Plan the wash" }]
+      : []),
+  ];
   const settleActions: SettleActions = {
     onSettle: props.onSettle,
     ...(props.onSettlePhoto === undefined ? {} : { onPhoto: props.onSettlePhoto }),
@@ -361,178 +302,133 @@ export function TodayScreen(props: TodayScreenProps) {
   };
   return (
     <PrivacyProvider voice={today?.flags["voice"] === true}>
-      <main className="screen">
-        <header className="header">
-          <div>
-            <p className="eyebrow">{today === undefined ? "Today" : formatLongDate(today.now)}</p>
-            <h1 tabIndex={-1}>The Lazy Bookie</h1>
+      <main className="screen today-screen">
+        <TodayHeader today={today} rankName={props.rankName} />
+
+        <div className="today-columns">
+          {today === undefined ? null : (
+            <WeekStrip totals={today.week.totals} from={today.week.from} to={today.week.to} />
+          )}
+          <div className="today-main">
+            {today?.flags["splitFlap"] === true ? (
+              <WeatherBoard
+                board={today.weather_board ?? null}
+                now={today.now}
+                forecast={today.forecast}
+              />
+            ) : today?.forecast == null ? null : (
+              <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
+                {today.forecast.age_label}
+                {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
+              </p>
+            )}
+
+            {today === undefined && notice?.kind === "error" ? (
+              <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>
+                {notice.text} Your bets are safe; this screen tries again every 30 seconds.
+              </ErrorState>
+            ) : (
+              <NoticeBanner notice={notice} />
+            )}
+
+            {props.prompt}
+
+            <section aria-labelledby="chips-title" className="capture">
+              <h2 id="chips-title" className="sr-only">
+                What is on your list?
+              </h2>
+              <CaptureBar
+                busy={busy}
+                onCapture={props.onCapture}
+                micSlot={
+                  <VoiceCapture
+                    enabled={today?.flags["voice"] === true && props.onVoiceCards !== undefined}
+                    disabled={busy}
+                    onCards={props.onVoiceCards ?? noCards}
+                  />
+                }
+              />
+              <QuickChips chips={chips} busy={busy} onPick={props.onQuickCard} />
+            </section>
+
+            {today === undefined ? (
+              notice?.kind === "error" ? null : (
+                <LoadingState what="today's slips" />
+              )
+            ) : (
+              <>
+                <section aria-labelledby="slips-title">
+                  <h2 id="slips-title" className="section-title">
+                    Today&apos;s slips
+                  </h2>
+                  {today.cards.length === 0 ? (
+                    <EmptyState icon="sun">No chores yet. Tap a chip to get odds.</EmptyState>
+                  ) : (
+                    today.cards.map((card) => (
+                      <CardSlip
+                        key={card.id}
+                        card={card}
+                        busy={busy}
+                        onBet={props.onBet}
+                        onDoIt={props.onDoIt}
+                        onRetry={props.onRetry}
+                        onAnswer={props.onAnswer}
+                        photoActions={photoActions}
+                        plannerActions={plannerActions}
+                      />
+                    ))
+                  )}
+                </section>
+              </>
+            )}
           </div>
           {today === undefined ? null : (
-            <p className="points" aria-label={`${today.points.total} points`}>
-              <Icon name="trophy" />
-              {formatPoints(today.points.total)} pts
-            </p>
-          )}
-        </header>
+            <>
+              <section aria-labelledby="waiting-title" className="today-waiting">
+                <h2 id="waiting-title" className="section-title">
+                  Waiting
+                </h2>
+                {today.open_bets.length === 0 ? (
+                  <EmptyState icon="clock">Open bets wait here until they settle.</EmptyState>
+                ) : (
+                  <ul className="waiting">
+                    {today.open_bets.map((bet) => (
+                      <WaitingLine
+                        key={bet.id}
+                        bet={bet}
+                        nowMs={props.nowMs}
+                        busy={busy}
+                        onUndo={props.onUndo}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
 
-        {today === undefined ? null : <GemmaStatus gemma={today.gemma} />}
-
-        {today === undefined ? null : (
-          <WeekStrip totals={today.week.totals} from={today.week.from} to={today.week.to} />
-        )}
-
-        {today?.forecast == null ? null : (
-          <p className={`meta forecast-age${today.forecast.stale ? " stale" : ""}`}>
-            {today.forecast.age_label}
-            {today.forecast.stale ? ". Open-Meteo could not be reached for a newer one." : ""}
-          </p>
-        )}
-
-        {today?.flags["splitFlap"] === true ? (
-          <WeatherBoard
-            board={today.weather_board ?? null}
-            now={today.now}
-            forecast={today.forecast}
-          />
-        ) : null}
-
-        {today === undefined && notice?.kind === "error" ? (
-          <ErrorState title="Can't reach the Lazy Bookie" busy={busy} onRetry={props.onReload}>
-            {notice.text} Your bets are safe; this screen tries again every 30 seconds.
-          </ErrorState>
-        ) : (
-          <NoticeBanner notice={notice} />
-        )}
-
-        {props.prompt}
-
-        <section aria-labelledby="chips-title">
-          <h2 id="chips-title" className="section-title">
-            What is on your list?
-          </h2>
-          <div className="chips">
-            {QUICK_CHIPS.map((chip) => (
-              <button
-                key={chip.choreType}
-                type="button"
-                className="chip"
-                disabled={busy}
-                onClick={() => {
-                  props.onQuickCard(chip.choreType);
-                }}
-              >
-                <Icon name={choreIconName(chip.label, chip.choreType)} />
-                {chip.label}
-              </button>
-            ))}
-            {today?.flags["heater"] === true ? (
-              <button
-                type="button"
-                className="chip"
-                disabled={busy}
-                onClick={() => {
-                  props.onQuickCard(HEATER_CHIP.choreType);
-                }}
-              >
-                <Icon name={choreIconName(HEATER_CHIP.label, HEATER_CHIP.choreType)} />
-                {HEATER_CHIP.label}
-              </button>
-            ) : null}
-            {today?.flags["laundryPlanner"] === true ? (
-              <button
-                type="button"
-                className="chip"
-                disabled={busy}
-                onClick={() => {
-                  props.onQuickCard(PLANNER_CHIP);
-                }}
-              >
-                <Icon name="shirt" />
-                Plan the wash
-              </button>
-            ) : null}
-          </div>
-          <VoiceCapture
-            enabled={today?.flags["voice"] === true && props.onVoiceCards !== undefined}
-            disabled={busy}
-            onCards={props.onVoiceCards ?? noCards}
-          />
-          <CaptureForm busy={busy} onCapture={props.onCapture} />
-        </section>
-
-        {today === undefined ? (
-          notice?.kind === "error" ? null : (
-            <LoadingState what="today's slips" />
-          )
-        ) : (
-          <>
-            <section aria-labelledby="slips-title">
-              <h2 id="slips-title" className="section-title">
-                Today&apos;s slips
-              </h2>
-              {today.cards.length === 0 ? (
-                <EmptyState icon="sun">No chores yet. Tap a chip to get odds.</EmptyState>
-              ) : (
-                today.cards.map((card) => (
-                  <CardSlip
-                    key={card.id}
-                    card={card}
-                    busy={busy}
-                    onBet={props.onBet}
-                    onDoIt={props.onDoIt}
-                    onRetry={props.onRetry}
-                    onAnswer={props.onAnswer}
-                    photoActions={photoActions}
-                    plannerActions={plannerActions}
+              <section aria-labelledby="due-title" className="today-due">
+                <h2 id="due-title" className="section-title">
+                  Settle now
+                </h2>
+                {today.due_bets.length === 0 && settledResults.length === 0 ? (
+                  <EmptyState icon="ticket">Bets ready to settle appear here.</EmptyState>
+                ) : null}
+                {today.due_bets.map((bet) => (
+                  <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
+                ))}
+                {settledResults.map((receipt) => (
+                  <ReceiptCard
+                    key={receipt.bet_id}
+                    receipt={receipt}
+                    animateStamp={isStampAnimated(today.flags)}
                   />
-                ))
-              )}
-            </section>
-
-            <section aria-labelledby="waiting-title">
-              <h2 id="waiting-title" className="section-title">
-                Waiting
-              </h2>
-              {today.open_bets.length === 0 ? (
-                <EmptyState icon="clock">Open bets wait here until they settle.</EmptyState>
-              ) : (
-                <ul className="waiting">
-                  {today.open_bets.map((bet) => (
-                    <WaitingLine
-                      key={bet.id}
-                      bet={bet}
-                      nowMs={props.nowMs}
-                      busy={busy}
-                      onUndo={props.onUndo}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section aria-labelledby="due-title">
-              <h2 id="due-title" className="section-title">
-                Settle now
-              </h2>
-              {today.due_bets.length === 0 && settledResults.length === 0 ? (
-                <EmptyState icon="ticket">Bets ready to settle appear here.</EmptyState>
-              ) : null}
-              {today.due_bets.map((bet) => (
-                <DueSlip key={bet.id} bet={bet} busy={busy} {...settleActions} />
-              ))}
-              {settledResults.map((receipt) => (
-                <ReceiptCard
-                  key={receipt.bet_id}
-                  receipt={receipt}
-                  animateStamp={isStampAnimated(today.flags)}
-                />
-              ))}
-            </section>
-          </>
-        )}
+                ))}
+              </section>
+            </>
+          )}
+        </div>
         {today === undefined ? null : <p className="meta attribution">{today.attribution}</p>}
       </main>
-      <Nav flags={today?.flags ?? {}} />
+      <Nav flags={today?.flags ?? {}} fab={props.voiceFab} />
     </PrivacyProvider>
   );
 }

@@ -1,0 +1,225 @@
+/*
+ * Wide screens (mockups D1 and D2): the tab bar becomes a sidebar and Today gets two columns. The
+ * desktop frames are reference only (product.md, Q-8), so this is the phone layout given room, not
+ * a second design: no new components, the same DOM and focus order.
+ */
+:root {
+  --sidebar-width: calc(var(--space-6) * 10);
+  --side-column: calc(var(--space-6) * 15);
+  /* Token proposal: the sidebar's dark green of the desktop frames, a darker leaf. */
+  --color-sidebar: color-mix(in srgb, var(--color-leaf) 60%, var(--color-ink));
+}
+
+/* On a phone the two wrappers of Today add nothing: their children are the screen's own. */
+.today-columns,
+.today-main {
+  display: contents;
+}
+
+.tabbar .brand {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  body {
+    padding-left: var(--sidebar-width);
+  }
+
+  .screen {
+    max-width: calc(var(--space-6) * 48);
+    padding: calc(var(--space-6) * 1.5) calc(var(--space-6) * 2) calc(var(--space-6) * 2);
+  }
+
+  /* Screens other than Today are one column; keep it a readable width. */
+  .screen:not(.today-screen) {
+    max-width: calc(var(--space-6) * 30);
+  }
+
+  .tabbar {
+    inset: 0 auto 0 0;
+    width: var(--sidebar-width);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-6) var(--space-4);
+    background: var(--color-sidebar);
+  }
+
+  .tabbar .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 var(--space-2);
+    color: var(--color-card);
+  }
+
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    background: var(--color-sun);
+    color: var(--color-ink);
+    border-radius: var(--radius-md);
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: var(--text-title);
+  }
+
+  .brand-name {
+    display: flex;
+    flex-direction: column;
+    font-weight: 700;
+  }
+
+  .brand-sub {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: var(--text-micro);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-sun);
+  }
+
+  .tabbar ul {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: var(--space-1);
+    max-width: none;
+    margin: 0;
+  }
+
+  .tabbar li {
+    flex: none;
+  }
+
+  .tabbar a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    min-height: var(--tap-min);
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-md);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: var(--text-body);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--color-card);
+  }
+
+  .tabbar a .icon {
+    width: var(--space-5);
+    height: var(--space-5);
+  }
+
+  .tabbar a[aria-current="page"] {
+    background: var(--color-card);
+    color: var(--color-ink);
+  }
+
+  /* The sidebar marks the current item with its filled pill, not the phone's top bar. */
+  .tabbar a[aria-current="page"]::before {
+    content: none;
+  }
+
+  .tabbar a[aria-current="page"]:focus-visible {
+    outline-color: var(--color-ink);
+  }
+
+  .tabbar .tab-fab {
+    flex: none;
+    height: auto;
+  }
+
+  /* One mic per screen: on Today the capture bar has it, so the sidebar's button is not shown. */
+  .today-screen ~ .tabbar .tab-fab {
+    display: none;
+  }
+
+  .capture-bar .voice-mic {
+    display: grid;
+  }
+
+  .tab-fab .voice-mic-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .tab-fab > button .icon {
+    width: var(--space-5);
+    height: var(--space-5);
+  }
+
+  .tabbar .tab-fab > button {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-2);
+    font-size: var(--text-body);
+    font-weight: 700;
+    position: static;
+    transform: none;
+    width: 100%;
+    height: var(--tap-min);
+    border-radius: var(--radius-md);
+  }
+
+  /* Today: the slips and the capture bar on the left, the week, waiting and settle on the right. */
+  .today-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--side-column);
+    grid-template-rows: auto auto 1fr;
+    gap: var(--space-5) calc(var(--space-6) * 1.5);
+    align-items: start;
+  }
+
+  .today-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    min-width: 0;
+  }
+
+  .today-columns > .week {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .today-columns > .today-waiting {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .today-columns > .today-due {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  /* A bet slip keeps the width it was drawn at; the extra room is empty paper. */
+  .today-main .slip {
+    max-width: calc(var(--space-6) * 20);
+  }
+
+  .chip-row {
+    flex-wrap: wrap;
+    overflow: visible;
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+
+  .race-board {
+    margin-inline: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  .onboarding-screen {
+    padding-top: calc(var(--space-6) * 1.5);
+  }
+}

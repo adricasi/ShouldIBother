@@ -192,9 +192,7 @@ describe("AC-016.4: line-dry today is offered from 07:00 to 15:00", () => {
   ])("at %i:%i there is no bet, and the card says when: %s", async (hour, minute, when) => {
     const card = await lineDryAt(hour, minute);
     expect(card).toMatchObject({ kind: "coming_later", quote: null });
-    expect(card.notice).toBe(
-      `Line-dry today (skip the dryer) is offered from 07:00 to 15:00. Next chance: ${when}.`,
-    );
+    expect(card.notice).toBe(`Offered from 07:00 to 15:00. Next chance: ${when}.`);
     const bet = await harness.post("/api/bets", {
       card_id: card.id,
       quote_id: 1,

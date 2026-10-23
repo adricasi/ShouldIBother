@@ -63,7 +63,7 @@ describe("AC-016.4: line-dry today is offered from 07:00 to 15:00 Madrid time", 
     expect(describeNextOffer(madrid(22, 5), madrid(22, 7))).toBe("today at 07:00");
     expect(describeNextOffer(madrid(22, 16), madrid(23, 7))).toBe("tomorrow at 07:00");
     expect(offerNotice("laundry_line", madrid(22, 16), madrid(23, 7))).toBe(
-      "Line-dry today (skip the dryer) is offered from 07:00 to 15:00. Next chance: tomorrow at 07:00.",
+      "Offered from 07:00 to 15:00. Next chance: tomorrow at 07:00.",
     );
   });
 

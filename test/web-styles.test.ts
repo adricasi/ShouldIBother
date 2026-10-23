@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +7,12 @@ const read = (relative: string): string =>
 
 const tokens = read("../docs/design/tokens.css");
 const styles = postcss.parse(read("../src/web/styles.css"));
+
+/** Every stylesheet of the app: the shared one and the ones beside their screens (src/web/**). */
+const WEB_DIR = new URL("../src/web/", import.meta.url);
+const allStylesheets = readdirSync(WEB_DIR, { recursive: true, encoding: "utf8" })
+  .filter((file) => file.endsWith(".css"))
+  .map((file) => ({ file, root: postcss.parse(readFileSync(new URL(file, WEB_DIR), "utf8")) }));
 
 function token(name: string): string {
   const found = new RegExp(`--color-${name}:\\s*(#[0-9a-f]{6})`, "i").exec(tokens);
@@ -54,6 +60,11 @@ describe("NFR-009: token contrast (text pairs the stylesheet uses)", () => {
     ["ink", "amber-soft"],
     ["ink", "leaf-soft"],
     ["ink-2", "leaf-soft"], // the rank hero (REQ-025): ink-3-text is only 4.39:1 here
+    ["ink-2", "coral-soft"], // small print on a safety alert
+    ["ink-2", "amber-soft"], // small print in a rescue alert
+    ["line", "ink"], // inactive tabs on the tab bar
+    ["ink-2", "line"], // the muted "No bet" pill
+    ["sun-soft", "ink"], // the odds band word on the odds tile
   ];
 
   it.each(TEXT_PAIRS)("%s on %s is at least 4.5:1", (foreground, background) => {
@@ -64,11 +75,14 @@ describe("NFR-009: token contrast (text pairs the stylesheet uses)", () => {
 describe("frontend standard: the stylesheet uses tokens, not literals", () => {
   it("has no colour literal outside the token file", () => {
     const literals: string[] = [];
-    styles.walkDecls((declaration) => {
-      if (/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i.test(declaration.value)) {
-        literals.push(`${declaration.prop}: ${declaration.value}`);
-      }
-    });
+    for (const { file, root } of allStylesheets) {
+      root.walkDecls((declaration) => {
+        if (/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i.test(declaration.value)) {
+          literals.push(`${file} ${declaration.prop}: ${declaration.value}`);
+        }
+      });
+    }
+    expect(allStylesheets.length).toBeGreaterThan(3);
     expect(literals).toEqual([]);
   });
 
