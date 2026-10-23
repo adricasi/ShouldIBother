@@ -7,7 +7,7 @@ import { HOUR_MS } from "../../domain/weather.js";
 import { clampSettle, settleBoundsOf } from "../ledger/chore-rules.js";
 
 import { createForecastTool, type ForecastReader } from "./forecast-tool.js";
-import { loadPrompt } from "./prompts.js";
+import { loadPrompt, type Prompt } from "./prompts.js";
 import type { JobResult, JobRunner } from "./runner.js";
 import { untrustedBlock } from "./untrusted.js";
 
@@ -174,15 +174,19 @@ export function bookmakerCheck(
   };
 }
 
-/** Asks the bookmaker for a band, a reason and a settle time (REQ-003); `get_forecast` is required. */
+/**
+ * Asks the bookmaker for a band, a reason and a settle time (REQ-003); `get_forecast` is required.
+ * `prompt` is the live prompt; the fine-tune dataset passes another version to build its rows.
+ */
 export function runBookmaker(
   runner: JobRunner,
   input: BookmakerInput,
+  prompt: Prompt = BOOKMAKER_PROMPT,
 ): Promise<JobResult<BookmakerOutput>> {
   const bounds = settleBoundsOf(input.chore, input.anchorMs);
   return runner.run({
     job: "bookmaker",
-    prompt: BOOKMAKER_PROMPT,
+    prompt,
     user: bookmakerUserMessage(input),
     schema: bookmakerOutputSchema,
     check: bookmakerCheck(input),

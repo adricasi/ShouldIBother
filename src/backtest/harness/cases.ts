@@ -27,6 +27,7 @@ import {
   decisionForecast,
   windowFor,
   type DecisionForecast,
+  type FallbackPolicy,
   type ForecastHour as ProvenancedHour,
   type ForecastSource,
 } from "../decision-forecast.js";
@@ -80,6 +81,12 @@ export interface BuildCasesOptions {
   /** First and last Madrid date to simulate (inclusive); default: the whole snapshot. */
   readonly from?: string;
   readonly to?: string;
+  /**
+   * What fills a forecast value that has no day-1 value. The backtest accepts the labelled
+   * fallbacks (the default); the fine-tune dataset passes "none", so nothing but a model run
+   * started before the decision reaches a prompt (AC-018.1, AGENTS.md).
+   */
+  readonly fallback?: FallbackPolicy;
 }
 
 export interface BuiltCases {
@@ -205,7 +212,10 @@ export function buildCases(
         throw error;
       }
 
-      const forecast = decisionForecast(snapshot, chore, date, { variables: TOOL_VARIABLES });
+      const forecast = decisionForecast(snapshot, chore, date, {
+        variables: TOOL_VARIABLES,
+        ...(options.fallback === undefined ? {} : { fallback: options.fallback }),
+      });
       const hours = toAppHours(snapshot, forecast.hours);
       const decisionAtMs = forecast.decisionAtMs;
       const toolForecast = toolForecastOf(snapshot, chore, date, decisionAtMs);

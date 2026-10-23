@@ -94,6 +94,36 @@ its calls (budget 1,000 a day). The app shows this attribution on Today:
 
 > Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0.
 
+## Building the dataset (T-031)
+The fine-tune dataset (REQ-019) is built in two steps. The first needs the network (Open-Meteo);
+the second runs offline on the saved snapshot.
+```bash
+npm run sib -- snapshot   # Open-Meteo -> ~/.should-i-bother/data-snapshots/gracia-barcelona_<start>_<end>/
+npm run sib -- dataset    # snapshot -> ~/.should-i-bother/datasets/<same name>/{train.jsonl,holdout.jsonl,manifest.json}
+```
+- `snapshot` fetches 1 Apr 2026 to yesterday for Gràcia (`--start`, `--end`, `--out` change that);
+  the end date in the folder name is the archive's last complete day, which is where the hold-out
+  ends. Both commands refuse a folder inside a git working tree unless git ignores it.
+- `dataset` uses the latest `prompts/bookmaker.vN.md` the app uses (`BOOKMAKER_PROMPT`), so after
+  T-010 freezes the prompt, run the same command again; `--prompt-version <n>` picks another one.
+  The habits in every row are the fixed synthetic profile in `training/habits.synthetic.json`
+  (`--habits <file>` replaces it). The build stops, and writes nothing, if a value from
+  `config/household.json` appears in a row (AC-019.8). The same inputs give the same bytes.
+- Each line of `train.jsonl` is `{id, split, chore, date, messages, tools, meta}`: `messages` is the
+  conversation the live bookmaker has (system prompt, data message, the `get_forecast` call, its
+  result) plus the answer as the last `assistant` message; `tools` is the tool definition; `meta`
+  holds the rule band and the target (training only). `holdout.jsonl` has the same rows without the
+  answer and the target, ending at the tool result, and `meta.outcome_delivered` is the label for
+  the evaluation. Training rows never show an hour of 1 Sep or later; rows whose forecast needed a
+  Historical Forecast or archive value, and days with a safety alert, are left out and counted in
+  `manifest.json`. Training uses `messages` and `tools` only; `meta` is for audit and evaluation.
+- Before `ollama stop` and T-012, check `manifest.json`: prompt version, rules hash, snapshot end
+  date, rows per chore and band, skips.
+
+The snapshot queries are written against the Open-Meteo documentation and have not been run
+against the live API (`src/backtest/open-meteo.ts` lists what to verify): if `snapshot` fails, its
+one-line error names the URL's status and reason.
+
 ## Development workflow (AI-assisted, spec-driven)
 Built with the personal ai-toolkit (`~/ai-toolkit`). In Claude Code:
 1. `/spec` — define or refine the specification in `docs/spec/` (once, then when requirements change).

@@ -407,7 +407,11 @@ describe("usage and configuration errors", () => {
 
   it("explains when there is no snapshot", async () => {
     const lines: string[] = [];
-    const code = await backtestCommand([], (l) => lines.push(l), { cwd: tempDir(), env: {} });
+    const code = await backtestCommand([], (l) => lines.push(l), {
+      cwd: tempDir(),
+      homeDir: tempDir(),
+      env: {},
+    });
     expect(code).toBe(1);
     expect(lines.join("\n")).toContain("No snapshot found in data-snapshots/");
   });

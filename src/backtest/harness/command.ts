@@ -6,17 +6,16 @@
  *                [--splits all|train|holdout] [--from <date>] [--to <date>] [--pause-at 07:00]
  *                [--habits <file>] [--fake-model] [--estimate-only] [--restart] [--help]
  *
- * Open-Meteo is not called: the snapshot is read from disk. `sib snapshot` writes it; that
- * command arrives with T-031, until then a snapshot has to come from `fetchSnapshot` directly.
+ * Open-Meteo is not called: the snapshot is read from disk (`sib snapshot` writes it). Without
+ * `--habits` the bookmaker sees the fixed synthetic habit profile (`training/habits.synthetic.json`),
+ * the same one the fine-tune dataset uses, so the base and fine-tuned models are compared on one prompt.
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-
-import { z } from "zod";
 
 import { parseRulesConfig } from "../../domain/rules/index.js";
 import { nextMadridWallTime } from "../../domain/time.js";
@@ -31,6 +30,8 @@ import type { ModelClient } from "../../server/model/client.js";
 import { loadModelsConfig, type ModelsConfig } from "../../server/model/config.js";
 import { OllamaClient } from "../../server/model/ollama.js";
 import { loadSavings } from "../../server/savings.js";
+import { habitsDigest, loadSyntheticHabits, readHabitsFile, type Habits } from "../habits.js";
+import { SnapshotLocationError, findSnapshotDirectory } from "../snapshot-location.js";
 import { readSnapshot, serializeSnapshot } from "../snapshot.js";
 
 import { buildCases } from "./cases.js";
@@ -194,18 +195,8 @@ function parsePauseAt(text: string | undefined, nowMs: number): number | undefin
   return nextMadridWallTime(nowMs, Number(match[1]), Number(match[2]));
 }
 
-const habitsSchema = z.record(z.string(), z.union([z.string(), z.boolean()]));
-
-function readHabits(path: string | undefined): Record<string, string | boolean> {
-  if (path === undefined) {
-    return {};
-  }
-  return habitsSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-}
-
-function habitsDigest(habits: Readonly<Record<string, string | boolean>>): string | null {
-  const entries = Object.entries(habits).sort(([a], [b]) => a.localeCompare(b));
-  return entries.length === 0 ? null : sha256(JSON.stringify(entries));
+function readHabits(path: string | undefined): Habits {
+  return path === undefined ? loadSyntheticHabits() : readHabitsFile(path);
 }
 
 /** A warning when the habits file looks like household data, which must not enter a backtest. */
@@ -225,28 +216,6 @@ function habitsWarning(path: string, home: string): string | undefined {
     return `WARNING: ${path} looks like household data. The backtest must use a synthetic profile only (AC-018.4, AC-019.6); household data must not leave the laptop.`;
   }
   return undefined;
-}
-
-function findSnapshotDirectory(given: string | undefined, cwd: string): string {
-  if (given !== undefined) {
-    return resolve(cwd, given);
-  }
-  const root = join(cwd, "data-snapshots");
-  const found = existsSync(root)
-    ? readdirSync(root, { withFileTypes: true })
-        .filter(
-          (entry) => entry.isDirectory() && existsSync(join(root, entry.name, "snapshot.json")),
-        )
-        .map((entry) => join(root, entry.name))
-    : [];
-  if (found.length !== 1) {
-    throw new UsageError(
-      found.length === 0
-        ? "No snapshot found in data-snapshots/. Run `sib snapshot` first or pass --snapshot <dir>."
-        : `Several snapshots in data-snapshots/ (${found.map((dir) => basename(dir)).join(", ")}); pass --snapshot <dir>.`,
-    );
-  }
-  return found[0] ?? "";
 }
 
 async function createModel(
@@ -340,7 +309,10 @@ export async function backtestCommand(
         log(warning);
       }
     }
-    const habits = reading(`the habits file ${values.habits ?? ""}`, () => readHabits(habitsPath));
+    const habits = reading(
+      `the habits file ${values.habits ?? "training/habits.synthetic.json"}`,
+      () => readHabits(habitsPath),
+    );
     const fake = values["fake-model"] === true || env["SIB_FAKE_MODEL"] === "1";
     if (fake && ids.some((id) => id !== "rule" && id !== "fixed")) {
       log(
@@ -362,7 +334,15 @@ export async function backtestCommand(
       loadModelsConfig(join(configDir, "models.json")),
     );
 
-    const snapshotDirectory = findSnapshotDirectory(values.snapshot, cwd);
+    let snapshotDirectory: string;
+    try {
+      snapshotDirectory = findSnapshotDirectory(values.snapshot, { cwd, home, env });
+    } catch (error) {
+      if (error instanceof SnapshotLocationError) {
+        throw new UsageError(error.message);
+      }
+      throw error;
+    }
     let snapshot;
     try {
       snapshot = await readSnapshot(snapshotDirectory);

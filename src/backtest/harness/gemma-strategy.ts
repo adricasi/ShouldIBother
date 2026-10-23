@@ -64,6 +64,40 @@ export class ModelDigestMismatchError extends Error {
   override readonly name = "ModelDigestMismatchError";
 }
 
+/**
+ * What the live bookmaker is given for a backtest decision. `sib dataset` builds its rows from the
+ * same function, so a fine-tune prompt is exactly what the backtest (and the live app) sends.
+ */
+export function bookmakerInputFor(
+  input: DecisionInput,
+  context: {
+    readonly rules: RulesConfig;
+    readonly habits: Readonly<Record<string, string | boolean>>;
+    readonly cardId: number;
+  },
+): BookmakerInput {
+  return {
+    chore: input.chore,
+    label: CHORES[input.chore].title,
+    nowMs: input.decisionAtMs,
+    anchorMs: input.decisionAtMs,
+    ruleBand: input.ruleBand,
+    ruleBandAt: (settleAtMs) =>
+      ruleBandFor(
+        input,
+        ruleWindowOf(input.chore, input.decisionAtMs, input.sunsetMs, settleAtMs),
+        context.rules,
+      )?.band ?? input.ruleBand,
+    answers: [],
+    // Only hours the day-1-lead forecast offers at the decision time (24 h from the decision
+    // hour, day-1 values only); the lookahead guard has checked their provenance.
+    readForecast: (hoursAhead) =>
+      Promise.resolve(forecastFrom(input.toolHours, input.decisionAtMs, hoursAhead)),
+    cardId: context.cardId,
+    habits: context.habits,
+  };
+}
+
 export interface GemmaStrategyOptions {
   readonly id: Extract<StrategyId, "e2b" | "e4b" | "e4b-ft">;
   readonly model: ModelClient;
@@ -129,26 +163,11 @@ export class GemmaStrategy implements Strategy {
 
   private bookmakerInput(input: DecisionInput): BookmakerInput {
     this.cardId += 1;
-    return {
-      chore: input.chore,
-      label: CHORES[input.chore].title,
-      nowMs: input.decisionAtMs,
-      anchorMs: input.decisionAtMs,
-      ruleBand: input.ruleBand,
-      ruleBandAt: (settleAtMs) =>
-        ruleBandFor(
-          input,
-          ruleWindowOf(input.chore, input.decisionAtMs, input.sunsetMs, settleAtMs),
-          this.rules,
-        )?.band ?? input.ruleBand,
-      answers: [],
-      // Only hours the day-1-lead forecast offers at the decision time (24 h from the decision
-      // hour, day-1 values only); the lookahead guard has checked their provenance.
-      readForecast: (hoursAhead) =>
-        Promise.resolve(forecastFrom(input.toolHours, input.decisionAtMs, hoursAhead)),
-      cardId: this.cardId,
+    return bookmakerInputFor(input, {
+      rules: this.rules,
       habits: this.habits,
-    };
+      cardId: this.cardId,
+    });
   }
 
   private factsOf(
