@@ -248,6 +248,11 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [x] T-027: Split-flap weather board — REQ-026 · Depends on: T-005 · Done when: component tests for AC-026.1–AC-026.2; flag `splitFlap`.
 - [ ] T-028: Voice capture through Gemma 4 audio — REQ-027 · Depends on: T-006, T-010 · Scope: llama.cpp client on 127.0.0.1; whisper.cpp fallback stated in the post · Done when: tests for AC-027.1–AC-027.3 on fixtures; a live voice note produces cards on the laptop; flag `voice`.
 
+## Milestone 6: Presentation (agents, Fri night; approved by the builder 2026-10-23)
+- [ ] T-032: Sample-data demo — AC-029.4 · Depends on: T-009, T-016, T-022–T-027 · Scope: `sib demo` with a temporary seeded data folder, the fake model and weather, an in-memory flag override and a "Sample data" banner · Done when: tests prove the live data folder is never opened, the seed covers every screen (Today, Slips groups, receipt, Score with calibration and achievements), the banner shows on every screen; e2e screenshot run in demo mode.
+- [ ] T-033: Prototype extras — AC-011.7, AC-026.3; design.md Round 3 items 13–15 · Depends on: PR #36 · Scope: sloth mascot SVG on the receipt and Score; savings estimate line on slips; place label (migration 0015) in onboarding and on the board · Done when: tests for AC-011.7 and AC-026.3, migration 0015 tested on a seeded fixture database, axe clean, e2e green.
+- [ ] T-034: Flags CLI and presentation preset — AC-029.3 · Depends on: T-002 · Scope: `sib flags`; e2e specs pin their own flags instead of reading the committed defaults · Done when: tests for AC-029.3; README "Presentation" section lists the preset and the laptop checks before `voice` and `finetunedBookmaker`.
+
 ## Coverage check
 | Requirement | Tasks |
 |---|---|
@@ -256,7 +261,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 | REQ-004 | T-004, T-005, T-006 |
 | REQ-005 | T-007, T-019, T-030 |
 | REQ-006, REQ-007 | T-004, T-008 |
-| REQ-008–REQ-011 | T-004, T-009 (AC-008.6 label: T-011) |
+| REQ-008–REQ-011 | T-004, T-009 (AC-008.6 label: T-011; AC-011.7: T-033) |
 | REQ-012 | T-005, T-013 |
 | REQ-013 | T-004, T-006 |
 | REQ-014 | T-005 |
@@ -266,9 +271,9 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 | REQ-018 | T-011, T-015, T-019 |
 | REQ-019 | T-011, T-031, T-012, T-014 |
 | REQ-020 | T-016 |
-| REQ-021–REQ-027 | T-022–T-028 |
+| REQ-021–REQ-027 | T-022–T-028 (AC-026.3: T-033) |
 | REQ-028 | T-006, T-007, T-009, T-010 |
-| REQ-029 | T-002 |
+| REQ-029 | T-002, T-032, T-034 |
 | NFR-001 | T-002, T-003, T-010, T-020 |
 | NFR-002 | T-005, T-007, T-031, T-020 |
 | NFR-003 | T-004, T-008 |

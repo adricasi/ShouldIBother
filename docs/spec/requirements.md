@@ -143,6 +143,7 @@ Fixed values used below:
   - AC-011.4: THE SYSTEM SHALL count time only for skipped steps; electricity-only savings (e.g. line instead of dryer) add 0 minutes.
   - AC-011.5: THE SYSTEM SHALL show the assumption behind each savings figure where it is displayed (e.g. "vs a heat-pump dryer, ~2 kWh"); a figure without a cited source is labelled "typical estimate" (e.g. the condenser dryer).
   - AC-011.6: WHEN the user opens Today THE SYSTEM SHALL show this week's totals (Monday–Sunday, Europe/Madrid): net time back, water in litres and electricity in kWh. A bet counts, whole (its 30 s included), in the week of its settle time, so a bet placed on Sunday night and settled on Monday counts in Monday's week.
+  - AC-011.7: WHEN a card offers a do-nothing bet THE SYSTEM SHALL show what a win would save (time, water, electricity from the same catalogue and household baseline as AC-011.1, with its assumption as in AC-011.5), worded as an estimate ("saves ~5 min · ~5 L water if the sky does it"); the estimate is computed by code and nothing is added to any total until the bet wins.
 
 ### REQ-012: Safety is never a bet
 - Story: As a household member, I want risky weather to tell me to act, so that the game never puts plants or people at risk.
@@ -293,6 +294,7 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-026.1: WHEN the user opens Today THE SYSTEM SHALL show the current temperature and condition as split-flap tiles and hourly bars marking the lazy window. A lazy hour is a remaining daylight hour whose drying index is at or above the line-dry toss-up row of `config/rules.json` (0.30), clipped to 18:00. The board reads cached forecasts only and shows the forecast age when it is stale; the Open-Meteo attribution (AC-014.6) appears once, in the footer.
   - AC-026.2: WHILE the device prefers reduced motion THE SYSTEM SHALL change tiles without the flip animation.
+  - AC-026.3: WHERE the household has a place label (optional free text set in onboarding, at most 40 characters, e.g. "Gràcia · Barcelona") THE SYSTEM SHALL show it in the weather board header; the label is stored on the laptop only, is never sent to Open-Meteo or any other host, and is included in `sib export` and deleted by `sib delete-photos --all-data`.
 
 ### REQ-027: Voice capture through Gemma
 - Story: As a household member on the balcony, I want to say my chores, so that capture is hands-free.
@@ -318,6 +320,8 @@ Fixed values used below:
 - Acceptance criteria:
   - AC-029.1: THE SYSTEM SHALL read feature flags from `config/flags.json`; every Should and Could feature has a flag that is off by default, and only the builder turns a flag on after merging and checking the feature.
   - AC-029.2: WHILE a flag is off THE SYSTEM SHALL show no UI entry point and expose no route for that feature.
+  - AC-029.3: THE SYSTEM SHALL provide `sib flags` on the laptop to list the flags and turn them on or off in `config/flags.json`, including the `presentation` preset (every merged and checked feature on; `voice` and `finetunedBookmaker` only when named explicitly, because they need the laptop checks of T-028 and T-014); the committed defaults stay off (AC-029.1).
+  - AC-029.4: THE SYSTEM SHALL provide `sib demo` to run the app for rehearsals and screenshots on a separate temporary data folder seeded with synthetic bets, with the fake model, fake weather and every flag on except `voice` and `finetunedBookmaker`; every screen shows a "Sample data" banner; it never reads or writes the live data folder, and its numbers are never reported as results (G-1).
 
 ## Non-functional requirements
 | ID | Category | Requirement (measurable) | Verification |
