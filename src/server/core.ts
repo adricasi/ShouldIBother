@@ -245,7 +245,10 @@ export function createCore(deps: CoreDeps): Core {
         forecast: forecastStatus(deps),
         attribution: ATTRIBUTION,
         // Only with the `splitFlap` flag on: the weather board reads the cached forecast (REQ-026).
-        ...(deps.flags.splitFlap ? { weather_board: weatherBoardView(ledger) } : {}),
+        // The place label shows only while `onboarding` is on too (AC-026.3).
+        ...(deps.flags.splitFlap
+          ? { weather_board: weatherBoardView(ledger, householdStore?.placeLabel() ?? null) }
+          : {}),
         cards: listOpenCards(ledger),
         open_bets: listBetsWithStatus(ledger, "open"),
         due_bets: listDueBets(ledger),

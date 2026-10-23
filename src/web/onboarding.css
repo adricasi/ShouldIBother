@@ -230,6 +230,13 @@
   font-weight: 700;
 }
 
+.place-coords {
+  display: block;
+  font-weight: 400;
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
+}
+
 .place-change {
   min-height: var(--tap-min);
   min-width: var(--tap-min);

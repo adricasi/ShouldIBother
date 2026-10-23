@@ -170,6 +170,26 @@ describe("sib delete-photos (AC-015.3)", () => {
     expect(printed.at(-1)).toContain("weather cache");
   });
 
+  it("AC-026.3: --all-data deletes the place label with the database, and no file left holds it", async () => {
+    await liveWeek();
+    const rt = runtime();
+    rt.db.exec(
+      "INSERT INTO household_profile (id, status, profile, place_label, updated_at) VALUES (1, 'skipped', NULL, 'Zyx Test Quarter', 1)",
+    );
+    rt.db.close();
+    expect(
+      await deletePhotosCommand(
+        runtime(),
+        { allData: true },
+        { confirm: answering("delete everything"), print },
+      ),
+    ).toBe(true);
+    for (const name of readdirSync(dataDir)) {
+      expect(readFileSync(join(dataDir, name)).includes("Zyx Test Quarter"), name).toBe(false);
+    }
+    expect(existsSync(join(dataDir, "sib.db"))).toBe(false);
+  });
+
   it("AC-015.3: the --all-data prompt says what stays: household.json is outside the data folder", async () => {
     await liveWeek();
     const questions: string[] = [];
