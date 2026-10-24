@@ -102,3 +102,6 @@ networks:
     ipam:
       config:
         - subnet: 172.30.10.0/24
+          # Automatic addresses come from the upper half only, so Caddy's fixed 172.30.10.2 is never
+          # handed to another container first ("Address already in use").
+          ip_range: 172.30.10.128/25

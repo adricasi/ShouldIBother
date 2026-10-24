@@ -553,6 +553,7 @@ check.
 | Symptom | Check |
 |---|---|
 | The browser says the certificate is invalid or the site is unreachable | DNS first (`dig +short <host>` shows the reserved IP), then the Cloud Firewall and `ufw status` (80 and 443), then `docker compose logs caddy`. Let's Encrypt limits repeated failed or duplicate requests (about 5 duplicate certificates a week **[verify]**): fix DNS before you retry. |
+| Caddy does not start: `failed to set up container networking: Address already in use` | The app took Caddy's fixed address (an older `compose.yaml` without `ip_range`). Use the current `compose.yaml`, then `docker compose down && docker compose up -d` (the network is recreated; data, settings and certificates stay). |
 | 502 from Caddy | `docker compose ps`: the app is starting, unhealthy or restarting. `docker compose logs app`. |
 | The app exits at start with a message about `SIB_...` | The environment is validated at start: `SIB_PUBLIC_ORIGIN` must be `https://`, the model ID must be on the list, the key must be set. Fix `/etc/sib/sib.env`, then `docker compose up -d --force-recreate app`. |
 | `EACCES` or "permission denied" on `/data` | `/srv/sib/data` must be owned by uid 10001 and mode 0700: `chown 10001:10001 /srv/sib/data && chmod 0700 /srv/sib/data`. |
