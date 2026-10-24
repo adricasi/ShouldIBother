@@ -256,7 +256,8 @@
   margin-top: var(--space-2);
 }
 
-.onboarding .coordinates input {
+.onboarding .coordinates input,
+.onboarding .search-row input {
   width: 100%;
   min-height: var(--tap-min);
   font-family: var(--font-body);
@@ -280,4 +281,68 @@
 
 .onboarding-prompt a.button {
   text-decoration: none;
+}
+
+/* "Use my location" and the place search (AC-024.3, AC-024.4): fills the fields below, saves nothing. */
+.place-finder {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.place-finder > label {
+  margin-top: var(--space-2);
+}
+
+.place-finder p {
+  margin: 0;
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+
+.search-row .button {
+  width: auto;
+}
+
+.place-results {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.place-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-3);
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: var(--border-hair) solid var(--color-line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.place-result:hover {
+  border-color: var(--color-leaf);
+}
+
+.place-result-title {
+  font-weight: 700;
+}
+
+.place-result-caption {
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
 }
