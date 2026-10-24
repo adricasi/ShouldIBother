@@ -50,14 +50,14 @@ Nothing from the concept is cut; scope is **ordered**. Each tier leaves a workin
 5. Laundry planner (Wash today / Skip today / No good day); rescue alerts with cash-out; appeals (one per bet); onboarding with habit baseline; ranks and achievements; skip-the-AC and heater bets (only when used this season); split-flap weather board.
 6. Voice capture through Gemma 4 audio (llama.cpp); whisper.cpp only as a fallback, stated in the post.
 
-Chores in this version: balcony plants and line-dry today (skip the dryer) in the core loop; laundry leave it out tonight (tier 3); laundry planner wash today / skip today / no good day, skip the AC and skip the heater (tier 5; AC and heater only when the household baseline says they are used this season). The rest of the catalogue is shown as "coming later" or hidden.
+Chores in this version: balcony plants and line-dry today (skip the dryer) in the core loop; laundry leave it out tonight (tier 3); laundry planner wash today / skip today / no good day, skip the AC and skip the heater (tier 5; AC and heater only when the household baseline says they are used this season). On 2026-10-24 the builder added, as Could and behind flags: the city rain bets (rinse the car, the bike, the terrace or outdoor furniture; fill the rain barrel, pond or bird bath; REQ-030) and the advice cards (clean windows, sweep balcony leaves, paint or varnish outdoors, fertilise the lawn; REQ-031). The rest of the catalogue is shown as "coming later" or hidden.
 
 ### Non-goals (explicitly out of scope)
 - Accounts, login, multi-household or multi-user use.
 - Cloud hosting or any cloud backend; push notifications.
 - Real money, stakes or anything resembling gambling with value: points only.
 - Native apps; desktop layout (Figma desktop frames are reference only).
-- Catalogue chores beyond the list above (car, bike, solar panels, snow, mowing, weeding, terrace rinsing, rain barrel).
+- Catalogue chores beyond the list above (solar panels, snow, mowing, weeding, watering a garden or lawn, drying shoes or gear, airing instead of the dehumidifier).
 - Spanish/Catalan capture and the backtest heating arena [ASSUMPTION A-5].
 - Bets on safety: heatwave, frost, storms and vulnerable people are always alerts, never bets.
 

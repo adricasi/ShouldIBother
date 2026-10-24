@@ -327,6 +327,24 @@ Fixed values used below:
   - AC-029.3: THE SYSTEM SHALL provide `sib flags` on the laptop to list the flags and turn them on or off in `config/flags.json`, including presets read from `config/flags.presets.json`, an explicit list of flag names per preset that the builder edits; the `presentation` preset lists every merged feature except `voice` and `finetunedBookmaker`, which need the laptop checks of T-028 and T-014 and are turned on by name; the committed defaults in `config/flags.json` stay off (AC-029.1), and applying a preset is the builder turning flags on.
   - AC-029.4: THE SYSTEM SHALL provide `sib demo` to run the app for rehearsals and screenshots on a separate temporary data folder seeded with synthetic bets, with the fake model, fake weather and the flags of the `presentation` preset (AC-029.3) applied in memory; every screen shows a fixed "Sample data" banner, the Score tiles and calibration chart carry a "SAMPLE" watermark, and `sib export` refuses in demo mode; it never reads or writes the live data folder or `config/household.json`; the seeded rows carry `model_version = 'fake-demo'` and Score counts them only in demo mode, labelled "Sample data · fake model" (NFR-010); its numbers are never reported as results (G-1).
 
+### REQ-030: City rain bets
+- Story: As a household member in a city flat, I want to bet that the rain rinses the car, the bike and the terrace or fills the rain barrel, so that I skip those chores when the sky does them.
+- Priority: Could
+- Goals: G-1, G-3
+- Acceptance criteria:
+  - AC-030.1: WHILE the `rainChores` flag is on THE SYSTEM SHALL offer four more do-nothing bets: rinse the car (`car_rinse`), rinse the bike (`bike_rinse`), rinse the terrace or outdoor furniture (`terrace_rinse`) and fill the rain barrel, pond or bird bath (`rain_fill`). They are priced, placed, settled and paid like the plants bet (REQ-004 to REQ-011), with the rule baseline, outcome labels, settle bounds, judge answers and savings in design.md (City rain bets); WHILE the flag is off they are "Coming later".
+  - AC-030.2: THE SYSTEM SHALL settle the rinse bets by after photo or one tap and `rain_fill` by one tap (a photo is accepted), and the judge SHALL count "dirtier than before" (dusty rain) as a loss.
+  - AC-030.3: THE SYSTEM SHALL keep these chores out of the backtest, the fine-tune dataset and the rule-threshold review: the backtest, `sib dataset` and the calibration charts of T-019 and T-014 cover the chores of REQ-016 only, so earlier reports stay comparable.
+
+### REQ-031: Advice cards
+- Story: As a household member, I want Gemma to tell me when to clean the windows, sweep the balcony, paint outdoors or feed the lawn, so that the weather does not undo the job.
+- Priority: Could
+- Goals: G-2
+- Acceptance criteria:
+  - AC-031.1: WHILE the `adviceCards` flag is on, WHEN the person adds one of the advice chores (clean windows `windows_clean`, sweep balcony leaves `balcony_sweep`, paint or varnish outdoors `outdoor_paint`, fertilise or treat the lawn `lawn_feed`) THE SYSTEM SHALL ask Gemma's advisor job, which calls `get_forecast` (up to 72 h), for one of "do it now", "wait for <window>" or "no good window in the next 3 days", with a reason that names the forecast numbers; WHILE the flag is off these chores are "Coming later".
+  - AC-031.2: THE SYSTEM SHALL compute a rule advice for every advice card (design.md, Advice rules), show Gemma's advice with the rule advice beside it when they differ, and refuse (and retry once) a Gemma window that the forecast contradicts (for example a paint window with forecast rain); with Gemma offline or still refused the card shows the rule advice labelled "Rule advice".
+  - AC-031.3: THE SYSTEM SHALL keep advice cards out of points, savings and calibration (advice only, no bet, no time counted), log every advisor decision in `gemma_decisions`, and offer the "How Gemma decided" disclosure (AC-028.4) on the card.
+
 ## Non-functional requirements
 | ID | Category | Requirement (measurable) | Verification |
 |---|---|---|---|
