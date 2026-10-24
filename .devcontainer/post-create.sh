@@ -19,9 +19,10 @@ fi
 pipx install pre-commit
 export PATH="$HOME/.local/bin:$PATH"
 
-if [ -f pyproject.toml ]; then
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  "$HOME/.local/bin/uv" sync
+# uv at the version CI uses (ci-node.yml), from PyPI through pipx: no download piped into a shell.
+pipx install "uv==0.11.32"
+if [ -f training/pyproject.toml ]; then
+  (cd training && "$HOME/.local/bin/uv" sync --frozen)
 fi
 if [ -f package.json ]; then
   if [ -f package-lock.json ]; then npm ci; else npm install; fi

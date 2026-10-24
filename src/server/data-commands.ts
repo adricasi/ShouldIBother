@@ -12,6 +12,8 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { assertNotCommittable } from "../backtest/output-guard.js";
+
 import { DEMO_EXPORT_REFUSAL, holdsDemoRows, isDemoDataDir } from "./demo.js";
 import type { Db } from "./db.js";
 import { DATABASE_FILE } from "./data-dir.js";
@@ -186,6 +188,11 @@ export function exportCommand(
     }
     lockDatabase(db);
     const target = resolve(directory);
+    // An export holds photos and chore text: never inside a folder git would commit (NFR-002).
+    assertNotCommittable([
+      join(target, "export.json"),
+      join(target, EXPORT_PHOTOS_DIR, "photo.jpg"),
+    ]);
     prepareExportFolder(target);
     const document = db.transaction(() => buildExport(db, nowMs))();
     const photosTarget = join(target, EXPORT_PHOTOS_DIR);
