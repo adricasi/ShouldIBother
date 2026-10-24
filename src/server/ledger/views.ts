@@ -6,6 +6,7 @@ import { DO_IT_POINTS, LOSS_POINTS, winPoints } from "../../domain/points.js";
 import { ANSWER_WINDOW_MS } from "../../domain/settlement.js";
 import { parseWeatherSnapshot, RECORDED_WEATHER_LABEL } from "../../domain/weather-digest.js";
 
+import { bandFact } from "./gemma-facts.js";
 import type { CardPhotoView } from "./photo-view.js";
 import type { RescueView } from "./rescue.js";
 import type { BetRow, CardRow, ProgressRow, QuoteRow } from "./rows.js";
@@ -184,6 +185,9 @@ export function betView(
     band_name: nameOfBand(table, bet.band),
     odds: bet.odds,
     odds_source: bet.odds_source,
+    /** The rule's band for this bet, and Gemma's when Gemma priced it (AC-028.3). */
+    rule: bandFact(table, bet.rule_band),
+    gemma: bet.gemma_band === null ? null : bandFact(table, bet.gemma_band),
     reason: bet.reason,
     placed_at: new Date(bet.placed_at).toISOString(),
     undo_until: new Date(bet.undo_until).toISOString(),

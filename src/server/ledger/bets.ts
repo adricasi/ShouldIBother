@@ -8,6 +8,7 @@ import { latestQuote } from "./quotes.js";
 import type { LedgerDeps } from "./deps.js";
 import { currentPhoto, withoutPhotoQuote } from "./photo-view.js";
 import { rescueView } from "./rescue.js";
+import { pricingDecisionOf, type DecisionView } from "./gemma-facts.js";
 import { savingsSnapshotText } from "./savings.js";
 import { getProgress } from "./settle-progress.js";
 import type { BetRow, CardRow, QuoteRow } from "./rows.js";
@@ -189,7 +190,7 @@ export function markDueBets(db: Db, nowMs: number): number {
 }
 
 /** Bets whose settle time has come and that are not settled yet, in any step of the machine. */
-export function listDueBets(deps: LedgerDeps): BetView[] {
+export function listDueBets(deps: LedgerDeps): BetViewWithDecision[] {
   return viewsOf(
     deps,
     deps.db
@@ -201,7 +202,10 @@ export function listDueBets(deps: LedgerDeps): BetView[] {
   );
 }
 
-export function listBetsWithStatus(deps: LedgerDeps, status: "open" | "due"): BetView[] {
+export function listBetsWithStatus(
+  deps: LedgerDeps,
+  status: "open" | "due",
+): BetViewWithDecision[] {
   return viewsOf(
     deps,
     deps.db
@@ -220,18 +224,19 @@ export function listSettlingBets(deps: LedgerDeps): BetRow[] {
     .all(...SETTLING_STATUSES);
 }
 
-export function viewsOf(deps: LedgerDeps, rows: readonly BetRow[]): BetView[] {
+/** A bet view with the decision that priced it, when Gemma did (AC-028.4). */
+export type BetViewWithDecision = BetView & { readonly decision: DecisionView | null };
+
+export function viewsOf(deps: LedgerDeps, rows: readonly BetRow[]): BetViewWithDecision[] {
   const table = bandTable(deps.rules);
   const now = deps.now();
   const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
-  return rows.map((row) =>
-    betView(
-      row,
-      cardOf.get(row.card_id)!,
-      table,
-      now,
-      getProgress(deps.db, row.id),
-      rescueView(deps, row),
-    ),
-  );
+  return rows.map((row) => {
+    const card = cardOf.get(row.card_id)!;
+    return {
+      ...betView(row, card, table, now, getProgress(deps.db, row.id), rescueView(deps, row)),
+      /** "How Gemma decided" on the odds of a bet on Gemma's odds (AC-028.4). */
+      decision: pricingDecisionOf(deps.db, row, card),
+    };
+  });
 }

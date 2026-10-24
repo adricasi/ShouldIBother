@@ -19,6 +19,13 @@ import {
 import { HttpError } from "../problem.js";
 
 import { appealPaysHalf, canAppeal } from "./appeal-state.js";
+import {
+  bandFact,
+  decisionView,
+  pricingDecisionOf,
+  type BandFact,
+  type DecisionView,
+} from "./gemma-facts.js";
 import type { LedgerDeps } from "./deps.js";
 import { pointsTotal } from "./points.js";
 import type { BetRow, CardRow, CashOutRow, ProgressRow, SettlementRow } from "./rows.js";
@@ -55,6 +62,18 @@ export interface Receipt {
   readonly stamp: typeof PAID_OUT_STAMP | null;
   readonly odds: number;
   readonly band_name: string;
+  /** Whose odds the bet was placed on (AC-028.3). */
+  readonly odds_source: "rule" | "gemma";
+  /** The rule's band for this bet, and Gemma's when it priced it: shown side by side (AC-028.3). */
+  readonly rule: BandFact;
+  readonly gemma: BandFact | null;
+  /** The reason locked on the bet when it was placed (AC-006.1). */
+  readonly odds_reason: string;
+  /**
+   * "How Gemma decided" (AC-028.4): the decision that set the odds (a bet on Gemma's odds) and the
+   * judge's verdict decision; null where Gemma made none, or its row was deleted (AC-015.2).
+   */
+  readonly decisions: { readonly odds: DecisionView | null; readonly verdict: DecisionView | null };
   readonly points: number;
   readonly total_points: number;
   readonly multiplier: number;
@@ -110,6 +129,17 @@ export interface Receipt {
    * or more after the settle time (AC-008.8). Present only while the `appeals` flag is on.
    */
   readonly appeal_pays_half?: boolean;
+}
+
+/** Whose odds a bet was placed on, with the rule's band and Gemma's, and the locked reason (AC-028.3). */
+function oddsFacts(deps: Pick<LedgerDeps, "rules">, bet: BetRow) {
+  const table = bandTable(deps.rules);
+  return {
+    odds_source: bet.odds_source,
+    rule: bandFact(table, bet.rule_band),
+    gemma: bet.gemma_band === null ? null : bandFact(table, bet.gemma_band),
+    odds_reason: bet.reason,
+  };
 }
 
 export function readOf(
@@ -194,6 +224,11 @@ export function receiptOf(
     stamp: win ? PAID_OUT_STAMP : null,
     odds: bet.odds,
     band_name: nameOfBand(bandTable(deps.rules), bet.band),
+    ...oddsFacts(deps, bet),
+    decisions: {
+      odds: pricingDecisionOf(deps.db, bet, card),
+      verdict: decisionView(deps.db, settlement.decision_id),
+    },
     points: settlement.points,
     total_points: pointsTotal(deps),
     multiplier: settlement.multiplier,
@@ -260,6 +295,8 @@ export function cashOutReceiptOf(
     stamp: null,
     odds: bet.odds,
     band_name: nameOfBand(bandTable(deps.rules), bet.band),
+    ...oddsFacts(deps, bet),
+    decisions: { odds: pricingDecisionOf(deps.db, bet, card), verdict: null },
     points: cashOut.points,
     total_points: pointsTotal(deps),
     multiplier: 1,

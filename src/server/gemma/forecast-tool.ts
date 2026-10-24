@@ -75,6 +75,50 @@ export function formatForecast(hours: readonly ForecastHour[]): string {
   return `<untrusted_data>\n${JSON.stringify({ timezone: "Europe/Madrid", hours: rows })}\n</untrusted_data>`;
 }
 
+/** The most hours kept with a decision (AC-028.4); the disclosure shows the first few. */
+export const MAX_KEPT_HOURS = 24;
+
+/**
+ * The hours of a tool result in the few fields the "How Gemma decided" disclosure shows, as JSON
+ * (migration 0016). Public weather numbers only. Undefined when the text is not a forecast.
+ */
+export function compactToolResult(resultText: string): string | undefined {
+  const found = /<untrusted_data>\n([\s\S]*?)\n<\/untrusted_data>/.exec(resultText);
+  if (found?.[1] === undefined) {
+    return undefined;
+  }
+  try {
+    const parsed = z
+      .object({
+        hours: z.array(
+          z.object({
+            time: z.string(),
+            precip_mm: z.number().nullable(),
+            precip_prob_pct: z.number().nullable(),
+            temp_c: z.number().nullable(),
+            wind_kmh: z.number().nullable(),
+            sunshine_min: z.number().nullable(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(found[1]));
+    return JSON.stringify(
+      parsed.hours
+        .slice(0, MAX_KEPT_HOURS)
+        .map((hour) => [
+          hour.time.slice(-5),
+          hour.precip_mm,
+          hour.precip_prob_pct,
+          hour.temp_c,
+          hour.wind_kmh,
+          hour.sunshine_min,
+        ]),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ForecastToolOptions {
   /** Tool use is enforced for the bookmaker (AC-003.6). */
   readonly required: boolean;
@@ -92,6 +136,7 @@ export function createForecastTool(read: ForecastReader, options: ForecastToolOp
     definition: GET_FORECAST,
     required: options.required,
     injectedArguments: { hours_ahead: injectedHoursAhead },
+    summarize: compactToolResult,
     async execute(args) {
       const parsed = argumentsSchema.safeParse(args);
       if (!parsed.success) {

@@ -17,6 +17,8 @@ export interface DecisionInput {
   readonly retries: number;
   readonly latencyMs: number;
   readonly error: string | undefined;
+  /** The hours `get_forecast` returned to Gemma, compact JSON (migration 0016); public weather only. */
+  readonly toolResult?: string | undefined;
   readonly createdAt: number;
 }
 
@@ -36,8 +38,8 @@ export function logDecision(db: Db, input: DecisionInput): number {
     .prepare(
       `INSERT INTO gemma_decisions (job, card_id, bet_id, photo_id, model, model_digest,
          prompt_version, tool_mode, input_summary, output, valid, retries, latency_ms, error,
-         created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         tool_result, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.job,
@@ -54,6 +56,7 @@ export function logDecision(db: Db, input: DecisionInput): number {
       input.retries,
       input.latencyMs,
       photoGone ? "the photo was deleted while the job ran" : (input.error ?? null),
+      input.toolResult ?? null,
       input.createdAt,
     );
   return Number(result.lastInsertRowid);
