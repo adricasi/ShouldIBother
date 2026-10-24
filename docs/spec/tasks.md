@@ -259,6 +259,9 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [x] T-038: City rain bets — REQ-030 · Depends on: T-004, T-009, T-033 · Scope: `car_rinse`, `bike_rinse`, `terrace_rinse`, `rain_fill` chore types, rules and savings rows, outcome labels, settle bounds, judge answers, `prompts/listener.v2.md` with all eight new chore types (T-039's too), chips, icons and onboarding outdoor items; `config/rules-rain.json`; flags `rainChores` and `adviceCards` in `config/flags.json` (off) and the `presentation` preset · Done when: tests for AC-030.1–AC-030.3 on fixtures and a fake clock, backtest and dataset unchanged, axe clean, e2e green.
 - [x] T-039: Advice cards — REQ-031 · Depends on: T-006, T-022, T-035, T-038 (chore types) · Scope: `advisor` Gemma job + `prompts/advisor.v1.md`, rule advice, contradiction check, advice card UI with the disclosure, `config/advice-rules.json`, 72 h `get_forecast` for the advisor, migration 0018; flag `adviceCards` (added by T-038) · Done when: tests for AC-031.1–AC-031.3 on fixtures, the 20-case eval set `evals/advisor/cases.json` for `sib eval advisor` (builder, real model: ≥ 19/20 valid JSON; NFR-004), axe clean, e2e green.
 
+- [ ] T-040: Hosted mode in the app — REQ-032, NFR-013 · Depends on: T-010 (model client interface), T-035 · Scope: `SIB_MODE` and the hosted settings parsed and validated once at start, `DigitalOceanClient` behind `ModelClient` (OpenAI-compatible wire format, bearer key from env, redaction, timeouts), outbound allowlist, `SIB_TOOL_MODE`, photos gated by `SIB_DO_VISION`, voice and fine-tune off, `Secure` cookies, Host/Origin checks and proxy trust for `SIB_PUBLIC_ORIGIN`, `sib pair` printing the public link, daily call cap, status and privacy copy by mode · Done when: tests for AC-032.1–AC-032.6 with a fake HTTP server for the inference API (no network), home mode byte-for-byte unchanged in behaviour (existing suite green), axe clean, e2e green.
+- [ ] T-041: Deployment kit and guide for DigitalOcean — REQ-032, NFR-013 · Depends on: T-040 (env names) · Scope: `Dockerfile`, `.dockerignore`, `deploy/digitalocean/` (`compose.yaml`, `Caddyfile`, `env.example`, backup script and timer), `infra/digitalocean/` Terraform (Droplet, Volume, attachment, firewall, project; local git-ignored state), `docs/deploy-digitalocean.md` (step-by-step, costs with sources, privacy trade-off, security checklist, backup and restore, update and rollback, troubleshooting), ADR-0011, README section · Done when: `docker build` succeeds and the container passes `/healthz` with the fake model locally, `terraform fmt -check` and `terraform validate` pass (no apply), iac and security reviews have no Blocker.
+
 ## Coverage check
 | Requirement | Tasks |
 |---|---|
@@ -282,6 +285,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 | REQ-029 | T-002, T-032, T-034 |
 | REQ-030 | T-038 |
 | REQ-031 | T-039 |
+| REQ-032 | T-040, T-041 |
 | NFR-001 | T-002, T-003, T-010, T-020 |
 | NFR-002 | T-005, T-007, T-031, T-020 |
 | NFR-003 | T-004, T-008 |

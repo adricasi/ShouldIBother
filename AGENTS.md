@@ -85,6 +85,10 @@ npm audit --audit-level=high             # dependency vulnerabilities
 - One GPU user at a time: stop Ollama (`ollama stop`) before training.
 - Household data (photos, chore text, habits, audio) never leaves the laptop or enters git;
   photos are stripped of EXIF and resized to ≤ 1024 px. Ollama stays on 127.0.0.1.
+- Hosted mode (REQ-032) is optional and off by default: it may call only DigitalOcean's inference
+  host besides Open-Meteo, reads its key from the environment only, keeps photos on the server
+  unless `SIB_DO_VISION=1`, and must say on screen that Gemma runs at DigitalOcean. Agents prepare
+  the deployment; the builder runs `terraform apply` and the deploy.
 
 ## Project kit
 Local to each machine: this repository is public, so `.claude/` is git-ignored. Recreate the

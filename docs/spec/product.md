@@ -54,7 +54,7 @@ Chores in this version: balcony plants and line-dry today (skip the dryer) in th
 
 ### Non-goals (explicitly out of scope)
 - Accounts, login, multi-household or multi-user use.
-- Cloud hosting or any cloud backend; push notifications.
+- Cloud hosting as the default or any multi-tenant cloud backend; push notifications. (An optional single-household hosted mode on DigitalOcean is in scope as REQ-032; the builder deploys it by hand.)
 - Real money, stakes or anything resembling gambling with value: points only.
 - Native apps; desktop layout (Figma desktop frames are reference only).
 - Catalogue chores beyond the list above (solar panels, snow, mowing, weeding, watering a garden or lawn, drying shoes or gear, airing instead of the dehumidifier).
