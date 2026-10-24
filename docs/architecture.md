@@ -57,7 +57,7 @@ flowchart LR
 
 | Component | What it does | Where |
 |---|---|---|
-| Web client | React 19 + Vite SPA built to `dist/web`; hash-routed screens (Today, Slips, Score, Onboarding) behind feature flags; zod-validated API data; polls every 30 s while visible. Fonts and icons are bundled, no CDN. | `src/web/`, [THIRD-PARTY.md](../THIRD-PARTY.md) |
+| Web client | React 19 + Vite SPA built to `dist/web`, following the Figma mockups (design.md Round 3 item 12): Today with a greeting header, weekly strip, weather board, one capture input and chips; Slips; Score; Onboarding; a sidebar on wide screens. Screens behind feature flags; zod-validated API data; polls every 30 s while visible. Fonts, icons and the sloth mascot (inline SVG) are bundled, no CDN, and there is deliberately no share button, because a shared slip would carry chore text off the laptop. | `src/web/`, [THIRD-PARTY.md](../THIRD-PARTY.md) |
 | HTTP server | Fastify 5: static SPA, JSON API, photo files, security headers, Host allowlist, body limits. A feature whose flag is off registers no route. | `src/server/app.ts`, `src/server/core.ts` |
 | Access control | Pairing token, session cookie, Host and Origin checks, rate limit (below). | `src/server/auth/` |
 | Ledger | Cards, quotes, bets, the bet state machine, settlement, receipts, Score, export, rescue, appeals. All state in SQLite transactions. | `src/server/ledger/` |
@@ -98,7 +98,7 @@ to the schema without rewriting existing rows; triggers make the bet's locked co
 enforce the status arrows (`0003-bet-locks.ts`). Current set: 0001 pairing and sessions, 0002 core
 schema, 0003 bet locks, 0004 card notices, 0005 Gemma card state, 0006 card photos, 0007 settle
 progress, 0008 card sunset, 0010 laundry plan, 0011 rescue, 0012 appeals, 0013 household profile,
-0014 achievements (0009 is intentionally unused; numbers were assigned per task so parallel branches
+0014 achievements, 0015 place label (0009 is intentionally unused; numbers were assigned per task so parallel branches
 did not clash). Migration tests run on a seeded fixture database; the builder checks each migration
 on a copy of the live database before applying it (NFR-003).
 
@@ -169,6 +169,7 @@ voice audio and transcripts, the decision log, the database and exports.
 |---|---|
 | Photos (before, after, appeal) | Re-encoded, stored in `photos/`, sent as base64 to Ollama on 127.0.0.1 only |
 | Chore text, habits, onboarding answers | SQLite; sent to Ollama on 127.0.0.1 only |
+| The optional place label (onboarding) | SQLite and `sib export`; shown in the weather board header only, never in an Open-Meteo request, a Gemma prompt, a decision row, a log line or a dataset row (AC-026.3) |
 | Voice audio | Held in memory for the request, sent to llama.cpp on 127.0.0.1, never written or logged; the transcript is not stored in the decision log |
 | Model prompts and answers | 127.0.0.1; `gemma_decisions` keeps short summaries without household text |
 | Pairing tokens, session ids | Stored as hashes; never logged |
@@ -199,6 +200,7 @@ only, and the build fails if any value from `config/household.json` appears in i
 | Environment | Model | Weather | Needs |
 |---|---|---|---|
 | Dev and CI | Fake (`SIB_FAKE_MODEL=1`, fixtures in `test/fixtures/gemma/`) | Fake (`SIB_FAKE_WEATHER=1`) or recorded fixtures | Any machine with Node 24; no GPU, no network |
+| Demo (`sib demo`, T-032/T-034, in progress) | Fake, on a temporary data folder seeded with synthetic bets (`model_version = 'fake-demo'`); a "Sample data" banner on every screen | Fake | Never touches the live data folder or `config/household.json` (AC-029.4) |
 | Live | Gemma 4 E4B in Ollama | Open-Meteo | The builder's laptop |
 
 CI (`.github/workflows/ci-node.yml`) runs format check, lint, typecheck, tests with coverage and the

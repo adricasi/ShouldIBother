@@ -102,6 +102,7 @@ text.
 | Whether a chore touches safety (guard) | The fixed heat, frost and storm backstop (`src/domain/rules/safety.ts`) |
 | How a bet turned out (judge): win, small, normal or harmful loss | Points, multipliers, the 24 h cap, savings, lucky-win flag (`src/domain/points.ts`, `src/server/ledger/settle.ts`) |
 | Wash today, skip today or no good day, with a band per day (planner) | The consistency of that answer, the forecast numbers it reads (`src/server/gemma/laundry-planner.ts`) |
+| (nothing: Gemma never sees savings) | What a win would save, shown on the slip as an estimate ("saves ~5 min · ~5 L water if the sky does it", AC-011.7); computed by the same function that settlement uses and equal to the snapshot a bet would store (`src/server/ledger/savings.ts`, `savings_estimate`) |
 
 ### Bands, never raw percentages
 
@@ -346,6 +347,10 @@ Privacy rules for the log:
 - Deleting a photo, a bet or a card deletes the decisions derived from it (AC-015.2); a decision whose
   photo vanished while the job ran is logged without the photo id and without the answer.
 - Evaluation queries exclude the fake model: `WHERE model NOT LIKE 'fake%'`.
+- The optional **place label** typed in onboarding (for example "Gracia · Barcelona", migration
+  `0015-place-label.ts`) is shown in the weather board header and nowhere else: it is not in any Gemma
+  prompt or decision row, any Open-Meteo request, any log line or any dataset row (AC-026.3). It is
+  exported and deleted with the profile (`src/domain/place-label.ts`, `src/server/household-store.ts`).
 - `bets.model_version` (`<tag>@<digest>`) and `bets.prompt_version` are copied from the decision that
   priced the bet and are write-once.
 
@@ -478,9 +483,13 @@ output  {"status":"ok","transcript":"Water the tomatoes tonight"}
   `odds_source = rule`.
 - **Stored.** `input_summary` like `plants card, rule band 2, 0 answers`; `tool_mode`; the model
   name, digest and prompt version; and on a bet, `model_version` and `prompt_version`.
-- **Where you see it.** The bet slip: the odds tile (for example "Toss-up · 50%"), the label "Gemma's
-  odds", Gemma's reason, the settle time and payouts (`src/web/TodayScreen.tsx`); a yes/no question
-  as two buttons; "Retry Gemma"; and the status line "Gemma is online".
+- **Where you see it.** The bet slip, which is still placed on the card itself (no modal; design.md
+  Round 3 item 12): the odds tile (for example "Toss-up · 50%"), the label "Gemma's odds", Gemma's
+  reason, the settle time and payouts (`src/web/TodayScreen.tsx`); a yes/no question as two buttons;
+  "Retry Gemma"; and the status line "Gemma is online" (`src/web/TodayParts.tsx`). Beside the payouts
+  the slip shows a code-computed savings estimate for a win; Gemma has no part in it. The rule band is
+  not shown on its own: it reaches the screen only inside "Differs from the rule: ..." when Gemma
+  disagrees.
 
 Example (fixture `bookmaker/ok.json`, a two-step script: a tool call, then an answer). The input is
 what `bookmakerUserMessage` builds for a plants card at 18:30 on 14 July with the rule at toss-up:
@@ -603,7 +612,8 @@ output  {"status":"ok","alert":true,
   settlement row points at the decision (`settlements.decision_id`).
 - **Where you see it.** On the receipt, "Gemma's read": its reason and up to three evidence phrases
   (including the weather numbers it used), plus the recorded-weather line on the settle screen
-  (`src/web/SettleParts.tsx`). Its question appears as two buttons on the bet.
+  (`src/web/SettleParts.tsx`). Its question appears as "Gemma has a question" with two buttons on
+  the bet; while it is offline the bet reads "Settle when Gemma is back".
 
 Example (fixture `judge/ok.json`). The input is built by `userMessage` for a tap on "Still moist,
 all fine":
@@ -669,7 +679,9 @@ shape as above, with `first_verdict`, `first_reason` and `first_evidence` added 
   inconsistent answer gets the single retry. Before a Skip today bet opens, code runs the backstop and
   the safety guard on the chosen day, and refuses a plan older than 1 h or a chosen day already at
   10:00.
-- **Fallback.** The card says Gemma could not plan the wash and offers Retry.
+- **Fallback.** The card offers Retry. A schema-invalid or tool-less answer reads "Gemma couldn't plan
+  this wash. Nothing was lost. Try again."; an offline model reads "Gemma is not running."
+  (`PLANNER_FAILURE_NOTES` in `src/server/ledger/laundry-plan.ts`).
 - **Stored.** `input_summary` = `laundry planner, 4 days, 0 answers`; the plan JSON lives on the card
   (`cards.plan`).
 - **Where you see it.** The planner card: "Lazy Bookie · Laundry planner", the headline, the four days
@@ -707,10 +719,13 @@ interface ModelClient {
 |---|---|---|---|
 | `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
 | `LlamaCppAudioClient` | `llamacpp.ts`, `llamacpp-wire.ts` | `listener-audio` only | OpenAI-style `POST /v1/chat/completions` with the WAV as an `input_audio` part and a `response_format` JSON schema. Takes no tools. Health is `GET /health`. **Wire format UNVERIFIED.** |
-| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev`, `--fake-model` | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
+| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev`, `--fake-model`, and `sib demo` (AC-029.4, T-032/T-034, in progress) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
 
 **Choosing the client** (`src/server/model/select.ts`). The fake model is chosen **only** when
-`SIB_FAKE_MODEL=1`; the console says so loudly and Today shows "(fake model)". Otherwise `sib start`
+`SIB_FAKE_MODEL=1` (the one planned exception is `sib demo`, which starts the same fake in a temporary
+data folder seeded with synthetic bets whose `model_version` is `fake-demo`; the app shows a fixed
+"Sample data" banner and Score marks those figures "SAMPLE" and never reports them as results, per
+AC-029.4 and design.md Round 3 item 16; the command is in progress on `feat/T-032-demo-flags`); the console says so loudly and Today shows "(fake model)". Otherwise `sib start`
 needs `models.<primary>.tag` in `config/models.json` and refuses to start without it. With Ollama
 down the app still starts: Today shows "Gemma is offline, rule odds only", cards use rule odds,
 settlements wait, and everything recovers when Ollama appears. `jobModels` can override the client
@@ -823,6 +838,11 @@ The Score screen (`src/server/ledger/score.ts`, `src/web/ScoreScreen.tsx`, flag 
   `src/domain/calibration.ts`). Do-it decisions, cash-outs and undone bets are excluded. Every win
   counts as a success, lucky wins included, and the lucky share is shown separately.
 - Rule-odds bets never count toward Gemma's calibration.
+
+Over the chart, Score prints one sentence from the band Gemma used most among those with at least
+5 bets, for example "When Gemma says 70%, doing nothing works 74% of the time (9 bets)."
+(`calibrationHeadline` in `src/web/ScoreScreen.tsx`); with no such band there is no headline, so a
+shaky share never becomes one.
 
 The **judge overrule rate** (flag `appeals`) is the share of Gemma verdicts on settled do-nothing bets
 that an appeal changed, with N. N counts only first verdicts that are real Gemma decisions (a
