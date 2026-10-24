@@ -220,14 +220,19 @@ describe("main.ts wiring: with onboarding off, refetches ask for the current (de
       headers: { host, origin, cookie, ...multipart.headers },
     });
     expect(photo.statusCode).toBe(201);
-    await vi.waitFor(() => {
-      expect(server.forecastRequests.length).toBeGreaterThanOrEqual(2);
-    });
+    // The photo runs the inspector and the bookmaker on the job queue; under a loaded full-suite run
+    // that takes longer than waitFor's 1 s default, which made this test fail intermittently.
+    await vi.waitFor(
+      () => {
+        expect(server.forecastRequests.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 15_000 },
+    );
 
     const places = server.forecastRequests.map(
       (url) =>
         `${url.searchParams.get("latitude") ?? ""},${url.searchParams.get("longitude") ?? ""}`,
     );
     expect(new Set(places)).toEqual(new Set(["41.4,2.16"]));
-  });
+  }, 30_000);
 });
