@@ -29,6 +29,7 @@ import { cardPhotoView, currentObservations } from "./photo-view.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
+import { withSavingsEstimate } from "./savings.js";
 
 /**
  * Why a card shows rule odds, stored on it: a runner failure or one of the card's own reasons
@@ -496,7 +497,11 @@ function requireCard(deps: LedgerDeps, cardId: number): CardRow {
 function viewOf(deps: LedgerDeps, cardId: number): CardView {
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId)!;
   const table = bandTable(deps.rules);
-  return cardView(card, latestQuote(deps, cardId), table, cardPhotoView(deps.db, card, table));
+  return withSavingsEstimate(
+    deps,
+    card,
+    cardView(card, latestQuote(deps, cardId), table, cardPhotoView(deps.db, card, table)),
+  );
 }
 
 /**

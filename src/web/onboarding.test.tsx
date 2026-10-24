@@ -320,6 +320,57 @@ describe("REQ-024 in the app", () => {
     );
   });
 
+  it("AC-024.1: the place name is asked next to the location, and sent only when it is filled", async () => {
+    const calls = stubServer(true, pending);
+    window.location.hash = "#/onboarding";
+    await render();
+    expect(container.querySelector('label[for="onboarding-place"]')?.textContent).toBe(
+      "Place name (optional)",
+    );
+    // No maxLength: that counts UTF-16 units, so the field clamps to 40 code points itself.
+    expect(container.querySelector<HTMLInputElement>("#onboarding-place")?.maxLength).toBe(-1);
+    type("#onboarding-place", "  Test Quarter ");
+    click("button", "Start lazing");
+    await settle();
+    const save = calls.find((call) => call.line === "PUT /api/onboarding");
+    expect(save?.body).toMatchObject({ place_label: "Test Quarter" });
+  });
+
+  it("AC-026.3: the place name is cut at 40 code points: 40 emoji fit and a 41st is dropped", async () => {
+    stubServer(true, pending);
+    window.location.hash = "#/onboarding";
+    await render();
+    const rain = "🌧";
+    type("#onboarding-place", rain.repeat(45));
+    const field = container.querySelector<HTMLInputElement>("#onboarding-place")!;
+    expect([...field.value]).toHaveLength(40);
+    expect(field.value).toBe(rain.repeat(40));
+    type("#onboarding-place", "a".repeat(41));
+    expect(field.value).toBe("a".repeat(40));
+  });
+
+  it("AC-024.1: a blank place name is left out of the answers", async () => {
+    const calls = stubServer(true, pending);
+    window.location.hash = "#/onboarding";
+    await render();
+    type("#onboarding-place", "   ");
+    click("button", "Start lazing");
+    await settle();
+    const save = calls.find((call) => call.line === "PUT /api/onboarding");
+    expect(save?.body).not.toHaveProperty("place_label");
+  });
+
+  it("AC-026.3: the stored place name fills the field and heads the place row", async () => {
+    stubServer(true, { ...completed, place_label: "Test Quarter" });
+    window.location.hash = "#/onboarding";
+    await render();
+    expect(container.querySelector<HTMLInputElement>("#onboarding-place")?.value).toBe(
+      "Test Quarter",
+    );
+    expect(container.querySelector(".place-text")?.textContent).toContain("Test Quarter");
+    expect(container.querySelector(".place-text")?.textContent).toContain("40.42, -3.7");
+  });
+
   it("a due bet shows on Today and can be settled while onboarding is pending", async () => {
     const calls = stubServer(true, pending);
     await render();

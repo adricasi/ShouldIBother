@@ -3,6 +3,7 @@ import {
   parseSnapshot,
   snapshotFor,
   totalSavings,
+  type SavingsSnapshot,
   type SavingsTotals,
 } from "../../domain/savings.js";
 import { madridWeekOf, type Week } from "../../domain/week.js";
@@ -23,6 +24,63 @@ export function savingsSnapshotText(deps: SavingsDeps, choreType: string): strin
   return isChoreType(chore)
     ? JSON.stringify(snapshotFor(deps.savings, chore, deps.household))
     : null;
+}
+
+/**
+ * What a win would save, shown on a card that offers a do-nothing bet (AC-011.7): the figure of
+ * the catalogue and the household baseline of this moment, with its assumption. It is the figure
+ * `savingsSnapshotText` would write on a bet placed now, read back, so the two cannot differ.
+ * Time is left out when it is 0 (AC-011.4). It is an estimate: nothing is added to any total
+ * until a bet wins, and a placed bet shows its own stored snapshot, not this.
+ */
+export interface SavingsEstimate {
+  readonly time_min?: number;
+  readonly water_l: number;
+  readonly electricity_kwh: number;
+  readonly assumption: string;
+  readonly basis: SavingsSnapshot["basis"];
+}
+
+export function savingsEstimate(deps: SavingsDeps, choreType: string): SavingsEstimate | null {
+  const snapshot = parseSnapshot(savingsSnapshotText(deps, choreType));
+  if (snapshot === null) {
+    return null;
+  }
+  return {
+    ...(snapshot.time_min > 0 ? { time_min: snapshot.time_min } : {}),
+    water_l: snapshot.water_l,
+    electricity_kwh: snapshot.electricity_kwh,
+    assumption: snapshot.assumption,
+    basis: snapshot.basis,
+  };
+}
+
+/**
+ * A card view with its savings estimate, when the card still offers a do-nothing bet, as Today
+ * decides it: it has a quote whose settle time is ahead and no bet on it that was not undone
+ * (AC-011.7). A card that has been bet on shows its bet's own stored figure elsewhere, not a
+ * recomputed estimate.
+ */
+export function withSavingsEstimate<
+  T extends { readonly quote: { readonly settle_at: string } | null },
+>(
+  deps: SavingsDeps & Pick<LedgerDeps, "now">,
+  card: { readonly id: number; readonly chore_type: string },
+  view: T,
+): T & { savings_estimate?: SavingsEstimate } {
+  if (view.quote === null || Date.parse(view.quote.settle_at) <= deps.now()) {
+    return view;
+  }
+  const bets = deps.db
+    .prepare<[number], { n: number }>(
+      "SELECT COUNT(*) AS n FROM bets WHERE card_id = ? AND status != 'undone'",
+    )
+    .get(card.id)!.n;
+  if (bets > 0) {
+    return view;
+  }
+  const estimate = savingsEstimate(deps, card.chore_type);
+  return estimate === null ? view : { ...view, savings_estimate: estimate };
 }
 
 /**

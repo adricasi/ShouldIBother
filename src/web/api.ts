@@ -129,6 +129,19 @@ export const cardSchema = z.object({
     })
     .nullable(),
   photo: photoSchema.nullish(),
+  /**
+   * What a win would save, on a card that offers a do-nothing bet (AC-011.7): an estimate from the
+   * same catalogue and baseline as the savings snapshot. `time_min` is absent when it is 0.
+   */
+  savings_estimate: z
+    .object({
+      time_min: z.number().optional(),
+      water_l: z.number(),
+      electricity_kwh: z.number(),
+      assumption: z.string(),
+      basis: z.string(),
+    })
+    .optional(),
   /** Set on a laundry planner card (flag `laundryPlanner`). */
   laundry_plan: planSchema.nullish(),
 });
@@ -266,6 +279,8 @@ export const weatherBoardSchema = z.object({
   /** Today's daylight hours: how well the sky dries the line (0 to 1) and whether it is lazy. */
   hours: z.array(z.object({ hour: z.number(), level: z.number().nullable(), lazy: z.boolean() })),
   lazy_window: z.object({ from: z.string(), to: z.string() }).nullable(),
+  /** The household's place label for the board header (AC-026.3); only with `onboarding` on. */
+  place_label: z.string().optional(),
 });
 export type WeatherBoard = z.infer<typeof weatherBoardSchema>;
 
@@ -517,6 +532,8 @@ export const deletePhoto = (photoId: string): Promise<undefined> =>
 /** The onboarding questions and where they stand (flag `onboarding`, REQ-024). */
 export const onboardingSchema = z.object({
   state: z.enum(["pending", "completed", "skipped"]),
+  /** The optional place label (AC-024.1, AC-026.3); absent when there is none. */
+  place_label: z.string().optional(),
   household: z.object({
     outdoorItems: z.array(z.enum(["balcony_plants", "clothes_line"])).optional(),
     dryer: z.enum(["none", "heat-pump", "condenser", "vented"]),
@@ -526,7 +543,10 @@ export const onboardingSchema = z.object({
   }),
 });
 export type Onboarding = z.infer<typeof onboardingSchema>;
-export type OnboardingAnswers = Required<Onboarding["household"]>;
+export type OnboardingAnswers = Required<Onboarding["household"]> & {
+  /** Blank means no label; the server trims and validates it (AC-026.3). */
+  readonly place_label?: string;
+};
 
 export const fetchOnboarding = (): Promise<Onboarding> =>
   request("/api/onboarding", onboardingSchema);
