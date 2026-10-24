@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: one advice chore (balcony_sweep).",
+  "content": {
+    "chores": [
+      {
+        "label": "sweep the balcony",
+        "chore_type": "balcony_sweep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "description": "Synthetic: the first window contains a wet hour (refused), the retry is valid.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 4,
+          "end_hours_ahead": 16
+        },
+        "reason": "Rain stops soon, so clean the windows this afternoon."
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 16,
+          "end_hours_ahead": 28
+        },
+        "reason": "8 mm of rain until about 19:00, so wait until the glass can dry."
+      }
+    }
+  ]
+}

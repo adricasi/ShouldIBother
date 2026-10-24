@@ -1,0 +1,19 @@
+{
+  "description": "Synthetic: answers without the forecast, twice.",
+  "steps": [
+    {
+      "content": {
+        "status": "ok",
+        "advice": "do_now",
+        "reason": "Looks nice out."
+      }
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "do_now",
+        "reason": "Looks nice out."
+      }
+    }
+  ]
+}

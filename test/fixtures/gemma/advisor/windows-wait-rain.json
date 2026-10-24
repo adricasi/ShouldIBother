@@ -1,0 +1,27 @@
+{
+  "description": "Synthetic: rain from 02:00 to 10:00 forecast, so wait for the glass to dry; agrees with the rule.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 16,
+          "end_hours_ahead": 28
+        },
+        "reason": "8 mm of rain until about 19:00, so clean the windows once it has been dry for a while."
+      }
+    }
+  ]
+}

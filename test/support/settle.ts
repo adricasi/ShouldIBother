@@ -4,6 +4,7 @@ import type { Band } from "../../src/domain/bands.js";
 import { parseFlags } from "../../src/server/flags.js";
 import { BackgroundTasks, type LedgerDeps } from "../../src/server/ledger/deps.js";
 import { Settler } from "../../src/server/ledger/settle.js";
+import { loadAdviceRules } from "../../src/server/advice-rules.js";
 import { loadRules } from "../../src/server/rules.js";
 import { savingsSnapshotText } from "../../src/server/ledger/savings.js";
 import { loadSavings } from "../../src/server/savings.js";
@@ -164,6 +165,7 @@ export function makeSettler(harness: CoreHarness): {
     weather: harness.weather,
     gemma: harness.core.gemma,
     rules: loadRules(),
+    adviceRules: loadAdviceRules(),
     household: EXAMPLE_HOUSEHOLD,
     flags: parseFlags({}),
     savings: loadSavings(),

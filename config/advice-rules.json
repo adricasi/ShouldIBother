@@ -1,0 +1,30 @@
+{
+  "_comment": "Final values for this version (design.md, Advice cards). No tuning. Separate from rules.json, whose hash is in the backtest and dataset manifests. wetHourMm equals wetHourMm in rules.json (a test checks it).",
+  "version": 1,
+  "wetHourMm": 0.2,
+  "windowsClean": {
+    "rainMmAtLeast": 1,
+    "lookaheadHours": 48,
+    "settleHours": 6,
+    "waitWindowHours": 12,
+    "nowHours": 3
+  },
+  "balconySweep": {
+    "gustKmhAtLeast": 40,
+    "lookaheadHours": 24,
+    "settleHours": 3,
+    "waitWindowHours": 12,
+    "nowHours": 2
+  },
+  "outdoorPaint": {
+    "runHours": 24,
+    "humidityPctBelow": 85,
+    "tempCAtLeast": 10
+  },
+  "lawnFeed": {
+    "rainMmAtLeast": 10,
+    "lookaheadHours": 48,
+    "waitWindowHours": 24,
+    "nowHours": 3
+  }
+}

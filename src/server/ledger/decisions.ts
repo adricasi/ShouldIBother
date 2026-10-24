@@ -7,13 +7,16 @@ export const MAX_TOOL_RESULT_HOURS = 24;
  * The tool result as it is stored: a JSON list of at most 24 rows. Anything else (not JSON, not a
  * list) is dropped rather than stored, so a caller's mistake cannot put free text in the log.
  */
-export function boundToolResult(text: string | undefined): string | null {
+export function boundToolResult(
+  text: string | undefined,
+  maxRows: number = MAX_TOOL_RESULT_HOURS,
+): string | null {
   if (text === undefined) {
     return null;
   }
   try {
     const rows = JSON.parse(text) as unknown;
-    return Array.isArray(rows) ? JSON.stringify(rows.slice(0, MAX_TOOL_RESULT_HOURS)) : null;
+    return Array.isArray(rows) ? JSON.stringify(rows.slice(0, maxRows)) : null;
   } catch {
     return null;
   }
@@ -38,6 +41,8 @@ export interface DecisionInput {
   readonly error: string | undefined;
   /** The hours `get_forecast` returned to Gemma, compact JSON (migration 0016); public weather only. */
   readonly toolResult?: string | undefined;
+  /** Rows of the tool result to keep: 24 unless the job's tool says more (the advisor, 72). */
+  readonly toolResultRows?: number | undefined;
   readonly createdAt: number;
 }
 
@@ -75,7 +80,7 @@ export function logDecision(db: Db, input: DecisionInput): number {
       input.retries,
       input.latencyMs,
       photoGone ? "the photo was deleted while the job ran" : (input.error ?? null),
-      boundToolResult(input.toolResult),
+      boundToolResult(input.toolResult, input.toolResultRows),
       input.createdAt,
     );
   return Number(result.lastInsertRowid);

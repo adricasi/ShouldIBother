@@ -1,0 +1,27 @@
+{
+  "description": "Synthetic: 12 mm of rain forecast, feed the lawn after it.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 16,
+          "end_hours_ahead": 40
+        },
+        "reason": "12 mm of rain until the early evening would wash the fertiliser away."
+      }
+    }
+  ]
+}

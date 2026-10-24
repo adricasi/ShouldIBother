@@ -1,0 +1,8 @@
+{
+  "description": "Synthetic: the model is not answering.",
+  "steps": [
+    {
+      "error": "unavailable"
+    }
+  ]
+}

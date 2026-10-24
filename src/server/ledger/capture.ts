@@ -1,3 +1,4 @@
+import { isAdviceChore } from "../../domain/advice.js";
 import { LAUNDRY_PLAN, isChoreType } from "../../domain/chores.js";
 import { MAX_CAPTURE_CHARS, runListener, type ListenerChore } from "../gemma/listener.js";
 import { JobQueueFullError } from "../gemma/runner.js";
@@ -5,6 +6,7 @@ import { HttpError } from "../problem.js";
 
 import { createChoreCard, createUnbettableCard } from "./cards.js";
 import type { LedgerDeps } from "./deps.js";
+import { createAdviceCard } from "./advice.js";
 import { createPlannerCard } from "./laundry-plan.js";
 import { assertGemmaCapacity, gemmaBusy } from "./gemma-cards.js";
 import type { CardView } from "./views.js";
@@ -64,6 +66,9 @@ export async function cardsFromChores(
     } else if (chore.chore_type === LAUNDRY_PLAN && deps.flags.laundryPlanner) {
       // REQ-021 (flag `laundryPlanner`): a laundry chore is planned over the next four days.
       cards.push(createPlannerCard(deps, chore.label));
+    } else if (isAdviceChore(chore.chore_type) && deps.flags.adviceCards) {
+      // REQ-031 (flag `adviceCards`): an outdoor chore gets advice from the advisor, not a bet.
+      cards.push(createAdviceCard(deps, chore.chore_type, chore.label));
     } else {
       cards.push(createUnbettableCard(deps, "coming_later", chore.chore_type, chore.label));
     }

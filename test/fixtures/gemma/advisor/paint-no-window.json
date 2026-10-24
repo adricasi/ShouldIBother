@@ -1,0 +1,23 @@
+{
+  "description": "Synthetic: showers every day, no 24 dry hours in the 72.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "no_window",
+        "reason": "Showers every day and humidity above 85%: no 24 dry hours in the next 3 days."
+      }
+    }
+  ]
+}

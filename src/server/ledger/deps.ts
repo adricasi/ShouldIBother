@@ -1,3 +1,4 @@
+import type { AdviceRules } from "../../domain/advice.js";
 import type { SavingsCatalogue } from "../../domain/savings.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import type { Household } from "../config.js";
@@ -42,6 +43,8 @@ export interface LedgerDeps {
   /** Runs the Gemma jobs: queue, deadline, retry, decision log. */
   readonly gemma: JobRunner;
   readonly rules: RulesConfig;
+  /** The advice cards' fixed thresholds (REQ-031). */
+  readonly adviceRules: AdviceRules;
   /** The household baseline: whether the AC and heater are used this season (AC-016.5). */
   readonly household: Household;
   readonly flags: Flags;

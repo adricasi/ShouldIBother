@@ -17,6 +17,7 @@ import { cashOutBet } from "../server/ledger/rescue.js";
 import { latestQuote } from "../server/ledger/quotes.js";
 import { Settler } from "../server/ledger/settle.js";
 import { PHOTOS_DIR, PhotoStore } from "../server/photos/store.js";
+import { loadAdviceRules } from "../server/advice-rules.js";
 import { loadRules } from "../server/rules.js";
 import { loadSavings } from "../server/savings.js";
 import { FakeWeatherClient } from "../server/weather/fake.js";
@@ -110,6 +111,7 @@ export async function seedDemoData(options: {
     weather,
     gemma: new JobRunner({ model, db, now }),
     rules: loadRules(),
+    adviceRules: loadAdviceRules(),
     get household() {
       return store.current();
     },

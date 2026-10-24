@@ -1,0 +1,23 @@
+{
+  "description": "Hand-written synthetic advisor answer: calls get_forecast for 72 hours, then says do it now.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "do_now",
+        "reason": "No rain and light wind for the next hours, so the job will last."
+      }
+    }
+  ]
+}

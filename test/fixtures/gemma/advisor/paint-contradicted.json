@@ -1,0 +1,49 @@
+{
+  "description": "Synthetic: a paint window in the first rainy hours, twice.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 0,
+          "end_hours_ahead": 24
+        },
+        "reason": "Looks fine to paint."
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 1,
+          "end_hours_ahead": 25
+        },
+        "reason": "Looks fine to paint."
+      }
+    }
+  ]
+}

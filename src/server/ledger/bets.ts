@@ -38,7 +38,8 @@ export function placeBet(
     // AC-012.2: a "Do it now" alert has no bet action, and the API enforces it too.
     throw new HttpError(409, "No bet on an alert", card.alert_reason ?? "Do this one now.");
   }
-  if (card.kind !== "weather") {
+  if (card.kind !== "weather" || card.advice !== null) {
+    // An advice card (REQ-031) is advice only: no quote, no bet.
     throw new HttpError(409, "No bet on this card");
   }
   if (card.chore_type === LAUNDRY_PLAN && !deps.flags.laundryPlanner) {

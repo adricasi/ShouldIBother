@@ -17,6 +17,7 @@ import { stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
 import { launchNewCardJobs } from "./gemma-cards.js";
+import { withAdvice } from "./advice.js";
 import { withPlan } from "./laundry-plan.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
@@ -35,6 +36,8 @@ const MAX_TODAY_CARDS = 20;
 const QUIET_CARD_REUSE_MS = 30 * 60 * 1000;
 
 /** Cards without odds (alerts, notices) leave Today after this long; they are not bets in waiting. */
+/** An advice card stays on Today for the 3 days its advice looks ahead (REQ-031). */
+const ADVICE_CARD_TTL_MS = 72 * 60 * 60 * 1000;
 const QUIET_CARD_TTL_MS = 12 * 60 * 60 * 1000;
 
 function insertCard(
@@ -290,11 +293,15 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
     throw new HttpError(404, "Card not found");
   }
   const quote = latestQuote(deps, cardId);
-  if (card.kind === "weather" && quote === undefined) {
+  if (card.kind === "weather" && quote === undefined && card.advice === null) {
     throw new HttpError(404, "Card not found");
   }
   // An alert has no odds, even if it began as a weather card (its old rule quote stays stored).
   const table = bandTable(deps.rules);
+  if (card.advice !== null) {
+    // An advice card (REQ-031) has no quote and no bet: only the advice part.
+    return withAdvice(deps, card, cardView(card, undefined, table), deps.now());
+  }
   return withPlan(
     card,
     withCardFacts(
@@ -329,7 +336,12 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
   const now = deps.now();
   const views: CardView[] = [];
   for (const card of cards) {
-    if (card.kind === "weather") {
+    if (card.kind === "weather" && card.advice !== null) {
+      // Advice stays useful for the 3 days it looks ahead.
+      if (card.created_at + ADVICE_CARD_TTL_MS > now) {
+        views.push(withAdvice(deps, card, cardView(card, undefined, table), now));
+      }
+    } else if (card.kind === "weather") {
       const quote = latestQuote(deps, card.id);
       if (quote !== undefined && quote.settle_at > now) {
         views.push(

@@ -1,0 +1,49 @@
+{
+  "description": "Synthetic: both attempts give a window with a wet hour.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 4,
+          "end_hours_ahead": 16
+        },
+        "reason": "Rain stops soon, so clean the windows this afternoon."
+      }
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 5,
+          "end_hours_ahead": 17
+        },
+        "reason": "The shower is nearly over, so clean the windows this afternoon."
+      }
+    }
+  ]
+}

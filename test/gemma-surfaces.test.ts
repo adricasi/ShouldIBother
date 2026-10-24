@@ -121,8 +121,9 @@ describe("migration 0016 and 0017: the tool result and the decision that priced 
         VALUES ('bookmaker', 1, 'gemma4:e4b', 'bookmaker.v1', 1, 0, 100, 5), ('bookmaker', 1, 'gemma4:e4b', 'bookmaker.v1', 1, 0, 100, 6);
     `);
     const before = db.prepare("SELECT * FROM bets").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([17]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    const upTo17 = MIGRATIONS.filter((migration) => migration.id <= 17);
+    expect(migrate(db, upTo17)).toEqual([17]);
+    expect(migrate(db, upTo17)).toEqual([]);
     expect(db.prepare("SELECT * FROM bets").all()).toEqual(
       before.map((row) => ({ ...(row as object), decision_id: null })),
     );

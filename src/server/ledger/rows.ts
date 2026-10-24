@@ -25,6 +25,8 @@ export interface CardRow {
   safety_checked_at: number | null;
   /** The laundry planner's state as JSON (migration 0010); null on every other card. */
   plan: string | null;
+  /** The advice card's state as JSON (migration 0018); null on every other card. */
+  advice: string | null;
   /** When the person followed the planner's advice, and the points it earned (AC-021.3). */
   advice_followed_at: number | null;
   advice_points: number | null;
