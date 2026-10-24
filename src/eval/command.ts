@@ -82,7 +82,7 @@ export interface EvalDeps {
   /** Replaces the model selection (tests). The default is Ollama, or the fake with SIB_FAKE_MODEL=1. */
   readonly createModel?: () => Promise<{
     readonly model: ModelClient;
-    readonly mode: "ollama" | "fake";
+    readonly mode: "ollama" | "fake" | "digitalocean";
     readonly warmUp?: () => Promise<ModelHealth>;
   }>;
   readonly fetch?: typeof fetch;

@@ -30,7 +30,7 @@ Everything runs on one laptop (WSL2 + NVIDIA GPU): one Fastify process serves th
 and JSON API, stores data in SQLite + a photos folder (`~/.should-i-bother/`, outside the
 repo) and runs a 60 s scheduler loop. Gemma runs in Ollama on 127.0.0.1 behind a
 `ModelClient` interface (Ollama · llama.cpp for audio · Fake with recorded fixtures). The
-phone pairs over home Wi-Fi with a one-time token. The only outbound call is Open-Meteo.
+phone pairs over home Wi-Fi with a one-time token. In home mode the only outbound call is Open-Meteo (hosted mode: see the rule below).
 Details: [design.md](docs/spec/design.md) and ADRs 0002–0008 in `docs/adr/`.
 
 ## Commands
@@ -85,6 +85,10 @@ npm audit --audit-level=high             # dependency vulnerabilities
 - One GPU user at a time: stop Ollama (`ollama stop`) before training.
 - Household data (photos, chore text, habits, audio) never leaves the laptop or enters git;
   photos are stripped of EXIF and resized to ≤ 1024 px. Ollama stays on 127.0.0.1.
+- Hosted mode (REQ-032) is optional and off by default: it may call only DigitalOcean's inference
+  host besides Open-Meteo, reads its key from the environment only, keeps photos on the server
+  unless `SIB_DO_VISION=1`, and must say on screen that Gemma runs at DigitalOcean. Agents prepare
+  the deployment kit and guide; the builder creates the server by hand and deploys.
 
 ## Project kit
 Local to each machine: this repository is public, so `.claude/` is git-ignored. Recreate the

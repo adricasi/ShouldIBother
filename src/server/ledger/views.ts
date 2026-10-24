@@ -62,6 +62,10 @@ export function quoteLabel(source: "rule" | "gemma", state: GemmaState): string 
   }
 }
 
+/** The settle screen's words for a verdict that waits for the daily cap to reset (AC-032.5). */
+export const HOSTED_CAP_SETTLE_NOTE =
+  "Gemma's daily limit is used up; this settles after midnight (Madrid).";
+
 /** Plain words for why Gemma has no answer, by failure code (AC-003.4, AC-013.3). */
 export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   unavailable: "Gemma is not running.",
@@ -73,6 +77,8 @@ export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   weather: "The forecast was not available.",
   internal: "Something went wrong inside the app.",
   busy: "Gemma is busy with other requests.",
+  daily_limit: "Gemma's daily limit · rule odds",
+  cap_reached: HOSTED_CAP_SETTLE_NOTE,
   superseded: "Your bet was placed before Gemma answered.",
   unresolved: "Gemma could not settle on odds, even with your answers.",
   restart: "The app restarted while Gemma was thinking.",
@@ -127,6 +133,9 @@ export function settleView(bet: BetRow, progress: ProgressRow | undefined, nowMs
     state = waiting;
     if (state === "waiting_weather") {
       note = "Waiting for the recorded weather.";
+    } else if (progress?.failure === "cap_reached") {
+      // Hosted mode (AC-032.5): the day's calls are used up; the verdict goes first after midnight.
+      note = HOSTED_CAP_SETTLE_NOTE;
     } else if (progress?.failure != null) {
       note = "Settle when Gemma is back. Your answer is saved.";
     } else if (bet.kind === "do_it") {

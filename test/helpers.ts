@@ -4,7 +4,11 @@ import { Writable } from "node:stream";
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 
 import { buildApp, type FeaturePlugins } from "../src/server/app.js";
-import { buildAllowlist, type InterfaceMap } from "../src/server/auth/allowlist.js";
+import {
+  buildAllowlist,
+  buildHostedAllowlist,
+  type InterfaceMap,
+} from "../src/server/auth/allowlist.js";
 import { AuthStore } from "../src/server/auth/store.js";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { parseFlags, type FlagName } from "../src/server/flags.js";
@@ -50,6 +54,12 @@ export interface HarnessOptions {
   allowedHosts?: string[];
   features?: FeaturePlugins;
   logger?: boolean;
+  /** Hosted mode (REQ-032): the public origin; the app is built the way `SIB_MODE=hosted` builds it. */
+  hostedOrigin?: string;
+  /** Pairing attempts per client address and minute in hosted mode. */
+  pairAttemptsPerMinute?: number;
+  /** `SIB_TRUSTED_PROXY` in hosted mode: none by default. */
+  trustedProxy?: readonly string[];
 }
 
 export class Harness {
@@ -123,14 +133,27 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     ...(options.features === undefined ? {} : { features: options.features }),
     logger: options.logger ?? false,
     logStream,
+    ...(options.hostedOrigin === undefined
+      ? {}
+      : {
+          hosted: {
+            ...(options.pairAttemptsPerMinute === undefined
+              ? {}
+              : { pairAttemptsPerMinute: options.pairAttemptsPerMinute }),
+            ...(options.trustedProxy === undefined ? {} : { trustedProxy: options.trustedProxy }),
+          },
+        }),
     auth: {
       store: harness.store,
-      allowlist: buildAllowlist({
-        port: PORT,
-        interfaces: FAKE_INTERFACES,
-        allowedHosts: options.allowedHosts ?? [],
-        publicOrigins: options.publicOrigins ?? [],
-      }),
+      allowlist:
+        options.hostedOrigin === undefined
+          ? buildAllowlist({
+              port: PORT,
+              interfaces: FAKE_INTERFACES,
+              allowedHosts: options.allowedHosts ?? [],
+              publicOrigins: options.publicOrigins ?? [],
+            })
+          : buildHostedAllowlist(options.hostedOrigin),
       print: (line) => harness.printed.push(line),
     },
   });

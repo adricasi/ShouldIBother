@@ -386,6 +386,10 @@ export const todaySchema = z.object({
   /** True when the server runs `sib demo`: sample data, shown with a banner (AC-029.4). */
   demo: z.boolean().optional(),
   flags: flagsSchema,
+  /** Where Gemma runs: on the laptop (home, the default) or at DigitalOcean (hosted, AC-032.6). */
+  mode: z.enum(["home", "hosted"]).optional(),
+  /** False when photos cannot be sent: hosted mode without `SIB_DO_VISION` (AC-032.4). */
+  photos: z.boolean().optional(),
   points: z.object({ total: z.number() }),
   /** This week's savings, Monday to Sunday in Madrid time (AC-011.6). */
   week: z.object({ from: z.string(), to: z.string(), totals: savingsTotalsSchema }),
@@ -516,6 +520,20 @@ export type SavingsTotals = z.infer<typeof savingsTotalsSchema>;
 export type BetSettle = z.infer<typeof settleSchema>;
 export type RecordedWeather = z.infer<typeof weatherSchema>;
 
+/**
+ * Where the app runs, for the words of errors that name the machine: "the laptop" at home, "the
+ * server" when hosted (AC-032.6). Set from the `mode` of `/api/today`, or from a 401 whose hint
+ * names the server; home until the app has heard otherwise.
+ */
+let deploymentMode: "home" | "hosted" = "home";
+
+export function setDeploymentMode(mode: "home" | "hosted" | undefined): void {
+  deploymentMode = mode ?? "home";
+}
+
+/** Part of the hosted 401 hint the server sends (`HOSTED_PAIR_HINT` in the guard). */
+const HOSTED_HINT_MARKER = "`sib pair` on the server";
+
 /** A failed request: the server's RFC 9457 title and detail, or a plain network message. */
 export class ApiError extends Error {
   constructor(
@@ -555,19 +573,38 @@ async function request<T>(
               }),
     });
   } catch {
-    throw new ApiError(0, "Can't reach the laptop. Check the Wi-Fi and try again.");
+    throw new ApiError(
+      0,
+      deploymentMode === "hosted"
+        ? "Can't reach the server. Check your connection."
+        : "Can't reach the laptop. Check the Wi-Fi and try again.",
+    );
   }
   if (response.status === 401) {
+    // The hosted server's hint says to run `sib pair` on the server; it tells a hosted app apart
+    // even before the first answer has said which mode it is.
+    const body = problemSchema.safeParse(await response.json().catch(() => undefined));
+    const hostedHint =
+      body.success && body.data.detail?.includes(HOSTED_HINT_MARKER) === true
+        ? body.data.detail
+        : undefined;
+    if (hostedHint !== undefined) {
+      deploymentMode = "hosted";
+    }
     throw new ApiError(
       401,
-      "This device is not paired. Open the pairing link shown on the laptop.",
+      hostedHint === undefined
+        ? deploymentMode === "hosted"
+          ? "This device is not paired. Run `sib pair` on the server and open the link it prints."
+          : "This device is not paired. Open the pairing link shown on the laptop."
+        : `This device is not paired. ${hostedHint}`,
     );
   }
   if (!response.ok) {
     const problem = problemSchema.safeParse(await response.json().catch(() => undefined));
     const text = problem.success
       ? [problem.data.title, problem.data.detail].filter(Boolean).join(": ")
-      : `The laptop answered ${response.status}.`;
+      : `The ${deploymentMode === "hosted" ? "server" : "laptop"} answered ${response.status}.`;
     throw new ApiError(response.status, text);
   }
   if (response.status === 204) {
@@ -576,7 +613,11 @@ async function request<T>(
   return schema.parse(await response.json());
 }
 
-export const fetchToday = (): Promise<Today> => request("/api/today", todaySchema);
+export const fetchToday = async (): Promise<Today> => {
+  const today = await request("/api/today", todaySchema);
+  setDeploymentMode(today.mode);
+  return today;
+};
 
 /** The chip for the laundry planner (flag `laundryPlanner`); it is not a chore of the quick route. */
 export const PLANNER_CHIP = "laundry_plan";

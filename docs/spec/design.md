@@ -1,7 +1,7 @@
 # Design: Should I Bother?
 
 - Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
-- Last updated: 2026-10-24
+- Last updated: 2026-10-24 (hosted mode)
 - Implements: requirements.md (REQ-*, NFR-*)
 
 ## Overview
@@ -148,6 +148,23 @@ Hours are counted from the `created_at` hour, 0–72; a wet hour has precipitati
 
 Advice cards carry no quote, no bet, no points and no savings; the card shows Gemma's advice and window, the rule advice when it differs, Retry, and the "How Gemma decided" disclosure; Advice cards are `kind = 'weather'` with a non-null `cards.advice`, which holds the validated answer (migration 0018, ADD COLUMN only; T-038 needs no migration). The safety backstop and the safety guard run on advice cards; an alert replaces the advice. Decisions are logged like every job.
 
+### Hosted mode (REQ-032, NFR-013; T-040, T-041)
+Optional; home mode stays the default and is untouched. `SIB_MODE=hosted` switches four things and nothing else:
+
+| Area | Home mode (default) | Hosted mode |
+|---|---|---|
+| Model | Ollama on 127.0.0.1 (`OllamaClient`) | `DigitalOceanClient`: OpenAI-compatible `POST /v1/chat/completions` at the allowlisted inference host (host and model ID verified by the builder with `/v1/models`, ADR-0011), `Authorization: Bearer $SIB_DO_INFERENCE_KEY`, model `$SIB_DO_MODEL`; same JobRunner retry budget, deadlines, schemas and decision logging; tool use from `SIB_TOOL_USE` (the hosted override of `gemma.toolUse`, same values; `injected` by default: the app calls `get_forecast` and hands Gemma the result, AC-003.6 does not apply; `native` once `sib hosted-check` has seen tool calls work) |
+| Photos | Sent to local Gemma | Sent only with `SIB_DO_VISION=1`; otherwise upload refused (409), photo blocks hidden, no inspector, settle by tap (×0.5) |
+| Network | Binds 127.0.0.1 + LAN; plain HTTP on home Wi-Fi (ADR-0007) | Binds `SIB_BIND_ADDRESS` (default 0.0.0.0 inside the container; the port is not published on the host) behind Caddy on 80/443 with automatic HTTPS and HSTS for the host of `SIB_PUBLIC_ORIGIN`, access logs off; Host/Origin allowlists exactly that origin; proxy headers trusted only from the Compose network |
+| Access | Pairing link printed at start; 30-day cookie | No token at start; `sib pair` prints `/pair#t=…` to the terminal; `/pair` page POSTs the token; `__Host-` cookie, `Secure`, `SameSite=Strict`, device remembered 30 days, renewed on use; `Referrer-Policy: no-referrer`; `/healthz` without a session only from 127.0.0.1 (AC-032.3, AC-032.7) |
+| Spend | — | `SIB_DAILY_MODEL_CALLS` chat-completions requests per Madrid day (default 300, stored in SQLite); from 80 % only judge verdicts call Gemma, at 100 % they wait; waiting verdicts first after the reset (AC-032.5) |
+
+Implementation notes (T-040): the inference base URL (`DIGITALOCEAN_INFERENCE_URL`) and the whole wire format (`digitalocean-wire.ts`) are UNVERIFIED until the builder runs `sib hosted-check` against the real service; each lives in one place and a correction is made there. In `injected` tool use the tool turns of the history are sent as plain text turns (so the service is never asked for tool calling); `native` sends `tool_calls` and `tool` messages. `/healthz` is answered before the Host check, only for a request whose socket peer is 127.0.0.1 or ::1 and that carries no `X-Forwarded-For`/`Forwarded` header. The daily counter is the `model_calls` table (migration 0019); `X-Forwarded-For` is believed only from `SIB_TRUSTED_PROXY` (none by default); migration 0020 adds `pairing.max_sessions` (a hosted link is for one device unless `sib pair --devices N`) and `sessions.device` (a short summary for `sib devices`).
+
+Voice (llama.cpp) and `finetunedBookmaker` are off in hosted mode. The outbound allowlist is Open-Meteo plus the inference host; the key is redacted from logs and errors. Every screen that names where Gemma runs reads the mode from `/api/status` (AC-032.6).
+
+Deployment (T-041, `docs/deploy-digitalocean.md`): one Basic Droplet (1 GiB, Ubuntu LTS, a 1 GiB swap file) with Docker Compose (`deploy/digitalocean/`: `compose.yaml`, `Caddyfile`, `env.example`, backup script and systemd timer), data on the Droplet disk under `/srv/sib/data` (owner-only) so daily Droplet backups cover it, a nightly online copy (`VACUUM INTO` plus the photos) kept 7 days, a reserved IP, a Cloud Firewall (22 from the builder's IP; 80 and 443 public), a DNS A record for the host, and monitoring alerts (CPU, memory, disk). The image (`Dockerfile`, multi-stage, Node 24 slim pinned by digest, `npm ci --omit=dev`, non-root, read-only root filesystem with a tmpfs `/tmp`, `/healthz` health check) is built on the laptop from a tagged commit and copied with `docker save | ssh … docker load` (no registry credential, no build on the 1 GiB Droplet). `sib hosted-check` (AC-032.8) runs once after deploy. The builder creates the Droplet (backups and monitoring on), reserved IP, Cloud Firewall, alerts and DNS record by hand in the DigitalOcean control panel, step by step in the guide; there is no Terraform. Costs and the privacy trade-off are in the deploy guide and ADR-0011.
+
 ## Data model
 SQLite, one file in the data folder (default `~/.should-i-bother/`, `SIB_DATA_DIR` to override; `data/` also git-ignored). All data is **household-private** (NFR-002); kept until the user deletes it (REQ-015).
 
@@ -239,6 +256,7 @@ Model tool exposed to Gemma: `get_forecast({hours_ahead: 1..48})` → hourly pre
 - Supported machine: Windows 11 + WSL2 Ubuntu, NVIDIA GPU ≥ 8 GB VRAM with the WSL CUDA driver, ≥ 16 GB RAM (A-11), ~20 GB free disk for models; Node.js 24, pinned (`.nvmrc` = 24, `engines` `>=24 <25`, CI `node-version: 24`) so a move of `lts/*` to Node 26 can't break native modules (better-sqlite3, sharp); Ollama; Python 3.12 + uv (training only). Phone: current iOS Safari or Android Chrome.
 - Setup (README, NFR-011): clone → `npm ci` → install Ollama → `ollama pull` the Gemma tags named in `config/models.json` (the builder pins tag and digest there in T-010; `sib start` refuses to start without a tag unless `SIB_FAKE_MODEL=1`) → `.wslconfig` mirrored networking + firewall rule (manual, Windows admin) → `npm start` → scan the QR.
 - Models: Gemma 4 E4B and E2B by Ollama tag + digest (exact tags and quantization recorded after T-001); fine-tuned GGUF imported with a Modelfile; weights git-ignored (`models/`, `*.gguf`).
+- Optional hosted mode on DigitalOcean (REQ-032): see Hosted mode; the builder deploys it by hand from `docs/deploy-digitalocean.md`.
 - Distribution: public GitHub repo (MIT); the human tags releases. Adapter on Hugging Face (Q-11).
 - CI: existing GitHub Actions (lint, typecheck, test, audit, gitleaks) without cloud credentials, pinned to Node 24; plus a Python job for `training/` (ruff + pytest, no GPU, no network). Both workflow changes approved by the builder on 2026-10-21.
 
@@ -317,6 +335,8 @@ Model tool exposed to Gemma: `get_forecast({hours_ahead: 1..48})` → hourly pre
 | REQ-028 | Data model (`gemma_decisions`), Gemma jobs, Round 3 item 17 |
 | REQ-029 | Feature flags, Round 3 item 16 |
 | REQ-030 | City rain bets, Gemma jobs (listener), Round 3 item 19 |
+| REQ-032 | Hosted mode, Round 3 item 20, ADR-0011 |
+| NFR-013 | Hosted mode (deployment), ADR-0011 |
 | REQ-031 | Advice cards, Gemma jobs (advisor), Data model (0018), Round 3 item 19 |
 | NFR-001 | Security design, ADR-0007 |
 | NFR-002 | Security design (calls that leave the device, data protection), Photo store |
@@ -369,3 +389,4 @@ Approved by the builder on 2026-10-23 ("keep working until all project features 
 17. **Gemma surfaces** (T-035; AC-008.6, AC-020.x, AC-028.1 to AC-028.4): Gemma is the visible decision maker on every screen. Slips, waiting bets and receipts label odds "Gemma's odds" or "Rule odds"; a disagreement shows both bands; a "How Gemma decided" disclosure reads the decision that priced the bet (`bets.decision_id`, migration 0017, write-once from the quote at placement, NULL for rule odds and older bets) from `gemma_decisions`: model tag, short digest, prompt version, tool mode, the forecast hours `get_forecast` returned (`tool_result`, migration 0016), retries, latency; Today carries a one-line status "Gemma 4 E4B · on this laptop" (or the fake/offline state); Score shows the rule's figure beside each Gemma calibration headline and the lucky-win share (AC-008.6). All of it is read-only views of data already stored.
 18. **Location picker** (T-037; AC-024.3, AC-024.4, AC-014.7, NFR-002; builder's choice 2026-10-24): onboarding gets "Use my location" (`navigator.geolocation.getCurrentPosition` once, `enableHighAccuracy: false`, only in a secure context; rounded in the browser) and a place search. The search goes through a session-guarded `GET /api/geocode?q=` route on the laptop, only while `onboarding` is on, which calls `https://geocoding-api.open-meteo.com/v1/search` (added to the weather client's host allowlist; query names UNVERIFIED until the builder runs it) with `count=10` and the language of the page; results are validated with zod, coordinates rounded to 2 decimals on the server, and only name, admin1, country and the rounded coordinates are returned. The query text is not logged (the route's URL is redacted like `/pair`), not cached and not stored; requests are rate-limited to 10 per minute. The page CSP is unchanged (the page still talks only to the laptop). Typed coordinates remain.
 19. **More chores** (T-038, T-039; REQ-030, REQ-031; builder's choice 2026-10-24): the city rain bets and the advice cards from the concept catalogue, behind the new flags `rainChores` and `adviceCards`, both in the `presentation` preset. Details in the City rain bets and Advice cards sections. The backtest and the fine-tune dataset keep the REQ-016 chores only (AC-030.3).
+20. **Hosted mode** (T-040, T-041; REQ-032, NFR-013; builder's choice 2026-10-24): an optional `SIB_MODE=hosted` for one household on a DigitalOcean Droplet with Gemma from DigitalOcean Serverless Inference, no accounts (the pairing token over HTTPS), photos kept on the server unless `SIB_DO_VISION=1`, and a daily call cap. Home mode stays the default and keeps "Your photos never leave it". The builder deploys by hand. Details in Hosted mode and ADR-0011.

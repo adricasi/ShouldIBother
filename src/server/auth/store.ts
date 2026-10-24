@@ -5,6 +5,8 @@ import { findHashConstantTime, generateSecret, hashSecret, isWellFormedSecret } 
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_DEVICES_PER_TOKEN = 3;
+/** Hosted mode renews a remembered device's session when it is used and the last renewal is older than this. */
+export const SESSION_RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 /** `last_seen_at` is a hint for the owner, so it is refreshed at most this often (one write per minute). */
 const LAST_SEEN_GRANULARITY_MS = 60 * 1000;
 
@@ -16,6 +18,22 @@ export interface IssuedToken {
 export interface IssuedSession {
   readonly sessionId: string;
   readonly expiresAt: number;
+}
+
+/** A linked device as `sib devices` shows it: no token, no session id. */
+export interface LinkedDevice {
+  readonly pairedAt: number;
+  readonly lastSeenAt: number;
+  readonly expiresAt: number;
+  /** "iPhone · Safari", or null for a session made before devices were named. */
+  readonly device: string | null;
+}
+
+interface DeviceRow {
+  created_at: number;
+  last_seen_at: number;
+  expires_at: number;
+  device: string | null;
 }
 
 interface HashRow {
@@ -35,7 +53,9 @@ export class AuthStore {
   private readonly claimSlot;
   private readonly insertSession;
   private readonly touchSession;
+  private readonly renewSessionRow;
   private readonly revokeAllSessions;
+  private readonly listLive;
   private readonly pruneSessions;
   private readonly pruneTokens;
 
@@ -53,18 +73,28 @@ export class AuthStore {
     this.revokeTokens = db.prepare<[number]>(
       "UPDATE pairing SET revoked_at = ? WHERE revoked_at IS NULL",
     );
-    this.insertToken = db.prepare<[string, number, number]>(
-      "INSERT INTO pairing (token_hash, created_at, expires_at) VALUES (?, ?, ?)",
+    this.insertToken = db.prepare<[string, number, number, number]>(
+      "INSERT INTO pairing (token_hash, created_at, expires_at, max_sessions) VALUES (?, ?, ?, ?)",
     );
+    // The limit is the token's own (`max_sessions`, migration 0020); the argument is the ceiling.
     this.claimSlot = db.prepare<[number, number, number]>(
       `UPDATE pairing SET sessions_created = sessions_created + 1
-       WHERE id = ? AND revoked_at IS NULL AND expires_at > ? AND sessions_created < ?`,
+       WHERE id = ? AND revoked_at IS NULL AND expires_at > ?
+         AND sessions_created < MIN(max_sessions, ?)`,
     );
-    this.insertSession = db.prepare<[string, number, number, number]>(
-      "INSERT INTO sessions (id_hash, created_at, expires_at, last_seen_at) VALUES (?, ?, ?, ?)",
+    this.insertSession = db.prepare<[string, number, number, number, string | null]>(
+      `INSERT INTO sessions (id_hash, created_at, expires_at, last_seen_at, device)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    this.listLive = db.prepare<[number], DeviceRow>(
+      `SELECT created_at, last_seen_at, expires_at, device FROM sessions
+       WHERE revoked_at IS NULL AND expires_at > ? ORDER BY created_at, rowid`,
     );
     this.touchSession = db.prepare<[number, number, number]>(
       "UPDATE sessions SET last_seen_at = ? WHERE rowid = ? AND last_seen_at < ?",
+    );
+    this.renewSessionRow = db.prepare<[number, number, number]>(
+      "UPDATE sessions SET expires_at = ? WHERE rowid = ? AND revoked_at IS NULL AND expires_at <= ?",
     );
     this.revokeAllSessions = db.prepare<[number]>(
       "UPDATE sessions SET revoked_at = ? WHERE revoked_at IS NULL",
@@ -78,10 +108,14 @@ export class AuthStore {
   }
 
   /**
-   * A new 10-minute token (AC-001.1). Older unexpired tokens are superseded so only one is ever
-   * live; existing sessions are untouched. Expired and revoked rows are deleted here.
+   * A new 10-minute token (AC-001.1) that links up to `maxDevices` devices (1 to 3). Older
+   * unexpired tokens are superseded so only one is ever live; existing sessions are untouched.
+   * Expired and revoked rows are deleted here.
    */
-  issuePairingToken(): IssuedToken {
+  issuePairingToken(maxDevices: number = MAX_DEVICES_PER_TOKEN): IssuedToken {
+    if (!Number.isInteger(maxDevices) || maxDevices < 1 || maxDevices > MAX_DEVICES_PER_TOKEN) {
+      throw new RangeError(`a pairing link links 1 to ${MAX_DEVICES_PER_TOKEN} devices`);
+    }
     const now = this.now();
     const token = generateSecret();
     const expiresAt = now + PAIRING_TTL_MS;
@@ -90,7 +124,7 @@ export class AuthStore {
         this.pruneSessions.run(now);
         this.pruneTokens.run(now);
         this.revokeTokens.run(now);
-        this.insertToken.run(hashSecret(token), now, expiresAt);
+        this.insertToken.run(hashSecret(token), now, expiresAt, maxDevices);
       })
       .immediate();
     return { token, expiresAt };
@@ -98,9 +132,10 @@ export class AuthStore {
 
   /**
    * Exchanges a token for a session (AC-001.2). Returns null for every failure (unknown,
-   * expired, revoked, malformed, or already used by 3 devices) so callers cannot tell them apart.
+   * expired, revoked, malformed, or already used by the devices the link was made for) so callers
+   * cannot tell them apart. `device` is a short summary of the device, kept for `sib devices`.
    */
-  pair(token: string): IssuedSession | null {
+  pair(token: string, device?: string): IssuedSession | null {
     if (!isWellFormedSecret(token)) {
       return null;
     }
@@ -122,29 +157,63 @@ export class AuthStore {
         }
         const sessionId = generateSecret();
         const expiresAt = now + SESSION_TTL_MS;
-        this.insertSession.run(hashSecret(sessionId), now, expiresAt, now);
+        this.insertSession.run(hashSecret(sessionId), now, expiresAt, now, device ?? null);
         return { sessionId, expiresAt };
       })
       .immediate();
   }
 
-  /** True when `sessionId` belongs to a live session (AC-001.3, AC-001.8). */
-  isValidSession(sessionId: string): boolean {
+  /** The live session row for `sessionId`, or undefined (unknown, malformed, expired, revoked). */
+  private findLive(sessionId: string): HashRow | undefined {
     if (!isWellFormedSecret(sessionId)) {
-      return false;
+      return undefined;
     }
-    const now = this.now();
-    const rows = this.activeSessions.all(now);
+    const rows = this.activeSessions.all(this.now());
     const index = findHashConstantTime(
       rows.map((row) => row.hash),
       hashSecret(sessionId),
     );
-    const row = rows[index];
+    return rows[index];
+  }
+
+  /** True when `sessionId` belongs to a live session (AC-001.3, AC-001.8). */
+  isValidSession(sessionId: string): boolean {
+    const row = this.findLive(sessionId);
     if (row === undefined) {
       return false;
     }
+    const now = this.now();
     this.touchSession.run(now, row.id, now - LAST_SEEN_GRANULARITY_MS);
     return true;
+  }
+
+  /**
+   * Hosted mode (AC-032.3): a device stays remembered. Like `isValidSession`, and on top of it
+   * gives the session a full lifetime again when its last renewal is more than `renewAfterMs` old
+   * (once a day at most, so a request does not write every time). Returns undefined for a session
+   * that is not live, else the new expiry or null when nothing changed. There is no absolute cap:
+   * a phone in use is never signed out. Home mode never calls this.
+   */
+  useSession(sessionId: string, renewAfterMs = SESSION_RENEW_AFTER_MS): number | null | undefined {
+    const row = this.findLive(sessionId);
+    if (row === undefined) {
+      return undefined;
+    }
+    const now = this.now();
+    this.touchSession.run(now, row.id, now - LAST_SEEN_GRANULARITY_MS);
+    const expiresAt = now + SESSION_TTL_MS;
+    const changed = this.renewSessionRow.run(expiresAt, row.id, expiresAt - renewAfterMs);
+    return changed.changes === 1 ? expiresAt : null;
+  }
+
+  /** The live sessions, oldest first, for `sib devices`. */
+  linkedDevices(): LinkedDevice[] {
+    return this.listLive.all(this.now()).map((row) => ({
+      pairedAt: row.created_at,
+      lastSeenAt: row.last_seen_at,
+      expiresAt: row.expires_at,
+      device: row.device,
+    }));
   }
 
   /** Revokes every session and every unexpired token (AC-001.6). */

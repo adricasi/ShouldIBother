@@ -84,6 +84,11 @@ export interface CoreDeps {
   readonly onSchedulerError?: (error: unknown) => void;
   /** Called when a background Gemma step fails unexpectedly (not for ordinary Gemma failures). */
   readonly onBackgroundError?: (error: unknown) => void;
+  /**
+   * Hosted mode (REQ-032): which mode the app runs in, and whether photos are accepted at all
+   * (`SIB_DO_VISION`). Home mode, the default, accepts photos and says so.
+   */
+  readonly deployment?: { readonly mode: "home" | "hosted"; readonly photos: boolean };
   /** Timeouts and tool settings of the job runner; the fixed values by default. */
   readonly runner?: Omit<RunnerOptions, "model" | "db" | "now">;
 }
@@ -188,6 +193,7 @@ export function createCore(deps: CoreDeps): Core {
     ...(deps.demo === true ? { demo: true } : {}),
     savings: deps.savings,
     photos: deps.photos,
+    ...(deps.deployment?.photos === false ? { photosEnabled: false } : {}),
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
   };
   const settler = new Settler(ledger);
@@ -230,6 +236,21 @@ export function createCore(deps: CoreDeps): Core {
     };
     // The after photo of a settlement arrives as multipart; the card photo route shares the parser.
     await app.register(multipart, MULTIPART_OPTIONS);
+    if (deps.deployment?.photos === false) {
+      // Hosted mode without `SIB_DO_VISION`: no upload is read, so no photo reaches the model and
+      // no inspector runs (AC-032.4). The check comes before the body is read.
+      app.addHook("onRequest", (request) => {
+        // The multipart parser marks a request only after this hook, so read the header.
+        if ((request.headers["content-type"] ?? "").toLowerCase().startsWith("multipart/")) {
+          throw new HttpError(
+            409,
+            "Photos are off on this server",
+            "Settle with one tap instead (SIB_DO_VISION is 0).",
+          );
+        }
+        return Promise.resolve();
+      });
+    }
     app.addHook("onSend", (_request, reply, payload) => {
       if (!reply.hasHeader("cache-control")) {
         reply.header("cache-control", "no-store");
@@ -262,6 +283,9 @@ export function createCore(deps: CoreDeps): Core {
           checked_at: new Date(gemmaStatus.checkedAt).toISOString(),
           ...(gemmaStatus.warning === undefined ? {} : { warning: gemmaStatus.warning }),
         },
+        // Where Gemma runs and whether photos can be sent, for the screens that say so (AC-032.6).
+        mode: deps.deployment?.mode ?? "home",
+        photos: deps.deployment?.photos ?? true,
         points: { total: pointsTotal(ledger) },
         week: weekSavings(ledger),
         forecast: forecastStatus(deps),

@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
-import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./commands.js";
+import {
+  forgetDevices,
+  listLinkedDevices,
+  printNetworkSummary,
+  printNewPairingToken,
+} from "./commands.js";
+import { MAX_DEVICES_PER_TOKEN } from "./auth/store.js";
 import { HouseholdStore } from "./household-store.js";
 import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
@@ -14,6 +20,7 @@ import { createFakeServices } from "./fakes.js";
 import { loadModelsConfig } from "./model/config.js";
 import { selectModel } from "./model/select.js";
 import { loadFlags, type Flags } from "./flags.js";
+import { isFullHosted, type HostedSettings } from "./mode.js";
 import { assertRainConfig } from "./rain-config.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
@@ -37,6 +44,16 @@ const print = (text: string): void => {
 /** The built SPA (`npm run build`), relative to the repository for both `src/` and `dist/`. */
 export const WEB_ROOT = fileURLToPath(new URL("../../dist/web/", import.meta.url));
 
+/** Bets whose answer is saved and that wait for a Gemma verdict (AC-032.5: they go first). */
+function countWaitingVerdicts(db: Runtime["db"]): number {
+  const row = db
+    .prepare<[], { count: number }>(
+      "SELECT COUNT(*) AS count FROM bets WHERE status = 'awaiting_gemma'",
+    )
+    .get();
+  return row?.count ?? 0;
+}
+
 /**
  * `sib demo` (AC-029.4): the server runs on a fixed clock with the flags of the `presentation`
  * preset applied in memory (nothing is written to `config/flags.json`), the fake model under the
@@ -57,6 +74,8 @@ export interface StartOptions {
    * repository's `config/` by default.
    */
   readonly configDir?: string;
+  /** The `fetch` of the model client; tests point it at a fake inference server. */
+  readonly fetch?: typeof fetch;
 }
 
 export interface RunningServer {
@@ -76,15 +95,23 @@ export async function startServer(
 ): Promise<RunningServer> {
   const output = options.output ?? print;
   const configDir = options.configDir ?? CONFIG_DIR;
-  const runtime = loadRuntime(env, configDir);
+  // `sib demo` is always home mode, whatever the environment says.
+  const runtime = loadRuntime(env, configDir, { forceHome: options.demo !== undefined });
+  const hosted: HostedSettings | undefined = isFullHosted(runtime.mode) ? runtime.mode : undefined;
   let app: FastifyInstance;
   let appRef: FastifyInstance | undefined;
+  let coreRef: Core | undefined;
   let core: Core;
   let modelNotice: string;
   const webBuilt = existsSync(`${WEB_ROOT}index.html`);
   try {
     const demo = options.demo;
-    const flags = demo?.flags ?? loadFlags(`${configDir}flags.json`);
+    const configuredFlags = demo?.flags ?? loadFlags(`${configDir}flags.json`);
+    // Voice and the fine-tuned bookmaker need local runtimes: off in hosted mode (AC-032.4).
+    const flags: Flags =
+      hosted === undefined
+        ? configuredFlags
+        : { ...configuredFlags, voice: false, finetunedBookmaker: false };
     const now = demo?.now ?? Date.now;
     const fakes = createFakeServices(now);
     const household = loadHousehold(configDir);
@@ -99,6 +126,22 @@ export async function startServer(
       voice: flags.voice,
       env,
       finetunedBookmaker: flags.finetunedBookmaker,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(hosted === undefined
+        ? {}
+        : {
+            hosted: {
+              settings: hosted,
+              db: runtime.db,
+              now,
+              log: (entry) => appRef?.log.info(entry),
+              waitingVerdicts: () => countWaitingVerdicts(runtime.db),
+              // The verdicts that waited for the cap's reset go first (AC-032.5).
+              runWaitingVerdicts: () => {
+                coreRef?.scheduler.tickSettlement().catch(() => undefined);
+              },
+            },
+          }),
     });
     modelNotice = selection.notice;
     const useFakeWeather = demo !== undefined || env["SIB_FAKE_WEATHER"] === "1";
@@ -139,8 +182,13 @@ export async function startServer(
       flags,
       ...(demo === undefined ? {} : { demo: true }),
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),
+      deployment: {
+        mode: hosted === undefined ? "home" : "hosted",
+        photos: hosted?.vision ?? true,
+      },
       runner: {
-        toolUse: modelsConfig.gemma.toolUse,
+        // `SIB_TOOL_USE` overrides `gemma.toolUse` in hosted mode (injected by default).
+        toolUse: hosted?.toolUse ?? modelsConfig.gemma.toolUse,
         answerMode: modelsConfig.gemma.answerMode,
         jobModels: selection.jobModels,
       },
@@ -151,6 +199,7 @@ export async function startServer(
         console.error("A Gemma step failed unexpectedly", error);
       },
     });
+    coreRef = core;
     if (selection.warmUp !== undefined) {
       // Warm-up call at start: the model loads while the person scans the QR code.
       void selection.warmUp().then((health) => {
@@ -168,6 +217,7 @@ export async function startServer(
       logger: true,
       core,
       ...(webBuilt ? { webRoot: WEB_ROOT } : {}),
+      ...(hosted === undefined ? {} : { hosted: { trustedProxy: hosted.trustedProxy } }),
       auth: { store: runtime.store, allowlist: runtime.allowlist, print: output },
     });
     appRef = app;
@@ -178,7 +228,18 @@ export async function startServer(
       await core.gemma.idle();
       runtime.db.close();
     });
-    await listenLoopbackAndLan(app, { port: runtime.port, lanAddress: runtime.lanAddress });
+    if (hosted === undefined) {
+      await listenLoopbackAndLan(app, { port: runtime.port, lanAddress: runtime.lanAddress });
+    } else {
+      // Inside the container: every interface of the container, behind Caddy (NFR-013).
+      await app.listen({ host: hosted.bindAddress, port: runtime.port });
+    }
+    if ((runtime.ignoredHostedVariables ?? []).length > 0) {
+      app.log.warn(
+        { event: "hosted-settings-ignored", variables: runtime.ignoredHostedVariables },
+        "hosted-mode settings are ignored in home mode",
+      );
+    }
   } catch (error) {
     runtime.db.close();
     throw error;
@@ -193,15 +254,47 @@ export async function startServer(
   if (!webBuilt) {
     output("The app screens are not built: run `npm run build` first (the API is up).");
   }
-  printNetworkSummary(runtime, output);
-  printNewPairingToken({ ...runtime, publicOrigins: runtime.config.publicOrigins }, output);
+  printNetworkSummary(
+    {
+      ...runtime,
+      ...(hosted === undefined
+        ? {}
+        : { hosted: { bindAddress: hosted.bindAddress, publicOrigin: hosted.publicOrigin } }),
+    },
+    output,
+  );
+  if ((runtime.ignoredHostedVariables ?? []).length > 0) {
+    output(
+      `Home mode: ${(runtime.ignoredHostedVariables ?? []).join(", ")} ${runtime.ignoredHostedVariables?.length === 1 ? "is a hosted-mode setting and is" : "are hosted-mode settings and are"} ignored (SIB_MODE is not hosted).`,
+    );
+  }
+  if (hosted === undefined) {
+    printNewPairingToken({ ...runtime, publicOrigins: runtime.config.publicOrigins }, output);
+  } else {
+    // No token at start (AC-032.3): a token in the container's log would outlive its use.
+    output("No pairing link is made at start. Run `sib pair` on the server to link a phone.");
+  }
   return { app, runtime, close: () => app.close() };
 }
 
 /** `sib pair`: a new token without signing anyone out. */
-export function pairCommand(runtime: Runtime, output: (text: string) => void = print): void {
+export function pairCommand(
+  runtime: Runtime,
+  output: (text: string) => void = print,
+  /** Devices the link can link, 1 to 3; hosted mode makes a one-device link unless told otherwise. */
+  devices?: number,
+): void {
   try {
-    printNewPairingToken({ ...runtime, publicOrigins: runtime.config.publicOrigins }, output);
+    const hostedOrigin = runtime.mode?.mode === "hosted" ? runtime.mode.publicOrigin : undefined;
+    printNewPairingToken(
+      {
+        ...runtime,
+        publicOrigins: runtime.config.publicOrigins,
+        ...(hostedOrigin === undefined ? {} : { hostedOrigin }),
+        devices: devices ?? (runtime.mode?.mode === "hosted" ? 1 : MAX_DEVICES_PER_TOKEN),
+      },
+      output,
+    );
   } finally {
     runtime.db.close();
   }
@@ -214,6 +307,15 @@ export function forgetDevicesCommand(
 ): void {
   try {
     forgetDevices(runtime.store, output);
+  } finally {
+    runtime.db.close();
+  }
+}
+
+/** `sib devices`: the devices that are linked now, without any token. */
+export function devicesCommand(runtime: Runtime, output: (text: string) => void = print): void {
+  try {
+    listLinkedDevices(runtime.store, output);
   } finally {
     runtime.db.close();
   }

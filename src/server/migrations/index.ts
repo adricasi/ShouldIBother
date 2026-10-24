@@ -17,6 +17,8 @@ import { placeLabel } from "./0015-place-label.js";
 import { decisionToolResult } from "./0016-decision-tool-result.js";
 import { betDecision } from "./0017-bet-decision.js";
 import { cardAdvice } from "./0018-card-advice.js";
+import { modelCalls } from "./0019-model-calls.js";
+import { devicePairing } from "./0020-device-pairing.js";
 
 /**
  * Every migration in order. A new migration is one file plus one line here; numbers are
@@ -40,4 +42,6 @@ export const MIGRATIONS: readonly Migration[] = [
   decisionToolResult,
   betDecision,
   cardAdvice,
+  modelCalls,
+  devicePairing,
 ];

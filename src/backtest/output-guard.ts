@@ -74,7 +74,11 @@ function gitEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
-function git(cwd: string, args: readonly string[]): { ok: boolean; stdout: string } {
+/** `ok` false with `missing` true: there is no `git` binary on PATH (a container image without it). */
+function git(
+  cwd: string,
+  args: readonly string[],
+): { ok: boolean; stdout: string; missing?: boolean } {
   try {
     const stdout = execFileSync("git", [...args], {
       cwd,
@@ -88,6 +92,9 @@ function git(cwd: string, args: readonly string[]): { ok: boolean; stdout: strin
     const status = (error as { status?: number | null }).status;
     if (typeof status === "number") {
       return { ok: false, stdout: "" };
+    }
+    if ((error as { code?: string }).code === "ENOENT") {
+      return { ok: false, stdout: "", missing: true };
     }
     throw new OutputInsideRepositoryError(
       "Cannot run git to check whether the output folder is inside a repository. Install git or write outside any repository.",
@@ -106,9 +113,13 @@ export function assertNotCommittable(files: readonly string[]): void {
     const real = realpathSync(nearest);
     const top = git(real, ["rev-parse", "--show-toplevel"]);
     if (!top.ok) {
+      // Without a git binary (a container image) the folder is safe only when no `.git` entry
+      // exists in it or any parent; with one, keep refusing.
       if (hasGitMarker(real)) {
         throw new OutputInsideRepositoryError(
-          `${file} is inside a git working tree that git cannot read, so it is not written. Write outside the repository.`,
+          top.missing === true
+            ? `${file} is inside a git working tree and git is not installed to check whether it is ignored, so it is not written. Write outside the repository.`
+            : `${file} is inside a git working tree that git cannot read, so it is not written. Write outside the repository.`,
         );
       }
       continue;

@@ -94,3 +94,20 @@ export function buildAllowlist(input: AllowlistInput): Allowlist {
 export function describeAllowlist(allowlist: Allowlist): string {
   return `Allowed hosts: ${[...allowlist.hosts].sort().join(", ")}`;
 }
+
+/**
+ * Hosted mode (AC-032.3): the Host and Origin allowlists are exactly the host and origin of
+ * `SIB_PUBLIC_ORIGIN`. Loopback names, LAN interfaces, `config.allowedHosts` and
+ * `config.publicOrigins` are ignored, so a public server answers to its own name only (a DNS
+ * rebinding or Host-spoofing request gets 421). The health check does not need a Host entry:
+ * the guard answers it before the Host check (AC-032.7).
+ */
+export function buildHostedAllowlist(publicOrigin: string): Allowlist {
+  const url = new URL(publicOrigin);
+  const host = url.host.toLowerCase();
+  return {
+    hosts: new Set([host]),
+    origins: new Set([url.origin.toLowerCase()]),
+    secureHosts: new Set([host]),
+  };
+}
