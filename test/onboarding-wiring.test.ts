@@ -210,31 +210,37 @@ describe("main.ts wiring: with onboarding off, refetches ask for the current (de
       headers: { host, origin, cookie },
     });
     expect(created.statusCode).toBe(201);
+    const cardId = created.json<{ id: number }>().id;
+    // A photo is refused (409) while Gemma is still setting the first odds, by design; under a
+    // loaded full-suite run the first bookmaker job can still be running here.
+    await vi.waitFor(() => {
+      const row = runtime.db
+        .prepare<[number], { gemma_state: string | null }>(
+          "SELECT gemma_state FROM cards WHERE id = ?",
+        )
+        .get(cardId);
+      expect(row?.gemma_state).not.toBe("thinking");
+    });
 
     vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
     const multipart = multipartBody(await syntheticPhoto());
     const photo = await app.inject({
       method: "POST",
-      url: `/api/cards/${created.json<{ id: number }>().id}/photo`,
+      url: `/api/cards/${String(cardId)}/photo`,
       payload: multipart.payload,
       headers: { host, origin, cookie, ...multipart.headers },
     });
     expect(photo.statusCode).toBe(201);
-    // The photo runs the inspector and the bookmaker on the job queue; under a loaded full-suite run
-    // that takes longer than waitFor's 1 s default, which made this test fail intermittently.
-    await vi.waitFor(
-      () => {
-        expect(server.forecastRequests.length).toBeGreaterThanOrEqual(2);
-      },
-      { timeout: 15_000 },
-    );
+    await vi.waitFor(() => {
+      expect(server.forecastRequests.length).toBeGreaterThanOrEqual(2);
+    });
 
     const places = server.forecastRequests.map(
       (url) =>
         `${url.searchParams.get("latitude") ?? ""},${url.searchParams.get("longitude") ?? ""}`,
     );
     expect(new Set(places)).toEqual(new Set(["41.4,2.16"]));
-  }, 30_000);
+  });
 });
 
 describe("main.ts wiring: the place search of onboarding (AC-024.4)", () => {
