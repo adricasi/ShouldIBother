@@ -1,7 +1,7 @@
 # Design: Should I Bother?
 
 - Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
-- Last updated: 2026-10-22
+- Last updated: 2026-10-24
 - Implements: requirements.md (REQ-*, NFR-*)
 
 ## Overview
@@ -82,11 +82,12 @@ All prompts tell the model that user text, photos and tool results are untrusted
 
 | Job | Input | Output schema (essentials) | Notes |
 |---|---|---|---|
-| Listener | Typed text (≤ 500 chars) or transcript | `chores[]: {label, chore_type: enum(plants, laundry_line, laundry_tonight, laundry_plan, ac, heater, other_weather, not_weather), item?}` | Unknown types → "Coming later" / "Not a weather chore"; AC and heater → "Not needed this season" when the baseline says so (AC-016.5); the card kinds for these are in [ADR-0009](../adr/0009-cards-without-odds-are-coming-later-cards-with-a-notice.md) |
+| Listener | Typed text (≤ 500 chars) or transcript | `chores[]: {label, chore_type: enum(plants, laundry_line, laundry_tonight, laundry_plan, ac, heater, car_rinse, bike_rinse, terrace_rinse, rain_fill, windows_clean, balcony_sweep, outdoor_paint, lawn_feed, other_weather, not_weather), item?}` | Unknown types → "Coming later" / "Not a weather chore"; AC and heater → "Not needed this season" when the baseline says so (AC-016.5); the card kinds for these are in [ADR-0009](../adr/0009-cards-without-odds-are-coming-later-cards-with-a-notice.md) |
 | Inspector | Photo + chore type | `status: ok|unsure; observations[]: {name, value}` (soil dryness, wilting, cover, dampness); `question?` | Shown as "What Gemma saw" |
 | Bookmaker | Chore, habits, inspector observations, rule band; tool `get_forecast(hours_ahead ≤ 48)` | `status: ok|unsure; band: enum(5); reason ≤ 140 chars; settle_in_hours; disagreement_reason?; question?` | Tool use enforced in code: an answer without a `get_forecast` call is retried once, then the card keeps labelled rule odds (AC-003.6); the miss is logged and counted (tool-call miss rate in the evaluation). Settle time clamped to chore bounds; ≥ 2 bands from rule requires `disagreement_reason` or `question`; a card asks at most 2 questions and stores at most 3 answers, then the rule odds stay. Fallback if T-001 shows tool calling or schema output fails on the runtime: the app fetches the forecast itself and passes it as the tool result (`tool_mode = injected`, recorded per decision and reported separately from the tool-call miss rate); Gemma still decides |
 | Safety guard | Chore, text, forecast | `status: ok|unsure; alert: bool; reason?` | Fixed backstop applies regardless. `unsure` is no verdict. An `ok` answer sets `cards.safety_checked_at`; Retry or a restart asks again while it is NULL. An alert always wins and withdraws the card's open bets (status `undone`, a system withdrawal); betting stays allowed while the guard runs |
 | Judge | Before/after photos or tap answer, recorded weather, bet | `status: ok|unsure; verdict: enum(win, small_loss, normal_loss, harmful_loss) or for do-it: enum(weather_would_have, weather_would_not); reason; evidence[]; question?` | Never replaced by the rule; asks at most 2 questions per bet; `lucky_win` is computed by code from the outcome label (AC-008.6), not by the judge |
+| Advisor | Advice chore, tool `get_forecast(hours_ahead 1..72)` | `status: ok|unsure; advice: enum(do_now, wait, no_window); window?: {start_hours_ahead, end_hours_ahead}; reason ≤ 140 chars` | Flagged (`adviceCards`, REQ-031). Code computes the rule advice and refuses (one retry) a window the forecast contradicts; `unsure`, offline or still refused → rule advice. See Advice cards |
 | Laundry planner | 4-day drying forecast with the rule band per day (days keyed `day_0`–`day_3`) | `status: ok|unsure; state: enum(wash_today, skip_today, no_good_day); best_day; days[]: {day, score}; reason; disagreement_reason?; question?` | Flagged (tier 5, `laundryPlanner`). Code checks the plan's consistency (AC-021.1). "Need anything washed before <day>?" (AC-021.2) is asked after the plan and is not an input. A Skip today band 2+ bands from the rule needs `disagreement_reason` or a question. Opening a Skip today bet first runs the backstop and the safety guard on the chosen day; a plan older than 1 h, or at or past 10:00 on the chosen day, is refused |
 
 ### Rule baseline and safety backstop (final values for this version — Q-5 closed)
@@ -122,28 +123,30 @@ Gemma proposes `settle_in_hours`; code clamps it (Europe/Madrid): plants next da
 
 
 ### City rain bets (REQ-030; T-038)
-Rule baseline (window now → settle; first match wins; band 0 = very unlikely … 4 = very likely), outcome labels (recorded rain over the window), settle bounds, judge answers and savings. These rows are added to `config/rules.json` and `config/savings.json` and are final for this version like the others.
+Rule and outcome window: `created_at` → `created_at` + 24 h for the rinse chores, `created_at` → next day 08:00 for `rain_fill`. "rain" is the total precipitation over that window and "probability" the max hourly precipitation probability in it; first match wins; band 0 = very unlikely … 4 = very likely. The outcome label uses the recorded rain over the same window. Settle: Gemma proposes, code clamps to the nearest later instant inside the bounds below. The rule rows live in `config/rules-rain.json` (the plants row shape: `rainMmAtLeast`, `anyOf`) with their own schema, so `config/rules.json` and its hash (AC-019.7, backtest report) are unchanged; the savings rows are added to `config/savings.json`. All are final for this version like the others. No before photo or inspector step for these chores.
 
 | Chore | Rule | Outcome label true when | Settle (Gemma proposes, code clamps) | Judge answers (win · loss) | Savings per win |
 |---|---|---|---|---|---|
-| Rinse the car | rain ≥ 8 mm → 4 · ≥ 4 mm → 3 · ≥ 1 mm or max hourly probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 4 mm | 12–48 h after placing, 08:00–20:00 | "Clean enough" · "Still dirty", "Dirtier than before" | 40 min, 75 L (sourced, lower end of a car wash, UB) |
+| Rinse the car | rain ≥ 8 mm → 4 · ≥ 4 mm → 3 · ≥ 1 mm or max hourly probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 4 mm | [created_at + 12 h, created_at + 48 h] ∩ 08:00–20:00 | "Clean enough" · "Still dirty", "Dirtier than before" | 40 min, 75 L (sourced, lower end of a car wash, https://ub.edu/ossma/en?p=37419) |
 | Rinse the bike | as the car | recorded rain ≥ 4 mm | as the car | as the car | 10 min, 20 L (typical estimate) |
-| Rinse terrace or outdoor furniture | rain ≥ 5 mm → 4 · ≥ 2 mm → 3 · ≥ 0.5 mm or probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 2 mm | 12–48 h after placing, 08:00–20:00 | "Rinsed clean" · "Still dirty" | 15 min, 30 L (typical estimate) |
-| Fill rain barrel, pond or bird bath | rain ≥ 4 mm → 4 · ≥ 1.5 mm → 3 · ≥ 0.5 mm or probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 1.5 mm | next day 08:00–12:00 | "Filled up" · "Still low" | 5 min, 20 L (typical estimate) |
+| Rinse terrace or outdoor furniture | rain ≥ 5 mm → 4 · ≥ 2 mm → 3 · ≥ 0.5 mm or max hourly probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 2 mm | [created_at + 12 h, created_at + 48 h] ∩ 08:00–20:00 | "Rinsed clean" · "Still dirty" | 15 min, 30 L (typical estimate) |
+| Fill rain barrel, pond or bird bath | rain ≥ 4 mm → 4 · ≥ 1.5 mm → 3 · ≥ 0.5 mm or max hourly probability ≥ 60% → 2 · ≥ 0.1 mm → 1 · else → 0 | recorded rain ≥ 1.5 mm | next day 08:00–12:00 (after `created_at`) | "Filled up" · "Still low" | 5 min, 20 L (typical estimate) |
 
 The listener gets the new `chore_type` values in `prompts/listener.v2.md` (fixtures re-recorded by job + scenario, synthetic until T-010); the bookmaker and judge read the chore's description and answers from `src/domain/chores.ts`, so their prompts change only if their text names chores. Onboarding's outdoor items gain "Car on the street", "Bike", "Terrace or outdoor furniture" and "Rain barrel or bird bath" (still no effect on pricing). The safety backstop applies to these cards as to every card.
 
 ### Advice cards (REQ-031; T-039)
-A new Gemma job, `advisor` (`prompts/advisor.v1.md`), runs through the JobRunner (retry budget, 30 s per call, 45 s deadline) with the `get_forecast` tool over up to 72 h and returns `{status: ok|unsure, advice: do_now|wait|no_window, window?: {start_hours_ahead, end_hours_ahead}, reason}`. Code computes the rule advice and checks Gemma's window against the forecast (refuse and retry once if contradicted).
+A new Gemma job, `advisor` (`prompts/advisor.v1.md`), runs through the JobRunner (retry budget, 30 s per call, 45 s deadline) with the `get_forecast` tool over `hours_ahead 1..72` (served from a 4-day fetch; the bookmaker stays 1..48; the advisor's `tool_result` holds ≤ 72 rows) and returns `{status: ok|unsure, advice: do_now|wait|no_window, window?: {start_hours_ahead, end_hours_ahead}, reason}`. Code computes the rule advice and checks Gemma's window against the forecast (refuse and retry once if contradicted). `unsure` → rule advice, no question. The rule advice shows at once as "Gemma is thinking · rule advice" until Gemma answers. Advice thresholds live in `config/advice-rules.json`.
+
+Hours are counted from the `created_at` hour, 0–72; a wet hour has precipitation ≥ 0.1 mm. `do_now` is the window [0, 3) h. Gemma's `no_window` is contradicted when the rule finds a window.
 
 | Chore | Rule advice | A window is contradicted when |
 |---|---|---|
-| Clean windows | rain ≥ 1 mm in the next 48 h → wait until 6 h after the last wet hour · else do now | it contains a wet hour, or starts before the last wet hour of the next 48 h |
-| Sweep balcony leaves | gusts ≥ 40 km/h in the next 24 h → wait until 3 h after the last such hour · else do now | it contains an hour with gusts ≥ 40 km/h |
-| Paint or varnish outdoors | the first 24 h run with no wet hour, every hour's relative humidity < 85% and temperature ≥ 10 °C → do it then (now if it starts now) · none in 72 h → no window | any hour in its first 24 h is wet, humid ≥ 85% or below 10 °C |
-| Fertilise or treat the lawn | rain ≥ 10 mm in the next 48 h → wait until after it · else do now | it lies before a ≥ 10 mm rain spell of the next 48 h |
+| Clean windows | any wet hour in 0–48 h → wait until 6 h after the last wet hour · else do now | it contains a wet hour, or starts before the last wet hour of the next 48 h |
+| Sweep balcony leaves | gusts ≥ 40 km/h in the next 24 h → wait until 3 h after the last such hour · else do now | any hour of the whole window has gusts ≥ 40 km/h |
+| Paint or varnish outdoors | the first 24 h run with no wet hour, every hour's relative humidity < 85% and temperature ≥ 10 °C → do it then (now if it starts now) · none in 72 h → no window | any hour in [start, start + 24) is wet, humid ≥ 85% or below 10 °C, or start + 24 > 72 |
+| Fertilise or treat the lawn | a spell (a run of consecutive wet hours with Σ ≥ 10 mm) starting in 0–48 h → wait until after it · else do now | it starts before such a spell ends |
 
-Advice cards carry no quote, no bet, no points and no savings; the card shows Gemma's advice and window, the rule advice when it differs, Retry, and the "How Gemma decided" disclosure; `cards.advice` holds the validated answer (migration 0018). Decisions are logged like every job.
+Advice cards carry no quote, no bet, no points and no savings; the card shows Gemma's advice and window, the rule advice when it differs, Retry, and the "How Gemma decided" disclosure; Advice cards are `kind = 'weather'` with a non-null `cards.advice`, which holds the validated answer (migration 0018, ADD COLUMN only; T-038 needs no migration). The safety backstop and the safety guard run on advice cards; an alert replaces the advice. Decisions are logged like every job.
 
 ## Data model
 SQLite, one file in the data folder (default `~/.should-i-bother/`, `SIB_DATA_DIR` to override; `data/` also git-ignored). All data is **household-private** (NFR-002); kept until the user deletes it (REQ-015).
@@ -165,7 +168,7 @@ SQLite, one file in the data folder (default `~/.should-i-bother/`, `SIB_DATA_DI
 | `household_profile` | id (1), status (completed · skipped), profile (JSON), updated_at, place_label (0015, nullable) | (0013) One row: the onboarding answers (household-private). No row means onboarding was never answered |
 | `achievements` | id, unlocked_at | (0014) One row per unlocked achievement; `unlocked_at` is the event time; no link to a bet, so deleting data does not take one back ([ADR-0010](../adr/0010-cash-outs-and-achievements-live-in-their-own-tables.md)) |
 
-Migrations as merged (`src/server/migrations/`): 0001 pairing_sessions · 0002 core_schema · 0003 bet_locks · 0004 card_notices · 0005 gemma_cards · 0006 card_photos · 0007 settle_progress · 0008 card_sunset (T-013) · 0009 unused · 0010 laundry_plan (T-022) · 0011 rescue (T-023) · 0012 appeals (T-024) · 0013 household_profile (T-025) · 0014 achievements (T-026). Each adds to the schema without rewriting existing rows · 0015 place_label (T-033) · 0016 decision_tool_result (T-035) · 0017 bet_decision (T-035).
+Migrations as merged (`src/server/migrations/`): 0001 pairing_sessions · 0002 core_schema · 0003 bet_locks · 0004 card_notices · 0005 gemma_cards · 0006 card_photos · 0007 settle_progress · 0008 card_sunset (T-013) · 0009 unused · 0010 laundry_plan (T-022) · 0011 rescue (T-023) · 0012 appeals (T-024) · 0013 household_profile (T-025) · 0014 achievements (T-026). Each adds to the schema without rewriting existing rows · 0015 place_label (T-033) · 0016 decision_tool_result (T-035) · 0017 bet_decision (T-035) · 0018 card_advice (T-039).
 
 Bet state machine: `open → due → (awaiting_weather) → (awaiting_gemma) → settled`; `open → undone` (up to and including 5 min after placing; the bet keeps its row with status `undone` so net time can leave it out); `open (before settle_at) → cashed_out` (flagged; do-it decisions cannot be cashed out); a safety-guard alert also moves `open → undone` (a withdrawal by the system). Auto-settle moves `due` to judging at settle_at + 24 h with ×0.5.
 
@@ -313,6 +316,8 @@ Model tool exposed to Gemma: `get_forecast({hours_ahead: 1..48})` → hourly pre
 | REQ-027 | ModelClient (llama.cpp), ADR-0004 |
 | REQ-028 | Data model (`gemma_decisions`), Gemma jobs, Round 3 item 17 |
 | REQ-029 | Feature flags, Round 3 item 16 |
+| REQ-030 | City rain bets, Gemma jobs (listener), Round 3 item 19 |
+| REQ-031 | Advice cards, Gemma jobs (advisor), Data model (0018), Round 3 item 19 |
 | NFR-001 | Security design, ADR-0007 |
 | NFR-002 | Security design (calls that leave the device, data protection), Photo store |
 | NFR-003 | Scheduler, Reliability |
