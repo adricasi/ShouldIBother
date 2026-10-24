@@ -46,8 +46,18 @@ export class TestServer {
   private readonly appDir = mkdtempSync(join(tmpdir(), TEMP_PREFIX));
   /** The pairing link printed at the first start. */
   pairUrl = "";
+  private readonly flags: Readonly<Record<string, boolean>>;
+
   /** The pairing link printed at the latest start (a restart prints a new one). */
   latestPairUrl = "";
+
+  /**
+   * `flags` pins the feature flags of this server: every flag is off except the ones named, so a
+   * spec does not depend on the defaults in the repository's `config/flags.json` (T-034).
+   */
+  constructor(options: { readonly flags?: Readonly<Record<string, boolean>> } = {}) {
+    this.flags = options.flags ?? {};
+  }
 
   get origin(): string {
     return `http://127.0.0.1:${this.port}`;
@@ -63,6 +73,7 @@ export class TestServer {
     for (const file of ["package.json", "tsconfig.json"]) {
       cpSync(join(ROOT, file), join(this.appDir, file));
     }
+    this.pinFlags();
     symlinkSync(join(ROOT, "node_modules"), join(this.appDir, "node_modules"), "dir");
   }
 
@@ -107,17 +118,16 @@ export class TestServer {
     }
   }
 
-  /**
-   * Turns feature flags on or off in the server's own copy of `config/flags.json` (never the
-   * repository's). The server must be stopped; the next start reads them.
-   */
-  setFlags(flags: Readonly<Record<string, boolean>>): void {
-    if (this.port === 0) {
-      throw new Error("Start the server once before setting flags: the app copy is made then.");
-    }
+  /** Writes the server's own `config/flags.json`: every known flag off, then the pinned ones. */
+  private pinFlags(): void {
     const path = join(this.appDir, "config/flags.json");
-    const current = JSON.parse(readFileSync(path, { encoding: "utf8" })) as Record<string, boolean>;
-    writeFileSync(path, JSON.stringify({ ...current, ...flags }, null, 2));
+    const known = JSON.parse(readFileSync(path, { encoding: "utf8" })) as Record<string, boolean>;
+    const off = Object.fromEntries(Object.keys(known).map((name) => [name, false]));
+    const unknown = Object.keys(this.flags).filter((name) => !(name in off));
+    if (unknown.length > 0) {
+      throw new Error(`Unknown flags pinned for the e2e server: ${unknown.join(", ")}`);
+    }
+    writeFileSync(path, `${JSON.stringify({ ...off, ...this.flags }, null, 2)}\n`);
   }
 
   async stop(): Promise<void> {

@@ -18,16 +18,12 @@ const ALL_ON = {
   voice: true,
 } as const;
 
-const server = new TestServer();
+const server = new TestServer({ flags: ALL_ON });
 const problems: string[] = [];
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
-  // The first start makes the server's copy of the config; the flags are set while it is stopped.
-  await server.start();
-  await server.stop();
-  server.setFlags(ALL_ON);
   await server.start();
 });
 

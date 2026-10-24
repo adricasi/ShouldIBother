@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   answerCard,
@@ -31,6 +31,7 @@ import {
   type Slips,
   type Today,
 } from "./api.js";
+import { DemoBanner } from "./DemoBanner.js";
 import type { Notice } from "./notice.js";
 import { describeError } from "./notice.js";
 import { OnboardingPrompt, OnboardingScreen } from "./OnboardingScreen.js";
@@ -89,7 +90,7 @@ function useServerNow(serverNowIso: string | undefined): number {
   return estimateServerNow(base, Math.max(localNow, base.localMs));
 }
 
-export function App() {
+function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
   const route = useRoute();
   const [today, setToday] = useState<Today | undefined>(undefined);
   const [slips, setSlips] = useState<Slips | undefined>(undefined);
@@ -100,6 +101,11 @@ export function App() {
   const [busy, setBusy] = useState(false);
   /** The bet whose appeal Gemma is deciding; the Slips line says so while it runs. */
   const [appealingBetId, setAppealingBetId] = useState<number | undefined>(undefined);
+  // Told before the first paint of the answer, so the banner and the screen appear together.
+  const demo = today?.demo === true;
+  useLayoutEffect(() => {
+    onDemo(demo);
+  }, [demo, onDemo]);
   const todayNow = useServerNow(today?.now);
   const slipsNow = useServerNow(slips?.now);
 
@@ -497,5 +503,16 @@ export function App() {
       onUndo={onUndo}
       onReload={reload}
     />
+  );
+}
+
+export function App() {
+  // `sib demo` (AC-029.4): the server says so in the Today answer the screens already load.
+  const [demo, setDemo] = useState(false);
+  return (
+    <>
+      {demo ? <DemoBanner /> : null}
+      <Screens onDemo={setDemo} />
+    </>
   );
 }

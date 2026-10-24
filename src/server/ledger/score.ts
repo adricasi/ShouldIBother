@@ -8,13 +8,15 @@ import { rankFor, type RankStanding } from "../../domain/ranks.js";
 import { bandTable } from "../../domain/rules/index.js";
 import type { SavingsTotals } from "../../domain/savings.js";
 
+import { DEMO_MODEL } from "../demo.js";
+
 import { syncAchievements, type AchievementView } from "./achievements.js";
 import type { LedgerDeps } from "./deps.js";
 import { luckyWinShare, type LuckyShare } from "./lucky.js";
 import { pointsTotal } from "./points.js";
 import { savingsTotals } from "./savings.js";
 
-type ScoreDeps = Pick<LedgerDeps, "db" | "rules" | "flags" | "now">;
+type ScoreDeps = Pick<LedgerDeps, "db" | "rules" | "flags" | "now" | "demo">;
 
 /** How often the user overruled the judge (product.md, Judge agreement). */
 export type JudgeOverrule =
@@ -31,6 +33,8 @@ export type JudgeOverrule =
 
 export interface Score {
   readonly now: string;
+  /** True in `sib demo`: every figure is sample data and the screen marks it (AC-029.4). */
+  readonly demo: boolean;
   readonly points: { readonly total: number };
   /** The rank for the points total (AC-025.1); present only while the `ranks` flag is on. */
   readonly rank?: RankStanding;
@@ -68,11 +72,25 @@ const FINAL_SETTLEMENT = `JOIN settlements s ON s.id = (
 const SETTLED_DO_NOTHING = "b.kind = 'do_nothing' AND b.status = 'settled'";
 
 /**
- * Gemma's population: bets priced by Gemma, counted under the band Gemma gave. A bet whose
- * model_version names the fake model is a fixture, not Gemma (decisions.ts), so it is left out.
+ * A model name that is a fixture, not Gemma. Outside `sib demo` every name starting `fake` is one;
+ * in demo mode the demo model's own name (`fake-demo`) is counted, as labelled sample data
+ * (NFR-010).
  */
-const GEMMA_PRICED = `b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
-  AND (b.model_version IS NULL OR b.model_version NOT LIKE 'fake%')`;
+function fixtureModel(column: string, demo: boolean | undefined): string {
+  return demo === true
+    ? `${column} LIKE 'fake%' AND ${column} NOT LIKE '${DEMO_MODEL}%'`
+    : `${column} LIKE 'fake%'`;
+}
+
+/**
+ * Gemma's population: bets priced by Gemma, counted under the band Gemma gave. A bet whose
+ * model_version names the fake model is a fixture, not Gemma (decisions.ts), so it is left out
+ * (the demo model's rows are kept in demo mode only).
+ */
+function gemmaPriced(demo: boolean | undefined): string {
+  return `b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
+  AND (b.model_version IS NULL OR NOT (${fixtureModel("b.model_version", demo)}))`;
+}
 
 function countsBy(deps: Pick<LedgerDeps, "db">, bandColumn: string, extra: string): BandCount[] {
   return deps.db
@@ -91,18 +109,21 @@ function countsBy(deps: Pick<LedgerDeps, "db">, bandColumn: string, extra: strin
  * decision. A settlement without one has no Gemma verdict to agree or disagree with, and a verdict
  * of the fake model is a fixture, so neither is in the judge's N.
  */
-const GEMMA_VERDICT = `o.appeal_of IS NULL AND o.decision_id IS NOT NULL AND EXISTS (
-  SELECT 1 FROM gemma_decisions d WHERE d.id = o.decision_id AND d.model NOT LIKE 'fake%'
+function gemmaVerdict(demo: boolean | undefined): string {
+  return `o.appeal_of IS NULL AND o.decision_id IS NOT NULL AND EXISTS (
+  SELECT 1 FROM gemma_decisions d WHERE d.id = o.decision_id AND NOT (${fixtureModel("d.model", demo)})
 )`;
+}
 
 function overruleOf(deps: ScoreDeps): JudgeOverrule {
   if (!deps.flags.appeals) {
     return { appeals: "off" };
   }
+  const verdict = gemmaVerdict(deps.demo);
   const n = deps.db
     .prepare<[], { n: number }>(
       `SELECT COUNT(*) AS n FROM bets b JOIN settlements o ON o.bet_id = b.id
-       WHERE ${SETTLED_DO_NOTHING} AND ${GEMMA_VERDICT}`,
+       WHERE ${SETTLED_DO_NOTHING} AND ${verdict}`,
     )
     .get()!.n;
   // Any change of verdict is an overrule, as AC-023.3 reads: small loss to harmful loss included.
@@ -111,7 +132,7 @@ function overruleOf(deps: ScoreDeps): JudgeOverrule {
       `SELECT COUNT(*) AS n FROM settlements a
        JOIN settlements o ON o.id = a.appeal_of
        JOIN bets b ON b.id = a.bet_id
-       WHERE a.final = 1 AND ${SETTLED_DO_NOTHING} AND ${GEMMA_VERDICT} AND a.verdict != o.verdict`,
+       WHERE a.final = 1 AND ${SETTLED_DO_NOTHING} AND ${verdict} AND a.verdict != o.verdict`,
     )
     .get()!.n;
   return {
@@ -122,12 +143,12 @@ function overruleOf(deps: ScoreDeps): JudgeOverrule {
   };
 }
 
-function fakeModelBets(deps: Pick<LedgerDeps, "db">): number {
+function fakeModelBets(deps: Pick<LedgerDeps, "db" | "demo">): number {
   return deps.db
     .prepare<[], { n: number }>(
       `SELECT COUNT(*) AS n FROM bets b
        WHERE ${SETTLED_DO_NOTHING} AND b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
-         AND b.model_version LIKE 'fake%'`,
+         AND ${fixtureModel("b.model_version", deps.demo)}`,
     )
     .get()!.n;
 }
@@ -135,13 +156,14 @@ function fakeModelBets(deps: Pick<LedgerDeps, "db">): number {
 /** The Score screen's numbers (REQ-020), read from the stored rows only. */
 export function getScore(deps: ScoreDeps): Score {
   const table = bandTable(deps.rules);
-  const gemma = countsBy(deps, "gemma_band", `AND ${GEMMA_PRICED}`);
+  const gemma = countsBy(deps, "gemma_band", `AND ${gemmaPriced(deps.demo)}`);
   // The rule is scored on every settled do-nothing bet, whoever priced it (AC-020.2).
   const rule = countsBy(deps, "rule_band", "");
   const lucky = luckyWinShare(deps.db);
   const total = pointsTotal(deps);
   return {
     now: new Date(deps.now()).toISOString(),
+    demo: deps.demo === true,
     points: { total },
     // Flagged (REQ-029): with `ranks` off the response has neither key, as before T-026.
     ...(deps.flags.ranks ? { rank: rankFor(total), achievements: syncAchievements(deps) } : {}),
