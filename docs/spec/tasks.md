@@ -262,6 +262,8 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [x] T-040: Hosted mode in the app — REQ-032, NFR-013 · Depends on: T-010 (model client interface), T-035 · Scope: `SIB_MODE` and the hosted settings parsed and validated once at start, `DigitalOceanClient` behind `ModelClient` (OpenAI-compatible wire format, bearer key from env, redaction, timeouts), outbound allowlist, `SIB_TOOL_USE`, photos gated by `SIB_DO_VISION`, voice and fine-tune off, hardened pairing (`/pair#t=` page + POST, no token at start), `__Host-` cookie remembered 30 days and renewed on use, Host/Origin exactly `SIB_PUBLIC_ORIGIN`, proxy trust, `/healthz` from loopback, daily call cap in SQLite with the judge reserve, `sib hosted-check`, status and privacy copy by mode · Done when: tests for AC-032.1–AC-032.8 with a fake HTTP server for the inference API (no network), home mode byte-for-byte unchanged in behaviour (existing suite green), axe clean, e2e green.
 - [x] T-041: Deployment kit and guide for DigitalOcean — REQ-032, NFR-013 · Depends on: T-040 (env names) · Scope: `Dockerfile`, `.dockerignore`, `deploy/digitalocean/` (`compose.yaml`, `Caddyfile`, `env.example`, backup script and timer), `docs/deploy-digitalocean.md` (step-by-step manual setup in the DigitalOcean control panel, costs with sources, privacy trade-off, security checklist, backup and restore, update and rollback, troubleshooting), ADR-0011, README section · Done when: `docker build` succeeds and the container passes `/healthz` with the fake model locally, `docker compose config` validates, shell scripts pass `bash -n` (and shellcheck where available), the security review has no Blocker.
 
+- [x] T-042: One-command release through the DigitalOcean Container Registry — REQ-032, NFR-013 · Depends on: T-041 · Scope: `deploy/digitalocean/release.sh` (laptop: build, push with a 30-minute doctl credential, sync the kit, deploy), `deploy/digitalocean/deploy.sh` (Droplet: pull with a 10-minute read-only credential from stdin, pre-deploy backup, health wait, automatic rollback), `release.env.example`, guide section 14 · Done when: shellcheck clean; deploy.sh behaviour-tested (healthy release, rollback, refused tag, missing credential) with a fake docker; no registry credential stored on the Droplet.
+
 ## Coverage check
 | Requirement | Tasks |
 |---|---|
@@ -285,7 +287,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 | REQ-029 | T-002, T-032, T-034 |
 | REQ-030 | T-038 |
 | REQ-031 | T-039 |
-| REQ-032 | T-040, T-041 |
+| REQ-032 | T-040, T-041, T-042 |
 | NFR-013 | T-040, T-041 |
 | NFR-001 | T-002, T-003, T-010, T-020 |
 | NFR-002 | T-005, T-007, T-031, T-020 |

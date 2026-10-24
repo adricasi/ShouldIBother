@@ -508,8 +508,9 @@ its model clients otherwise, so nothing local goes through a proxy.
 Home mode, everything above, is the default and stays as it is. For one household that wants to use
 the app away from home without a GPU, `SIB_MODE=hosted` runs the same app on a small public server
 (one DigitalOcean Droplet behind Caddy with automatic HTTPS), with Gemma from DigitalOcean's
-Serverless Inference instead of Ollama. The step-by-step, costs and the security checklist are in
-[docs/deploy-digitalocean.md](docs/deploy-digitalocean.md); the decision is
+Serverless Inference instead of Ollama. Releases are one command, `deploy/digitalocean/release.sh`
+(build, push to the registry, deploy with automatic rollback). The step-by-step, costs and the
+security checklist are in [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md); the decision is
 [ADR-0011](docs/adr/0011-optional-hosted-mode-on-digitalocean.md) and the requirement is REQ-032.
 
 **The privacy trade-off, plainly.** In hosted mode **Gemma runs on DigitalOcean's inference service**.

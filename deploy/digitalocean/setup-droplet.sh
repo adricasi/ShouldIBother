@@ -104,6 +104,9 @@ install -d -m 0700 -o root -g root /srv/sib /srv/sib/backups /etc/sib
 install -d -m 0700 -o "$APP_UID" -g "$APP_UID" /srv/sib/data
 install -d -m 0750 -o root -g root /opt/sib
 chmod 0755 /opt/sib/backup.sh /opt/sib/setup-droplet.sh
+if [[ -f /opt/sib/deploy.sh ]]; then
+  chmod 0755 /opt/sib/deploy.sh
+fi
 
 log "Backup timer"
 install -m 0644 /opt/sib/sib-backup.service /etc/systemd/system/sib-backup.service

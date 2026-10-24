@@ -1,7 +1,0 @@
-[Unit]
-Description=Report a failed automatic deploy of Should I Bother?
-
-[Service]
-Type=oneshot
-# Shows in `journalctl -p err`; autodeploy.sh also leaves /srv/sib/autodeploy/LAST_FAILURE.
-ExecStart=/usr/bin/logger -p user.err -t sib-autodeploy "DEPLOY FAILED: run journalctl -u sib-autodeploy.service"
