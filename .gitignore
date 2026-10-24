@@ -50,6 +50,8 @@ __pycache__/
 *-wal
 *-shm
 *.jsonl
+# Synthetic fixture dataset of the training tests (generated from synthetic weather, no real data).
+!training/tests/fixtures/dataset/*.jsonl
 training/out*/
 checkpoints/
 adapters/

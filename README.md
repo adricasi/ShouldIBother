@@ -513,7 +513,10 @@ Playwright needs a browser once: `npx playwright install chromium` (on WSL add
 the network or household data.
 
 The fine-tune lives in `training/` (Python 3.12, uv, ruff, pytest) and runs on the builder's GPU
-only. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
+only. Stop Ollama (`ollama stop`) before training: one GPU user at a time. The scripts (config,
+dataset loading, QLoRA training, merge and GGUF export, a hold-out smoke test) and the builder's
+step-by-step list are in [training/README.md](training/README.md); CI runs ruff and pytest there
+with no GPU and no model.
 
 ## Licences
 

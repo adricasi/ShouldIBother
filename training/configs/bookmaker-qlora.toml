@@ -1,0 +1,82 @@
+# QLoRA fine-tune of the Should I Bother? bookmaker (REQ-019, T-036; ADR-0006).
+#
+# Read by training/src/training/config.py, which rejects unknown keys and bad values.
+# Everything marked UNVERIFIED was written without a GPU, a Hugging Face login or a Gemma 4
+# download; the builder checks it on the laptop in T-012 and removes the entry from
+# `unverified` below once it is confirmed.
+
+# Names of settings the builder must still confirm. The training plan prints this list.
+unverified = [
+  "model.base_id",
+  "model.revision (empty: a real run refuses until it is pinned)",
+  "model.max_seq_length",
+  "lora.target_modules",
+  "training (all hyper-parameters: sized for an 8 GB GPU, never run)",
+  "export (llama.cpp paths, quantization, Ollama template)",
+]
+
+[model]
+# UNVERIFIED TODO(builder): the Hugging Face id of Gemma 4 E4B instruct (text-only use). This is
+# a guess by analogy with the Gemma 3n ids; look it up on the model card and accept its licence.
+base_id = "google/gemma-4-E4B-it"
+# UNVERIFIED TODO(builder): pin the base model to a commit. Copy the full 40-character hash of
+# the revision you trained on from the model page (Files and versions). Training and merging pass
+# it to every from_pretrained with trust_remote_code=False, and the records log the resolved commit.
+revision = ""
+# UNVERIFIED TODO(builder): the longest example must fit, or the answer at its end is cut off.
+# The training plan estimates the longest prompt from the dataset and warns if it does not fit.
+max_seq_length = 4096
+load_in_4bit = true
+bnb_4bit_quant_type = "nf4"
+bnb_4bit_use_double_quant = true
+bnb_4bit_compute_dtype = "bfloat16"
+
+[lora]
+r = 16
+alpha = 32
+dropout = 0.05
+bias = "none"
+# UNVERIFIED TODO(builder): the attention and MLP projection names of Gemma 4. These are the
+# usual Gemma / Llama names; confirm with `print(model)` and list only text-decoder layers.
+target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+[training]
+# One fixed seed for Python, NumPy, PyTorch, the data order and the trainer (NFR-012).
+seed = 42
+learning_rate = 2e-4
+num_train_epochs = 2.0
+# -1 trains for num_train_epochs; a positive number stops after that many optimizer steps.
+max_steps = -1
+per_device_train_batch_size = 1
+gradient_accumulation_steps = 16
+warmup_ratio = 0.03
+weight_decay = 0.0
+lr_scheduler_type = "cosine"
+optim = "paged_adamw_8bit"
+logging_steps = 10
+save_steps = 100
+save_total_limit = 2
+gradient_checkpointing = true
+# bf16 needs an Ampere or newer GPU; set false (and use fp16 training) on older cards.
+bf16 = true
+
+[paths]
+# Outside the repository: weights, adapters and checkpoints are never committed (ADR-0006).
+# Layout: <output_dir>/{checkpoints,adapter,merged,gguf}/, run-record.json, Modelfile.
+output_dir = "~/.should-i-bother/training/bookmaker-qlora"
+# Optional; --dataset on the command line wins. The folder `sib dataset` wrote.
+dataset_dir = ""
+
+[export]
+# UNVERIFIED TODO(builder): a llama.cpp checkout built with CMake, new enough to know Gemma 4.
+llama_cpp_dir = "~/llama.cpp"
+# UNVERIFIED TODO(builder): llama-quantize type; Q4_K_M is the usual size / quality trade-off.
+quantization = "Q4_K_M"
+# The pinned local Ollama tag the builder creates and puts in config/models.json (e4b-ft).
+ollama_tag = "sib-bookmaker-ft:v1"
+num_ctx = 8192
+temperature = 0.0
+# UNVERIFIED TODO(builder): optional file with the TEMPLATE / RENDERER / PARSER lines of the base
+# model (copy them from `ollama show --modelfile <base tag>`); empty leaves the Modelfile without
+# one, so Ollama falls back on whatever it infers from the GGUF.
+template_file = ""

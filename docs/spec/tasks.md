@@ -254,7 +254,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [ ] T-034: Flags CLI and presentation preset — AC-029.3 · Depends on: T-002 · Scope: `sib flags` and `config/flags.presets.json`; e2e specs pin their own flags instead of reading the committed defaults · Done when: tests for AC-029.3; README "Presentation" section lists the preset and the laptop checks before `voice` and `finetunedBookmaker`.
 
 - [x] T-035: Gemma surfaces — AC-028.1–AC-028.4, AC-008.6 (lucky-win share on Score); design.md Round 3 item 17 · Depends on: T-016, T-033 · Scope: odds source labels, side-by-side bands on disagreement, "How Gemma decided" disclosure, Today Gemma status line, Score rule-vs-Gemma headline and lucky-win share; named tests for AC-013.6, AC-015.1 and AC-016.1 (covered but unnamed) · Done when: tests for AC-028.3, AC-028.4 and the named gap tests, axe clean, e2e green.
-- [ ] T-036: Fine-tune scripts (agent part of T-012) — AC-019.2 code, NFR-012 · Depends on: T-031 · Scope: `training/` QLoRA script (TRL + PEFT, fixed seed, pinned), merge, GGUF conversion and Ollama Modelfile steps as scripts with a dry-run mode; ruff + pytest for config and dataset loading only (no model, no GPU in CI) · Done when: CI `training` job green; the builder runs it in T-012.
+- [x] T-036: Fine-tune scripts (agent part of T-012) — AC-019.2 code, NFR-012 · Depends on: T-031 · Scope: `training/` QLoRA script (TRL + PEFT, fixed seed, pinned), merge, GGUF conversion and Ollama Modelfile steps as scripts with a dry-run mode; ruff + pytest for config and dataset loading only (no model, no GPU in CI) · Done when: CI `training` job green; the builder runs it in T-012.
 
 ## Coverage check
 | Requirement | Tasks |
