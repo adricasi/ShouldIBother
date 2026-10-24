@@ -1,7 +1,7 @@
 # Product: Should I Bother?
 
 - Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
-- Last updated: 2026-10-21
+- Last updated: 2026-10-24
 - Inputs: [idea brief](../discovery/idea-brief.md) (verdict: Go with a cut scope), [product concept](../discovery/product-concept.md) (catalogue, points, settlement, savings rules), [design handoff](../discovery/design-handoff.md) (screens, tokens), [research notes](../discovery/research-notes.md). Where they disagree, this spec wins.
 
 ## Problem
@@ -62,7 +62,7 @@ Chores in this version: balcony plants and line-dry today (skip the dryer) in th
 - Bets on safety: heatwave, frost, storms and vulnerable people are always alerts, never bets.
 
 ## Constraints
-- Deployment target: **Local / on-device**. One Windows laptop (WSL2, NVIDIA GPU, 8 GB+ VRAM) runs Gemma, the app server, storage and the scheduler; the phone uses the web app over home Wi-Fi. The only outbound call at runtime is Open-Meteo. Fine-tuning runs on the same laptop (Colab as a fallback, public weather data only).
+- Deployment target: **Local / on-device** (home mode, the default; an optional single-household hosted mode on DigitalOcean is REQ-032). One Windows laptop (WSL2, NVIDIA GPU, 8 GB+ VRAM) runs Gemma, the app server, storage and the scheduler; the phone uses the web app over home Wi-Fi. The only outbound call at runtime is Open-Meteo. Fine-tuning runs on the same laptop (Colab as a fallback, public weather data only).
 - Deadline: publish by **Sat 24 Oct 2026 23:00 Madrid** (official deadline Mon 26 Oct 07:59 Madrid). Feature freeze Sat 24 Oct 14:00 Madrid.
 - Builder availability: Thu 22 Oct afternoon, Fri 23 Oct afternoon, Sat 24 Oct all day (~20 h, ~15 h of build); not Sunday. Thu and Fri mornings: agents build against a fake Gemma with recorded JSON fixtures; real-model work happens only in the builder's slots.
 - Schedule checkpoints: Wed 21 night model pulled and spec approved · Thu afternoon spikes, real Gemma wired in, phone test, first real bets · Thu night fine-tune dataset built, training overnight · Fri afternoon fine-tune evaluated, photo settlements, agent PRs reviewed and merged · Sat 14:00 freeze, then video and post.

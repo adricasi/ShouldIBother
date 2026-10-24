@@ -30,7 +30,7 @@ Everything runs on one laptop (WSL2 + NVIDIA GPU): one Fastify process serves th
 and JSON API, stores data in SQLite + a photos folder (`~/.should-i-bother/`, outside the
 repo) and runs a 60 s scheduler loop. Gemma runs in Ollama on 127.0.0.1 behind a
 `ModelClient` interface (Ollama · llama.cpp for audio · Fake with recorded fixtures). The
-phone pairs over home Wi-Fi with a one-time token. The only outbound call is Open-Meteo.
+phone pairs over home Wi-Fi with a one-time token. In home mode the only outbound call is Open-Meteo (hosted mode: see the rule below).
 Details: [design.md](docs/spec/design.md) and ADRs 0002–0008 in `docs/adr/`.
 
 ## Commands
