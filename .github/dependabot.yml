@@ -15,6 +15,13 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    ignore:
+      # typescript-eslint supports only TypeScript <6.1; a major bump breaks npm ci (ERESOLVE).
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # Types must match the Node major pinned in engines and .nvmrc (24).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: uv
     directory: /training
