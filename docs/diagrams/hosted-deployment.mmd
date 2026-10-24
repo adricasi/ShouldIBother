@@ -1,0 +1,30 @@
+flowchart TB
+  phone["Phone<br/>paired once with sib pair, 30-day __Host- cookie"]
+  dns["DNS A record, Reserved IP"]
+
+  subgraph droplet["DigitalOcean Droplet (Basic 1 GiB, Ubuntu LTS, AMS3 in the guide)"]
+    fw["Cloud Firewall + ufw<br/>22 from the builder IP only, 80 and 443 public"]
+    subgraph compose["Docker Compose network sib 172.30.10.0/24"]
+      caddy["Caddy 172.30.10.2<br/>Let's Encrypt HTTPS, HSTS, no access log<br/>/healthz answers 404, body limit 11 MB"]
+      app["App container, SIB_MODE=hosted<br/>non-root uid 10001, read-only root fs<br/>cap_drop ALL, no published port"]
+      caddy -->|"reverse_proxy app:8787<br/>X-Forwarded-For believed from Caddy only"| app
+    end
+    data[("/srv/sib/data<br/>sib.db + photos/<br/>owner-only")]
+    bak[("/srv/sib/backups<br/>nightly 03:30 UTC, newest 7")]
+    env["/etc/sib/sib.env<br/>root, 0600: inference key"]
+    app --> data
+    app -.->|"VACUUM INTO + photos tar"| bak
+    env -.->|"env_file"| app
+  end
+
+  subgraph external["Outbound from the app container"]
+    doinf["DigitalOcean Serverless Inference<br/>Gemma 4, Bearer model access key<br/>daily call cap + monthly key budget"]
+    om["Open-Meteo<br/>forecast, recorded weather"]
+  end
+
+  dobak["DigitalOcean daily Droplet backups<br/>(whole disk)"]
+
+  phone --> dns --> fw --> caddy
+  app -->|"chat completions"| doinf
+  app -->|"weather"| om
+  data -.-> dobak

@@ -1,0 +1,43 @@
+flowchart TB
+  subgraph phone["Phone browser"]
+    spa["React SPA<br/>Today, Slips, Score, Household<br/>polls every 30 s"]
+  end
+
+  subgraph laptop["Laptop (WSL2): one Node.js 24 process (Fastify)"]
+    direction TB
+    guard["Access guard<br/>Host allowlist (421), session cookie (401)<br/>Origin check (403), rate limit"]
+    api["JSON API + static SPA + photo files<br/>routes for a flag that is off are not registered"]
+    ledger["Ledger<br/>cards, quotes, bets, settlement,<br/>Score, export"]
+    domain["Pure domain code<br/>rule baseline, safety backstop, bands,<br/>points, savings, outcome labels"]
+    jobs["Gemma jobs + JobRunner<br/>prompts, zod schemas, FIFO queue of 8"]
+    boundary{{"ModelClient<br/>the seam"}}
+    wx["Weather service<br/>1 h forecast cache, 1,000 calls a day,<br/>five-host allowlist"]
+    sched["Scheduler<br/>every 60 s and at start"]
+    photos["Photo store<br/>sniff, strip EXIF, 1024 px JPEG"]
+  end
+
+  data[("Data folder ~/.should-i-bother/<br/>sib.db (SQLite, WAL) + photos/<br/>owner-only")]
+  ollama["Ollama 127.0.0.1:11434<br/>Gemma 4 E4B"]
+  lcpp["llama.cpp 127.0.0.1:8080<br/>Gemma 4 audio (voice flag)"]
+  fake["FakeModelClient<br/>fixtures (SIB_FAKE_MODEL=1)"]
+  om["Open-Meteo"]
+
+  spa -->|"HTTP"| guard --> api --> ledger
+  api --> photos
+  ledger --> domain
+  ledger -->|"enqueue"| jobs --> boundary
+  boundary --> ollama
+  boundary -.->|"voice job only"| lcpp
+  boundary -.->|"tests, CI, demo"| fake
+  jobs -->|"get_forecast"| wx
+  ledger --> wx
+  wx -->|"https, allowlisted hosts only"| om
+  sched --> ledger
+  ledger --> data
+  photos --> data
+  jobs -->|"gemma_decisions"| data
+
+  classDef ext fill:#fde8e0,stroke:#b5472a,color:#1b1b1b;
+  classDef local fill:#e3f0ea,stroke:#2d6a4f,color:#1b1b1b;
+  class om ext;
+  class ollama,lcpp,data local;

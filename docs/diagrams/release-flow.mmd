@@ -1,0 +1,25 @@
+flowchart TB
+  subgraph laptop["Laptop: deploy/digitalocean/release.sh"]
+    r1["Checks: clean tree, HEAD is origin/main<br/>tag = 12-character commit"]
+    r2["docker build, linux/amd64"]
+    r3["Push to DO Container Registry<br/>doctl push credential, valid 30 min,<br/>kept in a temp folder, deleted after"]
+    r4["Copy the deploy kit to /opt/sib<br/>(never touches /etc/sib/sib.env or .env)"]
+    r5["ssh root: run deploy.sh<br/>read-only pull credential, valid 10 min, sent on stdin"]
+    r1 --> r2 --> r3 --> r4 --> r5
+  end
+  reg[("DigitalOcean Container Registry")]
+  r3 --> reg
+
+  subgraph droplet["Droplet: deploy.sh"]
+    d1["Pull the image, tag it sib:TAG<br/>delete the credential: none is stored"]
+    d2["Pre-deploy backup<br/>/srv/sib/backups/pre-deploy, newest 3"]
+    d3["Set SIB_IMAGE_TAG, docker compose up -d"]
+    d4{"app healthy<br/>within 180 s?"}
+    d5["Live. Keep the newest 3 images"]
+    d6["Roll back to the previous tag<br/>and report; a migrated database is<br/>restored by hand from the pre-deploy backup"]
+    d1 --> d2 --> d3 --> d4
+    d4 -->|"yes"| d5
+    d4 -->|"no"| d6
+  end
+  r5 --> d1
+  reg -.->|"pull"| d1

@@ -1,0 +1,17 @@
+flowchart TD
+  q["run(request)"] --> full{"Queue holds 8?"}
+  full -->|"yes"| busy["JobQueueFullError<br/>caller answers 503 Gemma is busy,<br/>no state changed"]
+  full -->|"no"| fifo["FIFO queue<br/>one job at a time"]
+  fifo --> a1["Attempt 1: model call<br/>tools + schema"]
+  a1 -->|"tool call"| tc["Run get_forecast<br/>max 2 tool calls per job"]
+  tc --> a2["Model call 2: final answer<br/>schema"]
+  a1 -->|"answer"| v
+  a2 --> v{"JSON parses?<br/>zod schema ok?<br/>job check ok?"}
+  v -->|"yes"| ok["Result: output<br/>decision row valid = 1"]
+  v -->|"no"| r["Attempt 2: same conversation<br/>plus: Your previous answer was rejected, reason"]
+  r --> v2{"valid?"}
+  v2 -->|"yes"| ok
+  v2 -->|"no"| fail["Failure code:<br/>invalid, tool_missed, tool_error,<br/>unavailable, timeout, deadline,<br/>daily_limit, cap_reached, busy, internal<br/>decision row valid = 0"]
+  a1 -.->|"call over 30 s, or job over 45 s"| fail
+  ok --> log[("gemma_decisions")]
+  fail --> log

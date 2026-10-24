@@ -1,0 +1,68 @@
+flowchart TB
+  callers["CALLERS (code): capture, new card, photo added, Retry, settle answer, appeal,<br/>scheduler (due bet, 2 min retry, 24 h auto-settle)"]
+
+  subgraph jobs["GEMMA JOBS (src/server/gemma/): Gemma decides"]
+    direction LR
+    j1["listener v2<br/>listener-audio v1"]
+    j2["bookmaker v1<br/>get_forecast 1..48 h"]
+    j3["inspector v1<br/>photo"]
+    j4["safety v1<br/>flag safetyGuard"]
+    j5["judge v3<br/>appeal: judge-appeal v2"]
+    j6["laundry-planner v1<br/>advisor v1, 1..72 h"]
+    j1 ~~~ j2 ~~~ j3
+    j4 ~~~ j5 ~~~ j6
+  end
+
+  subgraph runner["JobRunner (runner.ts): the same discipline for every job"]
+    direction LR
+    r1["1. Prompt file prompts/job.vN.md<br/>input built by code<br/>untrusted data fenced"]
+    r2["2. FIFO queue, max 8 jobs<br/>30 s per call, 45 s per job<br/>max 4 calls, 2 tool calls"]
+    r3["3. Validate: JSON, zod, job check<br/>one retry quoting the error"]
+    r4["4. One gemma_decisions row<br/>valid or not"]
+    r1 --> r2
+    r3 --> r4
+    r2 ~~~ r3
+  end
+
+  subgraph tool["TOOL LOOP: get_forecast, read-only"]
+    direction LR
+    t1["native: Gemma calls it<br/>no valid call: retry once, then rule odds"]
+    t2["injected: the app calls it,<br/>hands over the result (hosted default)"]
+    wx["Weather service<br/>1 h cache, location fixed by config"]
+    t1 ~~~ t2 ~~~ wx
+  end
+
+  subgraph clients["ModelClient implementations (src/server/model/)"]
+    direction LR
+    c1["OllamaClient<br/>127.0.0.1, Gemma 4 E4B"]
+    c2["LlamaCppAudioClient<br/>127.0.0.1, voice only"]
+    c3["DigitalOceanClient<br/>behind CappedModelClient"]
+    c4["FakeModelClient<br/>fixtures by job + scenario"]
+    c1 ~~~ c2
+    c3 ~~~ c4
+  end
+
+  subgraph code["CODE THAT EXECUTES: Gemma never sets these"]
+    direction LR
+    g1["Rule baseline on every card<br/>fallback; 2+ bands apart:<br/>explain or ask"]
+    g2["Safety backstop<br/>heat, frost, storm<br/>always wins"]
+    g3["Settle time clamped<br/>to the chore bounds"]
+    g4["Band to odds, points,<br/>savings, lucky_win<br/>locked at bet time"]
+    g5["Gemma offline: rule odds,<br/>the bet waits.<br/>24 h: auto-settle x0.5"]
+    g1 ~~~ g2 ~~~ g3
+    g4 ~~~ g5
+  end
+
+  ledger[("Ledger in SQLite: quotes, bets, settlements, gemma_decisions")]
+
+  callers --> jobs --> runner
+  runner -->|"tools"| tool
+  runner -->|"chat(messages, images, audio, tools, schema, timeout)"| clients
+  tool ~~~ code
+  clients ~~~ code
+  runner -->|"typed, validated output"| code --> ledger
+
+  classDef gemma fill:#fdf3d0,stroke:#8a6d00,color:#1b1b1b;
+  classDef codeStyle fill:#e3f0ea,stroke:#2d6a4f,color:#1b1b1b;
+  class j1,j2,j3,j4,j5,j6 gemma;
+  class g1,g2,g3,g4,g5 codeStyle;

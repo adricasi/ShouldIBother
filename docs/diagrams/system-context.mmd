@@ -1,0 +1,34 @@
+flowchart LR
+  person(["Household member"])
+
+  subgraph home["Home mode (default): everything on one laptop"]
+    direction LR
+    phoneH["Phone browser<br/>home Wi-Fi, or Tailscale Serve for HTTPS"]
+    laptop["Laptop: Should I Bother? app<br/>one Node 24 process, SQLite, photos folder"]
+    ollama["Ollama on 127.0.0.1:11434<br/>Gemma 4 E4B (fine-tune optional)"]
+    lcpp["llama.cpp on 127.0.0.1:8080<br/>Gemma 4 audio, voice flag only"]
+    phoneH -->|"HTTP + session cookie"| laptop
+    laptop -->|"chat, tools, JSON schema"| ollama
+    laptop -.->|"voice note, in memory"| lcpp
+  end
+
+  subgraph hosted["Hosted mode (optional): SIB_MODE=hosted"]
+    direction LR
+    phoneD["Phone browser<br/>HTTPS from anywhere"]
+    droplet["DigitalOcean Droplet<br/>Caddy, app container, SQLite + photos"]
+    doinf["DigitalOcean Serverless Inference<br/>Gemma 4 (model ID unverified)"]
+    phoneD -->|"HTTPS, 30-day device cookie"| droplet
+    droplet -->|"OpenAI-style chat completions<br/>chores, habits, forecast; photos only with SIB_DO_VISION=1"| doinf
+  end
+
+  om["Open-Meteo<br/>forecast and recorded weather<br/>coordinates rounded to 2 decimals"]
+
+  person --> phoneH
+  person --> phoneD
+  laptop -->|"only runtime call out"| om
+  droplet -->|"weather"| om
+
+  classDef private fill:#e3f0ea,stroke:#2d6a4f,color:#1b1b1b;
+  classDef external fill:#fde8e0,stroke:#b5472a,color:#1b1b1b;
+  class laptop,ollama,lcpp,phoneH private;
+  class om,doinf external;

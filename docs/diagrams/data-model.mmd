@@ -1,0 +1,104 @@
+erDiagram
+  pairing ||--o{ sessions : "links up to 3 devices"
+  cards ||--o{ quotes : "priced by"
+  cards ||--o{ bets : "one active per card"
+  cards ||--o{ photos : "before photo"
+  bets ||--o{ photos : "after or appeal photo"
+  bets ||--o{ settlements : "original + appeal"
+  bets ||--o| settle_progress : "answer while settling"
+  bets ||--o| cash_outs : "flag rescue"
+  bets ||--o| rescue_checks : "flag rescue"
+  gemma_decisions |o--o{ quotes : "decision_id"
+  gemma_decisions |o--o{ bets : "decision_id"
+  gemma_decisions |o--o{ settlements : "decision_id"
+  cards ||--o{ gemma_decisions : "card_id"
+  bets ||--o{ gemma_decisions : "bet_id"
+  photos ||--o{ gemma_decisions : "photo_id"
+
+  cards {
+    int id PK
+    text chore_type
+    text kind
+    text gemma_state
+  }
+  quotes {
+    int id PK
+    int card_id FK
+    text source
+    int band
+    int odds
+    int settle_at
+    int decision_id FK
+  }
+  bets {
+    int id PK
+    int card_id FK
+    text kind
+    int band
+    int odds
+    text odds_source
+    int gemma_band
+    int rule_band
+    text model_version
+    text prompt_version
+    int decision_id FK
+    int settle_at
+    text status
+  }
+  settlements {
+    int id PK
+    int bet_id FK
+    text evidence
+    text verdict
+    int lucky_win
+    real multiplier
+    int points
+    int appeal_of FK
+    int decision_id FK
+  }
+  settle_progress {
+    int bet_id PK
+    text evidence
+  }
+  photos {
+    text id PK
+    int card_id FK
+    int bet_id FK
+    text role
+  }
+  gemma_decisions {
+    int id PK
+    text job
+    text model
+    text tool_mode
+    int valid
+    text tool_result
+  }
+  pairing {
+    int id PK
+  }
+  sessions {
+    text id_hash PK
+    text device
+  }
+  weather_cache {
+    text key PK
+  }
+  model_calls {
+    text day PK
+    int calls
+  }
+  household_profile {
+    int id PK
+    text status
+  }
+  achievements {
+    text id PK
+    int unlocked_at
+  }
+  cash_outs {
+    int bet_id PK
+  }
+  rescue_checks {
+    int bet_id PK
+  }

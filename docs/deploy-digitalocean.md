@@ -63,7 +63,7 @@ ADR-0011 adds what is known about DigitalOcean's side:
   are kept apart from home bets in calibration and comparisons.
 
 If that is not acceptable, stay in home mode, or use Tailscale Serve for HTTPS to the laptop (see
-the README).
+[setup.md](setup.md#optional-https-with-tailscale-serve)).
 
 ## 2. Prerequisites
 
