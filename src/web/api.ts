@@ -104,6 +104,37 @@ export const photoSchema = z.object({
     .nullable(),
 });
 
+/**
+ * The advice part of an advice card (REQ-031): Gemma's advice and window, or the rule's, labelled
+ * as such; the rule's beside Gemma's when they differ; the forecast numbers of the window; Retry.
+ */
+export const adviceSchema = z.object({
+  chore: z.enum(["windows_clean", "balcony_sweep", "outdoor_paint", "lawn_feed"]),
+  stage: z.enum(["thinking", "unavailable", "advice"]),
+  source: z.enum(["gemma", "rule"]).nullable(),
+  /** "Gemma's advice", "Gemma is thinking · rule advice" or "Rule advice" (AC-031.2). */
+  label: z.string().nullable(),
+  advice: z.enum(["do_now", "wait", "no_window"]).nullable(),
+  headline: z.string().nullable(),
+  reason: z.string().nullable(),
+  window: z.object({ from: z.string(), to: z.string() }).nullable(),
+  rule: z.object({ headline: z.string().nullable(), reason: z.string() }).nullable(),
+  forecast: z.array(
+    z.object({
+      hour: z.string(),
+      rain_mm: z.number().nullable(),
+      rain_prob_pct: z.number().nullable(),
+      temp_c: z.number().nullable(),
+      wind_kmh: z.number().nullable(),
+      sunshine_min: z.number().nullable(),
+    }),
+  ),
+  note: z.string().nullable(),
+  can_retry: z.boolean(),
+  decision: decisionSchema.nullable(),
+});
+export type Advice = z.infer<typeof adviceSchema>;
+
 /** The laundry planner's part of a card (REQ-021); absent on every other card. */
 export const planSchema = z.object({
   stage: z.enum([
@@ -184,6 +215,8 @@ export const cardSchema = z.object({
     .optional(),
   /** Set on a laundry planner card (flag `laundryPlanner`). */
   laundry_plan: planSchema.nullish(),
+  /** Set on an advice card (flag `adviceCards`). */
+  advice: adviceSchema.nullish(),
 });
 
 const nullableNumber = z.number().nullable();

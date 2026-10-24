@@ -17,4 +17,8 @@ export type IconName =
   | "ticket"
   | "alert"
   | "trophy"
-  | "wind";
+  | "wind"
+  | "window"
+  | "sweep"
+  | "paint"
+  | "lawn";

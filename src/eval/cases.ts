@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
+import { ADVICE_CHORE_TYPES } from "../domain/advice.js";
 import { CHORES, CHORE_TYPES, LAUNDRY_PLAN, LAUNDRY_PLAN_SPEC } from "../domain/chores.js";
 import { assertIsoDate } from "../domain/time.js";
 
@@ -16,6 +17,7 @@ export const EVAL_JOBS = [
   "judge",
   "safety",
   "laundry-planner",
+  "advisor",
 ] as const;
 export type EvalJob = (typeof EVAL_JOBS)[number];
 
@@ -169,12 +171,23 @@ export const plannerCaseSchema = z
   })
   .strict();
 
+export const advisorCaseSchema = z
+  .object({
+    ...base,
+    chore: z.enum(ADVICE_CHORE_TYPES),
+    text: z.string().trim().min(1).max(200),
+    now: nowSchema,
+    weather: weatherSpecSchema,
+  })
+  .strict();
+
 export type ListenerCase = z.infer<typeof listenerCaseSchema>;
 export type BookmakerCase = z.infer<typeof bookmakerCaseSchema>;
 export type InspectorCase = z.infer<typeof inspectorCaseSchema>;
 export type JudgeCase = z.infer<typeof judgeCaseSchema>;
 export type SafetyCase = z.infer<typeof safetyCaseSchema>;
 export type PlannerCase = z.infer<typeof plannerCaseSchema>;
+export type AdvisorCase = z.infer<typeof advisorCaseSchema>;
 
 /** The shape of a case file: the job it is for and its cases. */
 export function caseFileSchema<T extends z.ZodType>(job: EvalJob, caseSchema: T) {

@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 import { afterEach } from "vitest";
 
+import { ruleAdvice, type AdviceChore } from "../../src/domain/advice.js";
+import { HOUR_MS } from "../../src/domain/time.js";
+import type { ForecastHour } from "../../src/domain/weather.js";
+import { loadAdviceRules } from "../../src/server/advice-rules.js";
 import type { EvalDeps } from "../../src/eval/command.js";
 import { evalCommand } from "../../src/eval/command.js";
 import type {
@@ -35,6 +39,44 @@ function dataOf(request: ChatRequest): Record<string, unknown> {
   const text = request.messages.find((message) => message.role === "user")?.content ?? "";
   const match = /<untrusted_data>\n([\s\S]*)\n<\/untrusted_data>/.exec(text);
   return match?.[1] === undefined ? {} : (JSON.parse(match[1]) as Record<string, unknown>);
+}
+
+/** The forecast rows the advisor read, from the tool result message of the request. */
+function advisorAnswer(request: ChatRequest): unknown {
+  const text = request.messages.find((message) => message.role === "tool")?.content ?? "";
+  const match = /<untrusted_data>\n([\s\S]*)\n<\/untrusted_data>/.exec(text);
+  const rows = (
+    JSON.parse(match?.[1] ?? '{"hours":[]}') as { hours: Record<string, number | null>[] }
+  ).hours;
+  const hours: ForecastHour[] = rows.map((row, index) => ({
+    startsAt: index * HOUR_MS,
+    precipitationMm: row["precip_mm"] ?? null,
+    precipitationProbabilityPct: row["precip_prob_pct"] ?? null,
+    temperatureC: row["temp_c"] ?? null,
+    dewPointC: row["dew_point_c"] ?? null,
+    relativeHumidityPct: row["humidity_pct"] ?? null,
+    windKmh: row["wind_kmh"] ?? null,
+    gustKmh: row["gust_kmh"] ?? null,
+    sunshineSeconds: null,
+    weatherCode: row["weather_code"] ?? null,
+    isDay: null,
+  }));
+  const user = request.messages.find((message) => message.role === "user")?.content ?? "";
+  const chore = (/"chore_type":"([a-z_]+)"/.exec(user)?.[1] ?? "windows_clean") as AdviceChore;
+  const advice = ruleAdvice(chore, hours, loadAdviceRules());
+  return {
+    status: "ok",
+    advice: advice.advice,
+    ...(advice.window === undefined
+      ? {}
+      : {
+          window: {
+            start_hours_ahead: advice.window.startHoursAhead,
+            end_hours_ahead: advice.window.endHoursAhead,
+          },
+        }),
+    reason: "Echoing the rule advice.",
+  };
 }
 
 const BANDS = ["very_unlikely", "unlikely", "toss_up", "likely", "very_likely"] as const;
@@ -86,7 +128,13 @@ export class EchoModel implements ModelClient {
       return {
         ...base,
         content: "",
-        toolCalls: [{ name: "get_forecast", arguments: { hours_ahead: 24 } }],
+        toolCalls: [
+          {
+            name: "get_forecast",
+            // The advisor looks as far as its tool allows; the other jobs ask for a day.
+            arguments: { hours_ahead: request.job === "advisor" ? 72 : 24 },
+          },
+        ],
       };
     }
     return { ...base, content: JSON.stringify(this.answer(request, data)), toolCalls: [] };
@@ -145,6 +193,8 @@ export class EchoModel implements ModelClient {
               reason: "Wait.",
             };
       }
+      case "advisor":
+        return advisorAnswer(request);
       default:
         throw new Error(`EchoModel does not know the job ${request.job}`);
     }

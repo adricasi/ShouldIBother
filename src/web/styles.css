@@ -1594,3 +1594,31 @@ label.button.disabled {
   width: calc(var(--space-6) * 4);
   margin: calc(var(--space-5) * -1) calc(var(--space-2) * -1) calc(var(--space-4) * -1) 0;
 }
+
+/* Advice cards (flag adviceCards): advice, not a bet; the label says whose advice it is. */
+.advice-tag {
+  color: var(--color-leaf);
+}
+
+.advice-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.advice-label.gemma {
+  font-weight: 600;
+  color: var(--color-leaf);
+}
+
+.advice-rule {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.advice-forecast[open] {
+  overflow-x: auto;
+}

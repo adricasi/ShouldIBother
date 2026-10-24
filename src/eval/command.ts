@@ -4,7 +4,7 @@
  * photo judgement within 15 s). It calls the real job functions through the real job runner on
  * the configured model, so what it measures is what the live app gets (T-010, T-030).
  *
- *   sib eval <listener|bookmaker|inspector|judge|safety|laundry-planner>
+ *   sib eval <listener|bookmaker|inspector|judge|safety|laundry-planner|advisor>
  *            [--cases <file>] [--photos <dir>] [--out <dir>] [--record-fixtures <dir>] [--help]
  */
 
@@ -15,6 +15,7 @@ import { parseArgs } from "node:util";
 import { MADRID_TIME_ZONE, madridDateOf, madridParts } from "../domain/time.js";
 import { parseRulesConfig, type RulesConfig } from "../domain/rules/index.js";
 import { CONFIG_DIR, readJsonFile } from "../server/config.js";
+import { loadAdviceRules } from "../server/advice-rules.js";
 import { resolveDataDir } from "../server/data-dir.js";
 import { createFakeServices } from "../server/fakes.js";
 import { JOB_DEADLINE_MS, MODEL_CALL_TIMEOUT_MS } from "../server/gemma/runner.js";
@@ -314,6 +315,10 @@ async function runEvalCommand(
       ...(deps.deadlineMs === undefined ? {} : { deadlineMs: deps.deadlineMs }),
     },
     rules: loadRules(configDir),
+    // Only the advisor reads them, so the other jobs run without the file.
+    ...(job === "advisor"
+      ? { adviceRules: loadAdviceRules(join(configDir, "advice-rules.json")) }
+      : {}),
     photos,
     onCase: (run, index) => {
       print(renderRow(run.record, index, widths));

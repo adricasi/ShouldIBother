@@ -4,6 +4,7 @@ import { PLANNER_CHIP, type Card, type Receipt, type Today } from "./api.js";
 import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
 import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
+import { AdviceSlip } from "./AdviceParts.js";
 import { PlanDays, PlannerSlip, type PlannerActions } from "./PlannerParts.js";
 import { BandsSideBySide, HowGemmaDecided } from "./GemmaParts.js";
 import { formatOdds, formatPoints, formatSettleTime } from "./format.js";
@@ -222,6 +223,10 @@ function CardSlip({
         <p className="meta">The weather is too risky to bet on this one.</p>
       </article>
     );
+  }
+  if (card.advice != null) {
+    // An advice card (REQ-031): Gemma's advice or the rule's, no bet.
+    return <AdviceSlip card={card} advice={card.advice} busy={busy} onRetry={onRetry} />;
   }
   if (plan !== null && quote === null) {
     // Laundry planner advice (AC-021.1 to AC-021.3): Wash today, No good day, or a question.
