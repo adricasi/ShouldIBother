@@ -4,6 +4,7 @@ import { logDecision } from "../ledger/decisions.js";
 import type { Db } from "../db.js";
 import {
   ModelBusyError,
+  ModelCapReachedError,
   ModelDailyLimitError,
   ModelTimeoutError,
   ModelUnavailableError,
@@ -119,6 +120,8 @@ export type JobFailure =
   | "tool_error"
   /** Hosted mode: the daily call cap kept the call back (AC-032.5). */
   | "daily_limit"
+  /** Hosted mode: the daily cap is used up and a verdict waits for the next Madrid day. */
+  | "cap_reached"
   /** Hosted mode: the call waited for the verdicts that were waiting (AC-032.5). */
   | "busy";
 
@@ -375,6 +378,9 @@ export class JobRunner {
         }
         if (error instanceof ModelDailyLimitError) {
           throw new Stop("daily_limit", error.message);
+        }
+        if (error instanceof ModelCapReachedError) {
+          throw new Stop("cap_reached", error.message);
         }
         if (error instanceof ModelBusyError) {
           throw new Stop("busy", error.message);

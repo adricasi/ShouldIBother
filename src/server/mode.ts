@@ -73,9 +73,24 @@ export interface HostedSettings {
   readonly toolUse: ToolUse;
   readonly dailyModelCalls: number;
   readonly bindAddress: string;
+  /**
+   * The addresses of the reverse proxy (IP or CIDR): `X-Forwarded-For` is believed only from a
+   * connection that comes from one of them. None by default: the socket's peer is the client.
+   */
+  readonly trustedProxy: readonly string[];
 }
 
 export type ModeSettings = HomeSettings | HostedSettings;
+
+/**
+ * What the commands that need little know of hosted mode: `sib pair` needs the public origin,
+ * `sib forget-devices`, `sib devices`, `sib export` and `sib delete-photos` only the mode. Neither
+ * needs the model or the key, so an emergency revoke works with a half-written env file.
+ */
+export interface HostedAccessSettings {
+  readonly mode: "hosted";
+  readonly publicOrigin: string | undefined;
+}
 
 export const HOME_SETTINGS: HomeSettings = { mode: "home" };
 
@@ -118,12 +133,17 @@ const publicOriginSchema = z
     return z.NEVER;
   });
 
-/** A Gemma 4 model ID as ADR-0011 lists them (`gemma-4-31B-it`): hosted mode runs Gemma 4 only. */
-export const GEMMA_4_MODEL_ID = /^gemma-4[A-Za-z0-9._:/-]{0,195}$/i;
+/**
+ * A Gemma 4 model ID as ADR-0011 lists them (`gemma-4-31B-it`): hosted mode runs Gemma 4 only. The
+ * name may carry a vendor prefix (`google/gemma-4-31b-it`) and may write `gemma4`; `gemma-40x` and
+ * `gemma-3-…` are not Gemma 4.
+ */
+export const GEMMA_4_MODEL_ID = /(^|[/_.:-])gemma-?4(?![0-9])/i;
+const MODEL_ID_CHARACTERS = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
 
 const modelSchema = z
   .string({ error: () => "is required in hosted mode (a Gemma 4 model ID, e.g. gemma-4-31B-it)" })
-  .regex(GEMMA_4_MODEL_ID, {
+  .refine((value) => MODEL_ID_CHARACTERS.test(value) && GEMMA_4_MODEL_ID.test(value), {
     error: () => "must be a Gemma 4 model ID such as gemma-4-31B-it (see ADR-0011)",
   });
 
@@ -159,6 +179,36 @@ const bindAddressSchema = z
   .refine((value) => isIP(value) !== 0, { error: () => "must be an IPv4 or IPv6 address" })
   .default(DEFAULT_HOSTED_BIND_ADDRESS);
 
+/** One IP address or one CIDR block; a block that covers every address (`/0`) is refused. */
+function isProxyEntry(entry: string): boolean {
+  const [address = "", prefix, ...rest] = entry.split("/");
+  const version = isIP(address);
+  if (version === 0 || rest.length > 0) {
+    return false;
+  }
+  if (prefix === undefined) {
+    return true;
+  }
+  const bits = version === 4 ? 32 : 128;
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) >= 1 && Number(prefix) <= bits;
+}
+
+const trustedProxySchema = z
+  .string({ error: () => "must be a list of IP addresses or CIDR blocks" })
+  .transform((value, ctx) => {
+    const entries = value.split(/[\s,]+/).filter((entry) => entry !== "");
+    if (entries.length === 0 || !entries.every(isProxyEntry)) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "must be a comma-separated list of IP addresses or CIDR blocks (not /0), e.g. 172.30.0.2 or 172.30.0.0/24",
+      });
+      return z.NEVER;
+    }
+    return entries;
+  })
+  .default([]);
+
 const hostedEnvSchema = z.object({
   SIB_PUBLIC_ORIGIN: publicOriginSchema,
   SIB_DO_MODEL: modelSchema,
@@ -167,6 +217,7 @@ const hostedEnvSchema = z.object({
   SIB_TOOL_USE: toolUseSchema,
   SIB_DAILY_MODEL_CALLS: dailyCallsSchema,
   SIB_BIND_ADDRESS: bindAddressSchema,
+  SIB_TRUSTED_PROXY: trustedProxySchema,
 });
 
 const HOSTED_VARIABLES = Object.keys(hostedEnvSchema.shape);
@@ -217,5 +268,41 @@ export function parseModeSettings(env: Env): ModeSettings {
     toolUse: settings.SIB_TOOL_USE,
     dailyModelCalls: settings.SIB_DAILY_MODEL_CALLS,
     bindAddress: settings.SIB_BIND_ADDRESS,
+    trustedProxy: settings.SIB_TRUSTED_PROXY,
   };
+}
+
+/**
+ * `SIB_MODE` alone (`scope` "mode") or with `SIB_PUBLIC_ORIGIN` (`scope` "pair") for the commands
+ * that do not run the model. A wrong `SIB_MODE` is still refused; the other hosted variables are
+ * not read.
+ */
+export function parseModeScope(
+  env: Env,
+  scope: "mode" | "pair",
+): HomeSettings | HostedAccessSettings {
+  const mode = modeSchema.safeParse(given(env, "SIB_MODE") ?? "home");
+  if (!mode.success) {
+    throw new HostedSettingsError("SIB_MODE must be home or hosted.");
+  }
+  if (mode.data === "home") {
+    return HOME_SETTINGS;
+  }
+  if (scope === "mode") {
+    return { mode: "hosted", publicOrigin: undefined };
+  }
+  const origin = publicOriginSchema.safeParse(given(env, "SIB_PUBLIC_ORIGIN"));
+  if (!origin.success) {
+    throw new HostedSettingsError(
+      `Hosted mode (SIB_MODE=hosted) cannot pair a device:\n- SIB_PUBLIC_ORIGIN ${origin.error.issues[0]?.message ?? "is invalid"}`,
+    );
+  }
+  return { mode: "hosted", publicOrigin: origin.data.origin };
+}
+
+/** True for the full hosted settings (the model and the key were read), false for an access scope. */
+export function isFullHosted(
+  mode: ModeSettings | HostedAccessSettings | undefined,
+): mode is HostedSettings {
+  return mode?.mode === "hosted" && "model" in mode;
 }

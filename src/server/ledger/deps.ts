@@ -57,6 +57,11 @@ export interface LedgerDeps {
   readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
   readonly photos: PhotoStore;
+  /**
+   * False in hosted mode without `SIB_DO_VISION` (AC-032.4): no photo is sent to the model, so a
+   * saved photo answer is set aside and the bet asks for a tap. Absent means photos are on.
+   */
+  readonly photosEnabled?: boolean;
   readonly background: BackgroundTasks;
   /** Structured log line for a notable event (ids and numbers only, never household text). */
   readonly log: (entry: Readonly<Record<string, unknown>>) => void;

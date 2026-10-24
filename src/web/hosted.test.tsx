@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App.js";
 
-import type { Bet, Card, Slips, Today } from "./api.js";
+import {
+  fetchToday,
+  setDeploymentMode,
+  type Bet,
+  type Card,
+  type Slips,
+  type Today,
+} from "./api.js";
 import { OnboardingScreen, ONBOARDING_PRIVACY_TEXT } from "./OnboardingScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
 import { answerNeeded, emptyWeek } from "./test-data.js";
@@ -331,5 +338,73 @@ describe("AC-032.4, AC-032.6: the app reads the mode from /api/today", () => {
     const today = await openApp(todayOf(), "#/today");
     expect(today.querySelector('input[type="file"]')).not.toBeNull();
     expect(today.textContent).toContain("on this laptop");
+  });
+});
+
+describe("AC-032.6: errors name the server, not the laptop, in hosted mode", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setDeploymentMode(undefined);
+  });
+
+  const failing = (): void => {
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError("fetch failed")));
+  };
+  const answering = (status: number, body: unknown): void => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/problem+json" },
+        }),
+      ),
+    );
+  };
+
+  it("home keeps the laptop words, word for word", async () => {
+    failing();
+    await expect(fetchToday()).rejects.toThrow(
+      "Can't reach the laptop. Check the Wi-Fi and try again.",
+    );
+    answering(401, {
+      title: "Unauthorized",
+      detail: "Open the pairing link printed on the laptop, or run `sib pair` there.",
+    });
+    await expect(fetchToday()).rejects.toThrow(
+      "This device is not paired. Open the pairing link shown on the laptop.",
+    );
+    answering(500, {});
+    await expect(fetchToday()).rejects.toThrow("The laptop answered 500.");
+  });
+
+  it("a hosted 401 shows the server's hint, even before any answer has named the mode", async () => {
+    answering(401, {
+      title: "Unauthorized",
+      detail: "Run `sib pair` on the server and open the link it prints.",
+    });
+    await expect(fetchToday()).rejects.toThrow(
+      "This device is not paired. Run `sib pair` on the server and open the link it prints.",
+    );
+    // From then on the app knows it is hosted.
+    failing();
+    await expect(fetchToday()).rejects.toThrow("Can't reach the server. Check your connection.");
+  });
+
+  it("the mode of /api/today sets the words for the other errors", async () => {
+    answering(200, HOSTED_PHOTOS_OFF);
+    await fetchToday();
+    failing();
+    await expect(fetchToday()).rejects.toThrow("Can't reach the server. Check your connection.");
+    answering(502, {});
+    await expect(fetchToday()).rejects.toThrow("The server answered 502.");
+    answering(401, {});
+    await expect(fetchToday()).rejects.toThrow(
+      "This device is not paired. Run `sib pair` on the server and open the link it prints.",
+    );
+    // Back to home when the answer says home.
+    answering(200, todayOf());
+    await fetchToday();
+    failing();
+    await expect(fetchToday()).rejects.toThrow("Can't reach the laptop.");
   });
 });

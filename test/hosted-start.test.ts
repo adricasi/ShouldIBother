@@ -267,6 +267,53 @@ describe("AC-032.2, AC-032.3: hosted start-up", () => {
   });
 });
 
+/** Stops the server and the fake service and clears the folders, to start another in one test. */
+async function restart(): Promise<void> {
+  const server = running;
+  const service = fake;
+  running = undefined;
+  fake = undefined;
+  await server?.close();
+  await service?.close();
+  rmSync(join(dir, "config"), { recursive: true });
+  rmSync(dataDir(), { recursive: true });
+}
+
+describe("AC-032.3: SIB_TRUSTED_PROXY reaches the app", () => {
+  async function limitedAfter(
+    proxy: string | undefined,
+    peer: string,
+    probePeer: string,
+  ): Promise<boolean> {
+    fake = await startFakeDigitalOcean(wellBehaved(() => chatAnswer(BOOKMAKER_ANSWER)));
+    const { server } = await start(
+      hostedEnv(proxy === undefined ? {} : { SIB_TRUSTED_PROXY: proxy }),
+    );
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      await server.app.inject({
+        url: "/api/today",
+        remoteAddress: peer,
+        headers: { host: HOST, "x-forwarded-for": "203.0.113.77" },
+      });
+    }
+    // Another peer reports the same client address: blocked only if that address was the key.
+    const probe = await server.app.inject({
+      url: "/api/today",
+      remoteAddress: probePeer,
+      headers: { host: HOST, "x-forwarded-for": "203.0.113.77" },
+    });
+    return probe.statusCode === 429;
+  }
+
+  it("believes the header from the named proxy only; with none set it is ignored", async () => {
+    expect(await limitedAfter("172.18.0.2", "172.18.0.2", "172.18.0.2")).toBe(true);
+    await restart();
+    expect(await limitedAfter("172.18.0.2", "172.18.0.9", "172.18.0.2")).toBe(false);
+    await restart();
+    expect(await limitedAfter(undefined, "172.18.0.2", "172.18.0.9")).toBe(false);
+  });
+});
+
 describe("AC-032.2: Gemma through the inference API", () => {
   it("prices a card with the injected tool result, no tools list and the bearer key", async () => {
     fake = await startFakeDigitalOcean(wellBehaved(() => chatAnswer(BOOKMAKER_ANSWER)));
@@ -415,15 +462,20 @@ describe("AC-032.4: photos only with SIB_DO_VISION=1", () => {
 
   it("refuses an upload with 409, runs no inspector and sends nothing to the model", async () => {
     fake = await startFakeDigitalOcean(wellBehaved(() => chatAnswer(BOOKMAKER_ANSWER)));
-    const { server } = await start(hostedEnv());
+    const { server } = await start(hostedEnv(), { appeals: true });
     const cookie = await pairHosted(server);
     const created = (
       await post(server, cookie, "/api/cards/quick", { chore_type: "plants" })
-    ).json<{
-      id: number;
-    }>();
-    await waitFor(() => {
-      expect(chats().length).toBeGreaterThan(0);
+    ).json<{ id: number }>();
+    let quoteId = 0;
+    await waitFor(async () => {
+      const card = await getJson<{ quote: { id: number; source: string } | null }>(
+        server,
+        cookie,
+        `/api/cards/${created.id}`,
+      );
+      expect(card.quote?.source).toBe("gemma");
+      quoteId = card.quote?.id ?? 0;
     });
     const before = chats().length;
     const refused = await uploadTo(server, cookie, created.id);
@@ -431,16 +483,33 @@ describe("AC-032.4: photos only with SIB_DO_VISION=1", () => {
     expect(refused.headers["content-type"]).toContain("application/problem+json");
     expect(refused.json<{ title: string }>().title).toBe("Photos are off on this server");
     expect(server.runtime.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
-    expect(chats()).toHaveLength(before);
-    // The after photo of a settlement and an appeal are refused the same way.
-    const settle = multipartBody(await syntheticPhoto(), {});
-    const answer = await server.app.inject({
-      method: "POST",
-      url: "/api/bets/1/settle",
-      payload: settle.payload,
-      headers: { host: HOST, origin: ORIGIN, cookie, ...settle.headers },
+
+    // A real bet: the after photo of its settlement and an appeal are refused the same way.
+    const bet = await post(server, cookie, "/api/bets", {
+      card_id: created.id,
+      quote_id: quoteId,
+      kind: "do_nothing",
     });
-    expect(answer.statusCode).toBe(409);
+    expect(bet.statusCode).toBe(201);
+    const betId = bet.json<{ id: number }>().id;
+    for (const path of [`/api/bets/${betId}/settle`, `/api/bets/${betId}/appeal`]) {
+      const upload = multipartBody(await syntheticPhoto(), {});
+      const answer = await server.app.inject({
+        method: "POST",
+        url: path,
+        payload: upload.payload,
+        headers: { host: HOST, origin: ORIGIN, cookie, ...upload.headers },
+      });
+      expect(answer.statusCode, path).toBe(409);
+      expect(answer.json<{ title: string }>().title, path).toBe("Photos are off on this server");
+    }
+    expect(server.runtime.db.prepare("SELECT COUNT(*) AS n FROM photos").get()).toEqual({ n: 0 });
+    // The bet itself is untouched, and no photo call was made to the model.
+    expect(server.runtime.db.prepare("SELECT status FROM bets WHERE id = ?").get(betId)).toEqual({
+      status: "open",
+    });
+    expect(chats()).toHaveLength(before);
+    expect(chats().some((entry) => entry.text.includes("image_url"))).toBe(false);
   });
 
   it("takes the upload and sends the photo as an image when SIB_DO_VISION=1", async () => {

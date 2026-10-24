@@ -52,7 +52,10 @@ export function formatPairingBanner(options: {
   readonly token: string;
   readonly expiresAt: number;
   readonly targets: readonly PairingTarget[];
+  /** Devices the link can link; the maximum when absent. */
+  readonly devices?: number;
 }): string {
+  const devices = options.devices ?? MAX_DEVICES_PER_TOKEN;
   const urls = options.targets.map((target) => ({
     kind: target.kind,
     label: target.label,
@@ -65,7 +68,7 @@ export function formatPairingBanner(options: {
   const scanTarget = urls.find((entry) => entry.kind !== "laptop") ?? urls[0];
   const lines = [
     "",
-    `Pair a device: valid ${PAIRING_TTL_MS / 60_000} minutes (until ${formatMadridTime(options.expiresAt)} Madrid time), up to ${MAX_DEVICES_PER_TOKEN} devices.`,
+    `Pair a device: valid ${PAIRING_TTL_MS / 60_000} minutes (until ${formatMadridTime(options.expiresAt)} Madrid time), ${devices === 1 ? "one device" : `up to ${devices} devices`}.`,
     ...urls.map((entry) => `  ${entry.label.padEnd(16)}${entry.url}`),
   ];
   if (scanTarget !== undefined) {

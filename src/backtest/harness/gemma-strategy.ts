@@ -214,6 +214,7 @@ export class GemmaStrategy implements Strategy {
       if (
         result.failure === "unavailable" ||
         result.failure === "daily_limit" ||
+        result.failure === "cap_reached" ||
         result.failure === "busy"
       ) {
         throw new ModelOfflineError(result.error);

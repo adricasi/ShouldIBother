@@ -134,10 +134,25 @@ describe("AC-032.2: hosted settings are parsed once and refuse to start when wro
   });
 
   it("needs a Gemma 4 model ID and has no default", () => {
-    for (const model of ["llama-3-8b", "gemma-3-27b", "gpt-4o", "gemma 4", "gemma-4 31b"]) {
+    for (const model of [
+      "llama-3-8b",
+      "gemma-3-27b",
+      "gemma-40x",
+      "gemma-41",
+      "gpt-4o",
+      "gemma 4",
+      "gemma-4 31b",
+    ]) {
       expect(refusal({ ...HOSTED, SIB_DO_MODEL: model }), model).toContain("SIB_DO_MODEL");
     }
-    expect(hosted({ SIB_DO_MODEL: "Gemma-4-E4B-it" }).model).toBe("Gemma-4-E4B-it");
+    for (const model of [
+      "gemma-4-31B-it",
+      "google/gemma-4-31b-it",
+      "gemma4-31b",
+      "Gemma-4-E4B-it",
+    ]) {
+      expect(hosted({ SIB_DO_MODEL: model }).model, model).toBe(model);
+    }
     expect(refusal({ ...HOSTED, SIB_DO_MODEL: undefined })).toContain("SIB_DO_MODEL is required");
   });
 
@@ -156,6 +171,33 @@ describe("AC-032.2: hosted settings are parsed once and refuse to start when wro
     expect(refusal({ ...HOSTED, SIB_DO_INFERENCE_KEY: undefined })).toContain(
       "SIB_DO_INFERENCE_KEY is required",
     );
+  });
+
+  it("has no trusted proxy by default, and reads IP addresses and CIDR blocks", () => {
+    expect(hosted().trustedProxy).toEqual([]);
+    expect(
+      hosted({ SIB_TRUSTED_PROXY: "172.30.0.2, 10.0.0.0/8 ::1\n2001:db8::/32" }).trustedProxy,
+    ).toEqual(["172.30.0.2", "10.0.0.0/8", "::1", "2001:db8::/32"]);
+    expect(hosted({ SIB_TRUSTED_PROXY: "" }).trustedProxy).toEqual([]);
+  });
+
+  it("refuses a trusted proxy that is not an address or block, or that trusts everyone", () => {
+    for (const value of [
+      "proxy",
+      "172.30.0.2/33",
+      "10.0.0.0/0",
+      "::/0",
+      "0.0.0.0/0",
+      "1.2.3",
+      "1.2.3.4/x",
+      "1.2.3.4/8/8",
+      "loopback",
+      "uniquelocal",
+    ]) {
+      expect(refusal({ ...HOSTED, SIB_TRUSTED_PROXY: value }), value).toContain(
+        "SIB_TRUSTED_PROXY must be a comma-separated list of IP addresses or CIDR blocks",
+      );
+    }
   });
 
   it("validates the optional settings", () => {

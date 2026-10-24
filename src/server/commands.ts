@@ -1,6 +1,6 @@
 import { describeAllowlist, type Allowlist } from "./auth/allowlist.js";
-import { formatPairingBanner, pairingTargets } from "./auth/banner.js";
-import type { AuthStore } from "./auth/store.js";
+import { formatMadridTime, formatPairingBanner, pairingTargets } from "./auth/banner.js";
+import { MAX_DEVICES_PER_TOKEN, type AuthStore } from "./auth/store.js";
 
 type Print = (text: string) => void;
 
@@ -11,6 +11,8 @@ interface PairContext {
   readonly publicOrigins: readonly string[];
   /** Hosted mode: print the link of `SIB_PUBLIC_ORIGIN` only. */
   readonly hostedOrigin?: string | undefined;
+  /** Devices the new link can link, 1 to 3 (3 when absent). */
+  readonly devices?: number;
 }
 
 /**
@@ -18,11 +20,13 @@ interface PairContext {
  * by `sib pair`; existing sessions stay valid.
  */
 export function printNewPairingToken(context: PairContext, print: Print): void {
-  const { token, expiresAt } = context.store.issuePairingToken();
+  const devices = context.devices ?? MAX_DEVICES_PER_TOKEN;
+  const { token, expiresAt } = context.store.issuePairingToken(devices);
   print(
     formatPairingBanner({
       token,
       expiresAt,
+      devices,
       targets: pairingTargets({
         port: context.port,
         lanAddress: context.lanAddress,
@@ -65,4 +69,39 @@ export function printNetworkSummary(
   }
   print(`Listening on ${listening.join(" and ")}`);
   print(describeAllowlist(context.allowlist));
+}
+
+/**
+ * `sib devices`: one line per linked device, oldest first. It shows when the device was linked, the
+ * day it was last seen, a short summary of the device and when the session ends; never a token or
+ * a session id.
+ */
+export function listLinkedDevices(store: AuthStore, print: Print): void {
+  const devices = store.linkedDevices();
+  if (devices.length === 0) {
+    print("No device is linked.");
+    return;
+  }
+  print(`Linked devices (${devices.length}); \`sib forget-devices\` signs them all out:`);
+  devices.forEach((device, index) => {
+    print(
+      `  #${index + 1}  ${(device.device ?? "Unknown device").padEnd(22)}` +
+        `linked ${formatMadridTime(device.pairedAt)}  last seen ${formatMadridTime(device.lastSeenAt).slice(0, 10)}  ` +
+        `until ${formatMadridTime(device.expiresAt).slice(0, 10)}`,
+    );
+  });
+}
+
+/** `--devices N` or `--devices=N` of `sib pair`: 1 to 3, undefined when absent, "invalid" otherwise. */
+export function parseDevicesOption(args: readonly string[]): number | undefined | "invalid" {
+  if (args.length === 0) {
+    return undefined;
+  }
+  const value =
+    args.length === 2 && args[0] === "--devices"
+      ? args[1]
+      : args.length === 1 && args[0]?.startsWith("--devices=") === true
+        ? args[0].slice("--devices=".length)
+        : undefined;
+  return value !== undefined && /^[123]$/.test(value) ? Number(value) : "invalid";
 }

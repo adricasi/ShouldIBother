@@ -49,6 +49,8 @@ export interface CoreHarnessOptions {
   model?: FakeModelClient;
   /** Folder for the photo files; a fresh temporary folder (removed on close) when omitted. */
   photosDir?: string;
+  /** Hosted mode (REQ-032): the mode and whether photos are accepted. */
+  deployment?: NonNullable<Parameters<typeof createCore>[0]["deployment"]>;
   /** Timeouts and tool settings of the job runner. */
   runner?: NonNullable<Parameters<typeof createCore>[0]["runner"]>;
   /** The household baseline; the committed example (no AC, no heater) when omitted. */
@@ -113,6 +115,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     photos,
     ...(options.geocoder === undefined ? {} : { geocoder: options.geocoder }),
     ...(options.runner === undefined ? {} : { runner: options.runner }),
+    ...(options.deployment === undefined ? {} : { deployment: options.deployment }),
   });
   const app = await buildApp({
     flags,

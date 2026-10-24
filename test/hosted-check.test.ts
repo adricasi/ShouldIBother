@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { hostedCheckCommand, runHostedChecks } from "../src/server/model/hosted-check.js";
@@ -39,11 +40,19 @@ interface Capabilities {
   readonly json?: boolean;
   readonly tools?: boolean;
   readonly images?: boolean;
+  /** Accepts the image but answers without having seen it. */
+  readonly blind?: boolean;
 }
 
 /** A service with the given capabilities. */
 function service(capabilities: Capabilities = {}): Handler {
-  const { models = [MODEL_ID], json: validJson = true, tools = true, images = true } = capabilities;
+  const {
+    models = [MODEL_ID],
+    json: validJson = true,
+    tools = true,
+    images = true,
+    blind = false,
+  } = capabilities;
   return (request, response) => {
     if (request.url === "/v1/models") {
       json(response, 200, { data: models.map((id) => ({ id })) });
@@ -56,7 +65,7 @@ function service(capabilities: Capabilities = {}): Handler {
     };
     if (JSON.stringify(body).includes("image_url")) {
       if (images) {
-        json(response, 200, chatAnswer("red"));
+        json(response, 200, chatAnswer(blind ? "Sure, here is my answer." : "Red"));
       } else {
         json(response, 400, {
           error: { message: "images are not supported", code: "unsupported" },
@@ -121,6 +130,46 @@ describe("AC-032.8: sib hosted-check", () => {
     expect(image?.ok).toBe(false);
     expect(image?.detail).toContain("Keep SIB_DO_VISION off");
     expect(image?.detail).toContain("(unsupported)");
+  });
+
+  it("fails the image check when the model accepts the image but answers without seeing it", async () => {
+    fake = await startFakeDigitalOcean(service({ blind: true }));
+    const results = await runHostedChecks(settings(), { fetch: fake.fetch });
+    const image = results.find((result) => result.check === "image accepted");
+    expect(image?.ok).toBe(false);
+    expect(image?.detail).toContain("answered without seeing the image");
+    expect(image?.detail).toContain("Keep SIB_DO_VISION off");
+  });
+
+  it("passes the image check when the answer names red, pink or orange", async () => {
+    for (const colour of ["red", "Pinkish", "ORANGE"]) {
+      fake = await startFakeDigitalOcean((request, response) => {
+        if (request.url === "/v1/models") {
+          json(response, 200, { data: [{ id: MODEL_ID }] });
+        } else if (request.text.includes("image_url")) {
+          json(response, 200, chatAnswer(colour));
+        } else {
+          json(response, 200, chatAnswer('{"ok": true}'));
+        }
+      });
+      const results = await runHostedChecks(settings(), { fetch: fake.fetch });
+      expect(results.find((result) => result.check === "image accepted")?.ok, colour).toBe(true);
+      await fake.close();
+      fake = undefined;
+    }
+  });
+
+  it("sends a solid red PNG", async () => {
+    fake = await startFakeDigitalOcean(service());
+    await runHostedChecks(settings(), { fetch: fake.fetch });
+    const imageCall = fake.seen.find((entry) => entry.text.includes("image_url"));
+    const base64 =
+      /data:image\/png;base64,([A-Za-z0-9+/=]+)/.exec(imageCall?.text ?? "")?.[1] ?? "";
+    const { data, info } = await sharp(Buffer.from(base64, "base64"))
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([8, 8]);
+    expect([data[0], data[1], data[2]]).toEqual([220, 20, 20]);
   });
 
   it("lists the Gemma models when the one in SIB_DO_MODEL is not there", async () => {

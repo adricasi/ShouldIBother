@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 
 import { buildApp } from "./app.js";
-import { forgetDevices, printNetworkSummary, printNewPairingToken } from "./commands.js";
+import {
+  forgetDevices,
+  listLinkedDevices,
+  printNetworkSummary,
+  printNewPairingToken,
+} from "./commands.js";
+import { MAX_DEVICES_PER_TOKEN } from "./auth/store.js";
 import { HouseholdStore } from "./household-store.js";
 import { CONFIG_DIR, DEFAULT_LOCATION, loadHousehold } from "./config.js";
 import { createCore, type Core } from "./core.js";
@@ -14,7 +20,7 @@ import { createFakeServices } from "./fakes.js";
 import { loadModelsConfig } from "./model/config.js";
 import { selectModel } from "./model/select.js";
 import { loadFlags, type Flags } from "./flags.js";
-import type { HostedSettings } from "./mode.js";
+import { isFullHosted, type HostedSettings } from "./mode.js";
 import { assertRainConfig } from "./rain-config.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
@@ -91,8 +97,7 @@ export async function startServer(
   const configDir = options.configDir ?? CONFIG_DIR;
   // `sib demo` is always home mode, whatever the environment says.
   const runtime = loadRuntime(env, configDir, { forceHome: options.demo !== undefined });
-  const hosted: HostedSettings | undefined =
-    runtime.mode?.mode === "hosted" ? runtime.mode : undefined;
+  const hosted: HostedSettings | undefined = isFullHosted(runtime.mode) ? runtime.mode : undefined;
   let app: FastifyInstance;
   let appRef: FastifyInstance | undefined;
   let coreRef: Core | undefined;
@@ -212,7 +217,7 @@ export async function startServer(
       logger: true,
       core,
       ...(webBuilt ? { webRoot: WEB_ROOT } : {}),
-      ...(hosted === undefined ? {} : { hosted: {} }),
+      ...(hosted === undefined ? {} : { hosted: { trustedProxy: hosted.trustedProxy } }),
       auth: { store: runtime.store, allowlist: runtime.allowlist, print: output },
     });
     appRef = app;
@@ -273,13 +278,20 @@ export async function startServer(
 }
 
 /** `sib pair`: a new token without signing anyone out. */
-export function pairCommand(runtime: Runtime, output: (text: string) => void = print): void {
+export function pairCommand(
+  runtime: Runtime,
+  output: (text: string) => void = print,
+  /** Devices the link can link, 1 to 3; hosted mode makes a one-device link unless told otherwise. */
+  devices?: number,
+): void {
   try {
+    const hostedOrigin = runtime.mode?.mode === "hosted" ? runtime.mode.publicOrigin : undefined;
     printNewPairingToken(
       {
         ...runtime,
         publicOrigins: runtime.config.publicOrigins,
-        ...(runtime.mode?.mode === "hosted" ? { hostedOrigin: runtime.mode.publicOrigin } : {}),
+        ...(hostedOrigin === undefined ? {} : { hostedOrigin }),
+        devices: devices ?? (runtime.mode?.mode === "hosted" ? 1 : MAX_DEVICES_PER_TOKEN),
       },
       output,
     );
@@ -295,6 +307,15 @@ export function forgetDevicesCommand(
 ): void {
   try {
     forgetDevices(runtime.store, output);
+  } finally {
+    runtime.db.close();
+  }
+}
+
+/** `sib devices`: the devices that are linked now, without any token. */
+export function devicesCommand(runtime: Runtime, output: (text: string) => void = print): void {
+  try {
+    listLinkedDevices(runtime.store, output);
   } finally {
     runtime.db.close();
   }

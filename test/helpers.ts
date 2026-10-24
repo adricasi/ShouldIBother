@@ -58,6 +58,8 @@ export interface HarnessOptions {
   hostedOrigin?: string;
   /** Pairing attempts per client address and minute in hosted mode. */
   pairAttemptsPerMinute?: number;
+  /** `SIB_TRUSTED_PROXY` in hosted mode: none by default. */
+  trustedProxy?: readonly string[];
 }
 
 export class Harness {
@@ -134,10 +136,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     ...(options.hostedOrigin === undefined
       ? {}
       : {
-          hosted:
-            options.pairAttemptsPerMinute === undefined
+          hosted: {
+            ...(options.pairAttemptsPerMinute === undefined
               ? {}
-              : { pairAttemptsPerMinute: options.pairAttemptsPerMinute },
+              : { pairAttemptsPerMinute: options.pairAttemptsPerMinute }),
+            ...(options.trustedProxy === undefined ? {} : { trustedProxy: options.trustedProxy }),
+          },
         }),
     auth: {
       store: harness.store,
