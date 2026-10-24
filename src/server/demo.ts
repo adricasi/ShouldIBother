@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { Db } from "./db.js";
 import type { ChatRequest, ChatResponse, ModelClient, ModelHealth } from "./model/client.js";
 
 /**
@@ -26,6 +27,20 @@ export function markDemoDataDir(dataDir: string): void {
 
 export function isDemoDataDir(dataDir: string): boolean {
   return existsSync(join(dataDir, DEMO_MARKER_FILE));
+}
+
+/**
+ * True when the database holds rows written by the demo model, whatever the marker file says: a
+ * deleted marker must not let sample data be exported as results.
+ */
+export function holdsDemoRows(db: Pick<Db, "prepare">): boolean {
+  const row = db
+    .prepare<[string, string], { found: number }>(
+      `SELECT EXISTS (SELECT 1 FROM bets WHERE model_version LIKE ?)
+           OR EXISTS (SELECT 1 FROM gemma_decisions WHERE model LIKE ?) AS found`,
+    )
+    .get(`${DEMO_MODEL}%`, `${DEMO_MODEL}%`);
+  return row?.found === 1;
 }
 
 /** The words of the refusal when something that reports results is asked of sample data. */

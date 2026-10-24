@@ -11,6 +11,11 @@
   border-bottom: var(--border-hair) solid var(--color-ink);
 }
 
+/* A focused control scrolled to the top must not end up under the sticky banner (WCAG 2.4.11). */
+html:has(.demo-banner) {
+  scroll-padding-top: calc(var(--space-6) * 3);
+}
+
 .sample-marked {
   position: relative;
   isolation: isolate;

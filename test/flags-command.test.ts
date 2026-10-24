@@ -1,9 +1,11 @@
 import {
   copyFileSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -119,6 +121,30 @@ describe("sib flags (AC-029.3)", () => {
     expect(Object.keys(JSON.parse(once) as object)).toEqual([...FLAG_NAMES]);
     expect(once).toMatch(/^\{\n {2}"finetunedBookmaker": false,\n/);
     expect(once.endsWith("}\n")).toBe(true);
+  });
+
+  it("AC-029.3: a flags.json that lacks a key reads it as off and writes the whole list", () => {
+    writeFileSync(`${configDir}flags.json`, '{\n  "score": false\n}\n');
+    expect(run("on", "ranks")).toBe(0);
+    const written = JSON.parse(flagsFile()) as Record<string, boolean>;
+    expect(Object.keys(written)).toEqual([
+      "score",
+      ...FLAG_NAMES.filter((name) => name !== "score"),
+    ]);
+    expect(written["ranks"]).toBe(true);
+    expect(written["voice"]).toBe(false);
+  });
+
+  it("AC-029.3: a symlinked flags.json is written through to its target and stays a link", () => {
+    const target = `${configDir}elsewhere.json`;
+    copyFileSync(`${configDir}flags.json`, target);
+    rmSync(`${configDir}flags.json`);
+    symlinkSync(target, `${configDir}flags.json`);
+    expect(run("on", "score")).toBe(0);
+    expect(lstatSync(`${configDir}flags.json`).isSymbolicLink()).toBe(true);
+    expect((JSON.parse(readFileSync(target, "utf8")) as Record<string, boolean>)["score"]).toBe(
+      true,
+    );
   });
 
   it("AC-029.3: writes through a temporary file that does not stay behind", () => {

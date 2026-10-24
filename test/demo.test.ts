@@ -308,6 +308,36 @@ describe("sib demo: isolation, seed coverage and cleanup (AC-029.4)", () => {
     expect(existsSync(target)).toBe(false);
   });
 
+  it("AC-029.4: sib export still refuses when the marker file is gone, because the rows say fake-demo", () => {
+    rmSync(join(demo.dataDir, DEMO_MARKER_FILE));
+    const db = new Database(join(demo.dataDir, "sib.db"));
+    const target = join(root, "exported-again");
+    expect(() =>
+      exportCommand({ db, dataDir: demo.dataDir } as unknown as Runtime, target, () => undefined),
+    ).toThrow(DEMO_EXPORT_REFUSAL);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it("AC-009.1: a seeded win pays round_half_up((100 - odds) x multiplier), computed by code", () => {
+    const db = new Database(join(demo.dataDir, "sib.db"), { readonly: true });
+    try {
+      const wins = db
+        .prepare<[], { odds: number; multiplier: number; points: number }>(
+          `SELECT b.odds, s.multiplier, s.points FROM settlements s JOIN bets b ON b.id = s.bet_id
+           WHERE s.final = 1 AND s.verdict = 'win'`,
+        )
+        .all();
+      expect(wins.length).toBeGreaterThan(15);
+      for (const win of wins) {
+        expect(win.points).toBe(Math.floor((100 - win.odds) * win.multiplier + 0.5));
+      }
+      // Both multipliers are in the sample: photo x1, tap or auto x0.5.
+      expect(new Set(wins.map((win) => win.multiplier))).toEqual(new Set([1, 0.5]));
+    } finally {
+      db.close();
+    }
+  });
+
   it("AC-029.4: the temporary folder is deleted when the demo stops", async () => {
     const tempDir = demo.tempDir;
     expect(existsSync(tempDir)).toBe(true);
@@ -373,6 +403,48 @@ describe("sib demo: the real command (AC-029.4)", () => {
       expect(existsSync(tempDir)).toBe(false);
       expect([...snapshot(home), ...snapshot(liveData)]).toEqual(before);
       expect(readFileSync(join(CONFIG_DIR, "flags.json"), "utf8")).toBe(committedFlags);
+    },
+    90_000,
+  );
+
+  it.each(["SIGINT", "SIGTERM"] as const)(
+    "removes the temporary folder when %s arrives while the data is still being made",
+    async (signal) => {
+      const tmp = join(root, `tmp-${signal}`);
+      mkdirSync(tmp);
+      // Node with the tsx loader, not the `tsx` launcher: the launcher relays a signal only once
+      // the child announces its handlers, which it has not yet done this early.
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts", "demo", "--port", String(await freePort())],
+        {
+          cwd: ROOT,
+          env: { ...process.env, TMPDIR: tmp, HOME: join(root, "home-kill") },
+          stdio: ["ignore", "ignore", "pipe"],
+        },
+      );
+      let output = "";
+      child.stderr.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      const exited = new Promise<number | null>((resolve) => {
+        child.once("exit", (code) => {
+          resolve(code);
+        });
+      });
+      // The folder appears when the seeding begins; the signal comes before it can finish.
+      const started = Date.now();
+      while (!readdirSync(tmp).some((name) => name.startsWith("sib-demo-"))) {
+        if (Date.now() - started > 40_000) {
+          child.kill("SIGKILL");
+          throw new Error(`The demo never made its folder:\n${output}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(output).not.toContain("Sample data ready");
+      child.kill(signal);
+      expect(await exited).toBe(128 + (signal === "SIGINT" ? 2 : 15));
+      expect(readdirSync(tmp).filter((name) => name.startsWith("sib-demo-"))).toEqual([]);
     },
     90_000,
   );

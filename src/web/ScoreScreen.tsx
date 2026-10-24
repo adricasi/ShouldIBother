@@ -116,6 +116,7 @@ function SavingsTiles({
       <h2 id="saved-title" className="section-title">
         What the sky saved
       </h2>
+      {sample ? <p className="meta sample-label">Sample data</p> : null}
       <dl className="stat-tiles score-tiles">
         <div>
           <Icon name="check" />

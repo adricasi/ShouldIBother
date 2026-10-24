@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 import { CONFIG_DIR } from "./config.js";
 import { loadFlagPresets } from "./flag-presets.js";
@@ -30,7 +30,9 @@ function readCurrent(path: string): { order: string[]; flags: Flags } {
 }
 
 /** Writes the whole file to a temporary sibling and renames it over the original (atomic). */
-function writeAtomically(path: string, order: readonly string[], flags: Flags): void {
+function writeAtomically(link: string, order: readonly string[], flags: Flags): void {
+  // A flags.json that is a symlink is written through to its target, which stays a link-free file.
+  const path = realpathSync(link);
   const keys = [...order, ...FLAG_NAMES.filter((name) => !order.includes(name))];
   const body = Object.fromEntries(keys.map((key) => [key, flags[key as FlagName]]));
   const temporary = `${path}.${String(process.pid)}.tmp`;
