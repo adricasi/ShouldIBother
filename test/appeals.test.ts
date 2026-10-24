@@ -171,7 +171,7 @@ describe("REQ-023: appeal a verdict", () => {
         "SELECT prompt_version, photo_id FROM gemma_decisions WHERE job = 'judge' ORDER BY id",
       )
       .all();
-    expect(decisions.map((row) => row.prompt_version)).toEqual(["judge.v2", "judge-appeal.v1"]);
+    expect(decisions.map((row) => row.prompt_version)).toEqual(["judge.v3", "judge-appeal.v2"]);
     const photos = harness.db
       .prepare<[number], { id: string; role: string }>(
         "SELECT id, role FROM photos WHERE bet_id = ?",

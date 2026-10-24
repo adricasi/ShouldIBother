@@ -365,17 +365,17 @@ Privacy rules for the log:
 
 | Job (name in `gemma_decisions.job`) | Prompt | Runtime | Tool | Needs flag |
 |---|---|---|---|---|
-| [`listener`](#71-listener) | `prompts/listener.v1.md` | Ollama, primary | none | none |
+| [`listener`](#71-listener) | `prompts/listener.v2.md` | Ollama, primary | none | none |
 | [`listener-audio`](#72-voice-listener-listener-audio) | `prompts/listener-audio.v1.md` | llama.cpp | none | `voice` |
 | [`bookmaker`](#73-bookmaker) | `prompts/bookmaker.v1.md` | Ollama; fine-tuned tag when the flag is on | `get_forecast` (required) | none; `finetunedBookmaker` swaps the model |
 | [`inspector`](#74-inspector-photo) | `prompts/inspector.v1.md` | Ollama, primary | none | none |
 | [`safety`](#75-safety-guard) | `prompts/safety.v1.md` | Ollama, primary | none | `safetyGuard` |
-| [`judge`](#76-judge) | `prompts/judge.v2.md` | Ollama, primary | none | none |
-| [`judge`, appeal](#77-judge-appeal) | `prompts/judge-appeal.v1.md` | Ollama, primary | none | `appeals` |
+| [`judge`](#76-judge) | `prompts/judge.v3.md` | Ollama, primary | none | none |
+| [`judge`, appeal](#77-judge-appeal) | `prompts/judge-appeal.v2.md` | Ollama, primary | none | `appeals` |
 | [`laundry-planner`](#78-laundry-planner) | `prompts/laundry-planner.v1.md` | Ollama, primary | none | `laundryPlanner` |
 
-Versions are in the file names; the runner records `prompt_version` (for example `judge.v2`) on each
-decision and bet. `prompts/judge.v1.md` is still in the repository but no code loads it. A prompt
+Versions are in the file names; the runner records `prompt_version` (for example `judge.v3`) on each
+decision and bet. `prompts/judge.v1.md`, `judge.v2.md`, `judge-appeal.v1.md` and `listener.v1.md` are still in the repository but no code loads them. A prompt
 change bumps the version and the fixtures are re-recorded (AGENTS.md, Project rules).
 
 **About the examples.** Each job below shows one input as the code builds it and one answer from
@@ -390,15 +390,19 @@ section 11).
 - **Purpose and when it runs.** Splits a sentence into chores and classifies each one (REQ-002). It
   runs on typed capture (`POST /api/cards`), and on the transcript of a voice note. Quick chips do not
   call it.
-- **Prompt.** `prompts/listener.v1.md`. **Runtime.** Ollama, primary model.
+- **Prompt.** `prompts/listener.v2.md`. **Runtime.** Ollama, primary model.
 - **Input, built by code** (`runListener`, `src/server/gemma/listener.ts`): the typed text (500
   characters at most) inside the untrusted delimiters, and nothing else.
 - **Output schema** (`listenerOutputSchema`, strict): `chores[1..5]`, each `{label (1..80 chars),
-  chore_type: plants | laundry_line | laundry_tonight | laundry_plan | ac | heater | other_weather |
-  not_weather, item? (80 chars)}`.
+  chore_type: plants | laundry_line | laundry_tonight | laundry_plan | ac | heater | car_rinse |
+  bike_rinse | terrace_rinse | rain_fill | windows_clean | balcony_sweep | outdoor_paint | lawn_feed |
+  other_weather | not_weather, item? (80 chars)}`.
 - **Checks afterwards** (`src/server/ledger/capture.ts`, `cardsFromChores`): `not_weather` becomes a
   "Not a weather chore" card with no odds; `other_weather`, or a type this version does not offer,
-  becomes a "Coming later" card; `laundry_plan` becomes a planner card when `laundryPlanner` is on;
+  becomes a "Coming later" card; the four rain types (`car_rinse`, `bike_rinse`, `terrace_rinse`,
+  `rain_fill`) take the chore path when `rainChores` is on and read "Coming later" otherwise, and the
+  four advice types (`windows_clean`, `balcony_sweep`, `outdoor_paint`, `lawn_feed`) read "Coming
+  later" until `adviceCards` ships its cards (T-039); `laundry_plan` becomes a planner card when `laundryPlanner` is on;
   every other type takes the same path as a quick chip, so the offer window, season check, safety
   backstop and rule quote all apply.
 - **Budget.** The common budget of section 6 (no tool, so at most 2 calls).
@@ -599,7 +603,7 @@ output  {"status":"ok","alert":true,
   an after photo or a tap, when they answer the judge's question, when the scheduler finds a settled
   do-it decision (AC-008.9), a bet that waits for Gemma (retried every 2 minutes), or a bet with no
   answer 24 h after its settle time.
-- **Prompt.** `prompts/judge.v2.md`. **Runtime.** Ollama, primary; before and after photos are
+- **Prompt.** `prompts/judge.v3.md`. **Runtime.** Ollama, primary; before and after photos are
   attached as images when the evidence is a photo.
 - **Input, built by code** (`userMessage` in `src/server/gemma/judge.ts`): the bet kind (`do_nothing`
   or `do_it`), the chore's plain name, the evidence type, the tap the person chose (its label), which
@@ -609,7 +613,9 @@ output  {"status":"ok","alert":true,
   normal_loss | harmful_loss | weather_would_have | weather_would_not, reason (140), evidence [up to 3
   phrases of 120 chars], question? (200)}`.
 - **Checks afterwards.** The verdict must belong to the bet's kind (a do-nothing bet cannot get
-  `weather_would_have`); `unsure` is allowed only when `can_ask` is true and needs a question. The
+  `weather_would_have`); for the city rain bets a "Still dirty", "Dirtier than before" or "Still low"
+  tap with a `win` verdict, and any `harmful_loss`, are refused and retried once (AC-030.2);
+  `unsure` is allowed only when `can_ask` is true and needs a question. The
   judge may ask at most 2 questions per bet and never when the evidence is the weather record alone or
   the 24 h window has passed. Then **code** turns the verdict into points, multiplier, savings and the
   `lucky_win` flag.
@@ -646,9 +652,9 @@ code    win at 50 % odds, tap evidence: (100 - 50) x 0.5 = +25 points
 
 - **Purpose and when it runs.** Lets the person appeal a settled do-nothing bet once, with a new photo
   (REQ-023, flag `appeals`). It is the **same job** (`judge`, same schema, same checks) with another
-  prompt, `prompts/judge-appeal.v1.md`, which tells the model this is a second look and that it must
+  prompt, `prompts/judge-appeal.v2.md`, which tells the model this is a second look and that it must
   not defer to the first verdict. Decisions are logged with `job = judge` and
-  `prompt_version = judge-appeal.v1`.
+  `prompt_version = judge-appeal.v2`.
 - **Input.** As for the judge, plus an `appeal` object: the first verdict, its reason and how the first
   judgement knew. The evidence is the new photo (with the before photo when the card has one); the
   recorded-weather snapshot of the first settlement is reused. `can_ask` is always false.

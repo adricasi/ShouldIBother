@@ -6,12 +6,12 @@ import {
   type DecisionRecord,
   type GemmaFacts,
 } from "../../../src/backtest/harness/index.js";
-import type { OutcomeChore } from "../../../src/domain/outcomes.js";
+import type { BacktestChore } from "../../../src/domain/outcomes.js";
 import type { Band } from "../../../src/domain/bands.js";
 import { CATALOGUE, RULES } from "./support.js";
 
 let counter = 0;
-function record(over: Partial<DecisionRecord> & { chore?: OutcomeChore } = {}): DecisionRecord {
+function record(over: Partial<DecisionRecord> & { chore?: BacktestChore } = {}): DecisionRecord {
   counter += 1;
   return {
     v: 1,

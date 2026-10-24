@@ -1,13 +1,17 @@
 import {
   AppWindow,
   ArrowRight,
+  Armchair,
   Brush,
+  Bike,
   Camera,
+  Car,
   Check,
   Clock,
   CloudRain,
   Droplet,
   Leaf,
+  Droplets,
   Lock,
   MapPin,
   Paintbrush,
@@ -29,7 +33,10 @@ import type { IconName } from "./icon-name.js";
 /** The Lucide glyphs the app uses (design-handoff §2, Icons): one place to add or swap one. */
 const GLYPHS = {
   arrow: ArrowRight,
+  barrel: Droplets,
+  bike: Bike,
   bolt: Zap,
+  car: Car,
   camera: Camera,
   check: Check,
   clock: Clock,
@@ -39,6 +46,7 @@ const GLYPHS = {
   pin: MapPin,
   shirt: Shirt,
   sparkle: Sparkles,
+  terrace: Armchair,
   plant: Sprout,
   sun: Sun,
   thermo: Thermometer,
@@ -72,6 +80,10 @@ const CHORE_TYPE_ICONS: Readonly<Record<string, IconName>> = {
   balcony_sweep: "sweep",
   outdoor_paint: "paint",
   lawn_feed: "lawn",
+  car_rinse: "car",
+  bike_rinse: "bike",
+  terrace_rinse: "terrace",
+  rain_fill: "barrel",
 };
 
 /**

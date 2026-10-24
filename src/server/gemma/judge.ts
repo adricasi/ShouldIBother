@@ -8,9 +8,9 @@ import { loadPrompt } from "./prompts.js";
 import type { JobFailure, JobRunner } from "./runner.js";
 import { untrustedBlock } from "./untrusted.js";
 
-export const JUDGE_PROMPT = loadPrompt("judge", 2);
+export const JUDGE_PROMPT = loadPrompt("judge", 3);
 /** The prompt of an appeal (REQ-023): the same job and schema, told that this is a second look. */
-export const APPEAL_PROMPT = loadPrompt("judge-appeal", 1);
+export const APPEAL_PROMPT = loadPrompt("judge-appeal", 2);
 
 const DO_NOTHING_VERDICTS = ["win", "small_loss", "normal_loss", "harmful_loss"] as const;
 const DO_IT_VERDICTS = ["weather_would_have", "weather_would_not"] as const;
@@ -158,6 +158,31 @@ function allowedVerdicts(kind: JudgeInput["kind"]): readonly Verdict[] {
 }
 
 /**
+ * What a verdict may not be for this bet, or undefined (AC-030.2): "Still dirty", "Dirtier than
+ * before" and "Still low" taps can never be a win, and a chore with nothing to damage never has a
+ * `harmful_loss`. The runner retries once with this message.
+ */
+function verdictContradiction(input: JudgeInput, verdict: Verdict): string | undefined {
+  if (input.kind !== "do_nothing") {
+    return undefined;
+  }
+  if (verdict === "harmful_loss" && input.chore.noHarmfulLoss === true) {
+    return 'for this chore nothing can be damaged: "harmful_loss" is not allowed';
+  }
+  const { evidence } = input;
+  if (
+    verdict === "win" &&
+    evidence.kind === "tap" &&
+    input.chore.tapAnswers.some(
+      (answer) => answer.id === evidence.answerId && answer.isLoss === true,
+    )
+  ) {
+    return 'the person\'s answer is a loss for this chore: "win" is not allowed';
+  }
+  return undefined;
+}
+
+/**
  * Asks the judge for a verdict through the job runner (queue, deadline, retry once with the
  * validation error, decision log). A failure never produces a verdict: the caller keeps the bet
  * waiting for Gemma (AC-008.8). `JobQueueFullError` is thrown through; the caller answers "busy".
@@ -183,7 +208,7 @@ export async function judgeBet(runner: JobRunner, input: JudgeInput): Promise<Ju
           return 'status "ok" needs a verdict';
         }
         return allowed.includes(output.verdict)
-          ? undefined
+          ? verdictContradiction(input, output.verdict)
           : `for a bet of kind "${input.kind}" the verdict must be one of ${allowed.join(", ")}`;
       }
       if (!input.canAsk) {

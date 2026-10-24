@@ -150,6 +150,12 @@ function isOfferedYet(deps: LedgerDeps, choreType: ChoreType): boolean {
     case "laundry_tonight":
       // Tier 4 (Should): behind its flag, off by default (REQ-029).
       return deps.flags.laundryTonight;
+    case "car_rinse":
+    case "bike_rinse":
+    case "terrace_rinse":
+    case "rain_fill":
+      // The city rain bets (REQ-030): behind `rainChores`, "Coming later" until it is on.
+      return deps.flags.rainChores;
   }
 }
 

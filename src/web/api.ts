@@ -574,6 +574,17 @@ export const fetchToday = (): Promise<Today> => request("/api/today", todaySchem
 /** The chip for the laundry planner (flag `laundryPlanner`); it is not a chore of the quick route. */
 export const PLANNER_CHIP = "laundry_plan";
 
+/**
+ * The city rain bets (REQ-030): a card of one of these takes no before photo, only an after photo
+ * or a tap at settle time. The server refuses a before photo on them (a copy of the domain list).
+ */
+export const RAIN_CHORE_TYPES: readonly string[] = [
+  "car_rinse",
+  "bike_rinse",
+  "terrace_rinse",
+  "rain_fill",
+];
+
 export const createQuickCard = (choreType: string): Promise<Card> =>
   choreType === PLANNER_CHIP
     ? request("/api/laundry-plan", cardSchema, { method: "POST", body: {} })
@@ -625,7 +636,9 @@ export const onboardingSchema = z.object({
   /** The optional place label (AC-024.1, AC-026.3); absent when there is none. */
   place_label: z.string().optional(),
   household: z.object({
-    outdoorItems: z.array(z.enum(["balcony_plants", "clothes_line"])).optional(),
+    outdoorItems: z
+      .array(z.enum(["balcony_plants", "clothes_line", "car", "bike", "terrace", "rain_barrel"]))
+      .optional(),
     dryer: z.enum(["none", "heat-pump", "condenser", "vented"]),
     airConditioning: z.boolean(),
     heaterThisSeason: z.boolean(),

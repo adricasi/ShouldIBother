@@ -215,7 +215,9 @@ describe("sib demo: isolation, seed coverage and cleanup (AC-029.4)", () => {
       expect(verdicts.has(verdict), verdict).toBe(true);
     }
     const chores = new Set(slips.settled.map((bet) => bet.chore_type));
-    expect(chores).toEqual(new Set(["plants", "laundry_line", "laundry_tonight", "ac", "heater"]));
+    expect(chores).toEqual(
+      new Set(["plants", "laundry_line", "laundry_tonight", "ac", "heater", "car_rinse"]),
+    );
 
     const receipts = await Promise.all(
       slips.settled

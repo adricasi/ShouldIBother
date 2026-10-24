@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer that breaks the rule: a harmful loss for a chore with nothing to damage.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "harmful_loss",
+    "reason": "It is ruined.",
+    "evidence": ["Tapped: still dirty"]
+  }
+}

@@ -39,12 +39,29 @@ const OUTDOOR_CHOICES = [
     label: "A clothes line or drying rack",
     icon: "shirt",
   },
+  // The city rain bets' items (REQ-030): shown while the flag `rainChores` is on; no pricing effect.
+  { id: "car", title: "Car", label: "A car on the street", icon: "car" },
+  { id: "bike", title: "Bike", label: "A bike kept outside", icon: "bike" },
+  {
+    id: "terrace",
+    title: "Terrace",
+    label: "A terrace or outdoor furniture",
+    icon: "terrace",
+  },
+  {
+    id: "rain_barrel",
+    title: "Rain barrel",
+    label: "A rain barrel or bird bath",
+    icon: "barrel",
+  },
 ] as const satisfies readonly {
   id: string;
   title: string;
   label: string;
   icon: IconName;
 }[];
+
+const RAIN_ITEM_IDS: readonly string[] = ["car", "bike", "terrace", "rain_barrel"];
 
 const DRYER_CHOICES = [
   { id: "none", label: "No dryer" },
@@ -184,9 +201,11 @@ function Form({
   initialPlaceLabel,
   state,
   busy,
+  rainChores,
   onSave,
   onSkip,
 }: {
+  readonly rainChores: boolean;
   readonly initial: Onboarding["household"];
   /** The optional place label stored with the answers (AC-026.3). */
   readonly initialPlaceLabel: string;
@@ -247,22 +266,24 @@ function Form({
       <fieldset>
         <legend>What is outside your door?</legend>
         <div className="choice-grid">
-          {OUTDOOR_CHOICES.map((choice) => (
-            <Choice
-              key={choice.id}
-              type="checkbox"
-              layout="tile"
-              title={choice.title}
-              caption={choice.label}
-              icon={choice.icon}
-              checked={outdoor.includes(choice.id)}
-              onChange={(checked) => {
-                setOutdoor((current) =>
-                  checked ? [...current, choice.id] : current.filter((id) => id !== choice.id),
-                );
-              }}
-            />
-          ))}
+          {OUTDOOR_CHOICES.filter((choice) => rainChores || !RAIN_ITEM_IDS.includes(choice.id)).map(
+            (choice) => (
+              <Choice
+                key={choice.id}
+                type="checkbox"
+                layout="tile"
+                title={choice.title}
+                caption={choice.label}
+                icon={choice.icon}
+                checked={outdoor.includes(choice.id)}
+                onChange={(checked) => {
+                  setOutdoor((current) =>
+                    checked ? [...current, choice.id] : current.filter((id) => id !== choice.id),
+                  );
+                }}
+              />
+            ),
+          )}
         </div>
         <p className="meta">Used by upcoming features; nothing changes yet.</p>
       </fieldset>
@@ -506,6 +527,7 @@ export function OnboardingScreen({
             initialPlaceLabel={onboarding.place_label ?? ""}
             state={onboarding.state}
             busy={busy}
+            rainChores={flags["rainChores"] === true}
             onSave={onSave}
             onSkip={onSkip}
           />

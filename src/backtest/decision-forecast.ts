@@ -14,7 +14,7 @@ import {
   outcomeWindow,
   windowHourStarts,
   type HourlyWeather,
-  type OutcomeChore,
+  type BacktestChore,
   type TimeWindow,
 } from "../domain/outcomes.js";
 import { DAY1_LEAD_HOURS, type WeatherVariable } from "./open-meteo.js";
@@ -66,7 +66,7 @@ export class LookaheadError extends Error {
 }
 
 /** Forecast variables each chore's features need. */
-export const CHORE_FORECAST_VARIABLES: Readonly<Record<OutcomeChore, readonly WeatherVariable[]>> =
+export const CHORE_FORECAST_VARIABLES: Readonly<Record<BacktestChore, readonly WeatherVariable[]>> =
   {
     plants: ["precipitation", "precipitation_probability", "temperature_2m"],
     laundry_line: ["precipitation", "wind_speed_10m", "relative_humidity_2m", "sunshine_duration"],
@@ -126,7 +126,7 @@ export function qualityOf(hours: readonly ForecastHour[]): ForecastQuality {
 }
 
 export interface DecisionForecast {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly decisionAtMs: number;
   readonly window: TimeWindow;
@@ -181,7 +181,7 @@ function indexesOf(snapshot: WeatherSnapshot): {
 /** The chore's window for a decision date, using the snapshot's sunset for laundry tonight. */
 export function windowFor(
   snapshot: WeatherSnapshot,
-  chore: OutcomeChore,
+  chore: BacktestChore,
   date: string,
 ): TimeWindow {
   if (chore === "laundry_tonight") {
@@ -201,7 +201,7 @@ export function windowFor(
  */
 export function featureWindowFor(
   snapshot: WeatherSnapshot,
-  chore: OutcomeChore,
+  chore: BacktestChore,
   date: string,
 ): TimeWindow {
   const window = windowFor(snapshot, chore, date);
@@ -216,7 +216,7 @@ export function featureWindowFor(
  */
 export function decisionForecast(
   snapshot: WeatherSnapshot,
-  chore: OutcomeChore,
+  chore: BacktestChore,
   date: string,
   options: DecisionForecastOptions = {},
 ): DecisionForecast {

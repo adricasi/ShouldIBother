@@ -46,6 +46,10 @@ const TAP_FOR: Readonly<Record<ChoreType, Readonly<Partial<Record<DoNothingVerdi
   laundry_tonight: { win: "tonight_dry", small_loss: "tonight_damp", normal_loss: "tonight_wet" },
   ac: { win: "ac_fine", small_loss: "ac_warm" },
   heater: { win: "heater_fine", small_loss: "heater_cold" },
+  car_rinse: { win: "car_clean", normal_loss: "car_dirty" },
+  bike_rinse: { win: "bike_clean", normal_loss: "bike_dirty" },
+  terrace_rinse: { win: "terrace_rinsed", normal_loss: "terrace_dirty" },
+  rain_fill: { win: "fill_full", normal_loss: "fill_low" },
 };
 
 /** The sample household (made up; never `config/household.json`). */

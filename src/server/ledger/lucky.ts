@@ -1,3 +1,4 @@
+import { RAIN_CHORES } from "../../domain/outcomes.js";
 import type { Db } from "../db.js";
 
 export interface LuckyShare {
@@ -17,7 +18,10 @@ export function luckyWinShare(db: Db): LuckyShare {
   const row = db
     .prepare<[], { labelled: number; lucky: number | null }>(
       `SELECT COUNT(*) AS labelled, SUM(lucky_win) AS lucky FROM settlements
-       WHERE final = 1 AND verdict = 'win' AND lucky_win IS NOT NULL`,
+       WHERE final = 1 AND verdict = 'win' AND lucky_win IS NOT NULL
+         AND bet_id NOT IN (
+           SELECT b.id FROM bets b JOIN cards c ON c.id = b.card_id
+           WHERE c.chore_type IN (${RAIN_CHORES.map((chore) => `'${chore}'`).join(", ")}))`,
     )
     .get()!;
   const lucky = row.lucky ?? 0;

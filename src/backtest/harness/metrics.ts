@@ -5,7 +5,7 @@
  */
 
 import { BANDS, type Band } from "../../domain/bands.js";
-import { OUTCOME_CHORES, type OutcomeChore } from "../../domain/outcomes.js";
+import { BACKTEST_CHORES, type BacktestChore, type OutcomeChore } from "../../domain/outcomes.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import { snapshotFor, totalSavings, type SavingsCatalogue } from "../../domain/savings.js";
 
@@ -92,7 +92,7 @@ export interface PeriodSummary {
   readonly ruleFallbacks: Readonly<Record<string, number>>;
   readonly plantRiskDays: number;
   readonly savings: SavingsSummary;
-  readonly byChore: Readonly<Record<OutcomeChore, ChoreSummary>>;
+  readonly byChore: Readonly<Record<BacktestChore, ChoreSummary>>;
   readonly calibration: Calibration | NotApplicable;
   readonly toolCalls?: ToolCallSummary;
 }
@@ -196,7 +196,7 @@ export function summarisePeriod(
   const skips = records.filter((record) => record.action === "skip");
   const wins = skips.filter((record) => record.delivered);
   const byChore = Object.fromEntries(
-    OUTCOME_CHORES.map((chore) => {
+    BACKTEST_CHORES.map((chore) => {
       const own = records.filter((record) => record.chore === chore);
       const ownSkips = own.filter((record) => record.action === "skip");
       return [
@@ -210,7 +210,7 @@ export function summarisePeriod(
         },
       ];
     }),
-  ) as Record<OutcomeChore, ChoreSummary>;
+  ) as Record<BacktestChore, ChoreSummary>;
 
   // Net time subtracts 30 s per bet or do-it decision made in the app: every decision of an
   // app strategy except a "Do it now" alert (no bet action); the fixed routine uses no app.

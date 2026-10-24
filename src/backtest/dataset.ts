@@ -12,13 +12,13 @@
  */
 
 import {
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   IncompleteWeatherError,
   addDays,
   dateRange,
   madridWallTimeToEpochMs,
   outcomeLabel,
-  type OutcomeChore,
+  type BacktestChore,
   type OutcomeLabel,
 } from "../domain/outcomes.js";
 import {
@@ -56,7 +56,7 @@ export function splitOf(date: string, snapshotEndDate: string): Split | undefine
 }
 
 interface RowBase {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly decisionAtMs: number;
   readonly forecastQuality: ForecastQuality;
@@ -92,7 +92,7 @@ export type SkipReason =
   | "incomplete_forecast";
 
 export interface SkippedDay {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly reason: SkipReason;
 }
@@ -104,8 +104,8 @@ export interface Dataset {
   readonly holdout: readonly HoldoutRow[];
   readonly skipped: readonly SkippedDay[];
   /** Features left out per chore (unavailable in some training row), for the manifest. */
-  readonly droppedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
-  readonly usedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
+  readonly droppedFeatures: Readonly<Record<BacktestChore, readonly string[]>>;
+  readonly usedFeatures: Readonly<Record<BacktestChore, readonly string[]>>;
   readonly counts: DatasetCounts;
 }
 
@@ -170,7 +170,7 @@ export function buildDataset(snapshot: WeatherSnapshot): Dataset {
   const trainingDays: (RowBase & { split: "train" })[] = [];
   const holdoutRows: HoldoutRow[] = [];
 
-  for (const chore of OUTCOME_CHORES) {
+  for (const chore of BACKTEST_CHORES) {
     for (const date of dateRange(firstDate, snapshot.endDate)) {
       const skip = (reason: SkipReason): void => {
         skipped.push({ chore, date, reason });

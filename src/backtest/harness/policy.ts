@@ -4,7 +4,7 @@
  */
 
 import type { Band } from "../../domain/bands.js";
-import type { OutcomeChore } from "../../domain/outcomes.js";
+import type { BacktestChore } from "../../domain/outcomes.js";
 import type { Dryer } from "../../domain/savings.js";
 
 import type { Action } from "./types.js";
@@ -49,7 +49,7 @@ function month(date: string): number {
  * The fixed routine: the habit baseline (product.md, glossary). It never looks at a forecast.
  * Returns what the household does that day; "skip" means the routine leaves the chore undone.
  */
-export function fixedRoutineAction(chore: OutcomeChore, date: string): Action {
+export function fixedRoutineAction(chore: BacktestChore, date: string): Action {
   switch (chore) {
     case "plants":
       // Water every other day: the days in between are skips.
@@ -71,7 +71,7 @@ export function fixedRoutineAction(chore: OutcomeChore, date: string): Action {
   }
 }
 
-export const FIXED_ROUTINE_DESCRIPTION: Readonly<Record<OutcomeChore, string>> = {
+export const FIXED_ROUTINE_DESCRIPTION: Readonly<Record<BacktestChore, string>> = {
   plants: "water the pots every other day (even days from 1 Apr 2026); the days between are skips",
   laundry_line: "tumble dry every load (never line-dries, so never skips the dryer)",
   laundry_tonight: "brings the laundry in every evening (never leaves it out)",
@@ -85,12 +85,12 @@ export const FIXED_ROUTINE_DESCRIPTION: Readonly<Record<OutcomeChore, string>> =
  * use), so these are invented: the same dates as the fixed routine. Savings are credited only
  * inside them; a win outside is counted and reported apart.
  */
-export const SAVINGS_SEASON_DESCRIPTION: Readonly<Partial<Record<OutcomeChore, string>>> = {
+export const SAVINGS_SEASON_DESCRIPTION: Readonly<Partial<Record<BacktestChore, string>>> = {
   ac: "AC: 1 Jun to 30 Sep",
   heater: "heater: 1 Nov to 31 Mar",
 };
 
-export function inSavingsSeason(chore: OutcomeChore, date: string): boolean {
+export function inSavingsSeason(chore: BacktestChore, date: string): boolean {
   const m = month(date);
   switch (chore) {
     case "ac":

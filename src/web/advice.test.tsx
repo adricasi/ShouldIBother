@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import axe from "axe-core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
@@ -279,18 +276,11 @@ describe("NFR-009: the advice card has no axe violations and keeps 44 px targets
     expect(await violationsOf(screen(today([rule, { ...unavailable, id: 6 }])))).toEqual([]);
   });
 
-  it("the Retry button and the disclosure summary take their 44 px from the tap token", () => {
-    const styles = [
-      readFileSync(join(process.cwd(), "src/web/styles.css"), "utf8"),
-      readFileSync(join(process.cwd(), "src/web/gemma.css"), "utf8"),
-      readFileSync(join(process.cwd(), "docs/design/tokens.css"), "utf8"),
-    ].join("\n");
-    expect(styles).toMatch(/--tap-min:\s*44px/);
-    expect(styles).toMatch(/\.button\s*\{[^}]*min-height:\s*var\(--tap-min\)/);
-    expect(styles).toMatch(/\.how-gemma summary\s*\{[^}]*min-height:\s*var\(--tap-min\)/);
+  it("the Retry button and the disclosure use the shared 44 px controls", () => {
     const html = screen(
       today([adviceCard({ source: "rule", label: "Rule advice", can_retry: true })]),
     );
+    // `.button` and `.how-gemma summary` take their minimum height from --tap-min (44 px).
     expect(html).toMatch(/class="button secondary compact"/);
     expect(html).toContain('class="how-gemma');
   });

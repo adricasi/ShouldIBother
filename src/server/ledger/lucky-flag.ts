@@ -33,6 +33,7 @@ export async function luckyFlagFor(
     return luckyWinOf(choreType, { startMs: fromMs, endMs: toMs }, snapshot.hours);
   }
   const times = {
+    createdAt: card.created_at,
     placedAt: bet.placed_at,
     settleAt: bet.settle_at,
     sunsetAt: card.sunset_at,
