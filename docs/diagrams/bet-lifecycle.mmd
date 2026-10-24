@@ -1,0 +1,43 @@
+sequenceDiagram
+  autonumber
+  actor P as Person (phone)
+  participant S as Server (code)
+  participant G as Gemma (JobRunner + ModelClient)
+  participant W as Weather service
+  participant D as SQLite
+
+  P->>S: POST /api/cards "water the tomatoes"
+  S->>G: listener job
+  G-->>S: chores[] with label and chore_type
+  S->>D: card, rule band, backstop check, rule quote
+  S-->>P: card at once, "Gemma is thinking, rule odds"
+  opt flag safetyGuard
+    S->>G: safety job (an alert wins and ends the card)
+  end
+  S->>G: bookmaker job (rule band in the input)
+  G->>S: tool call get_forecast(hours_ahead)
+  S->>W: cached forecast
+  W-->>S: hourly rows
+  S-->>G: tool result inside untrusted delimiters
+  G-->>S: band, reason, settle_in_hours, disagreement_reason if 2+ bands from rule
+  S->>D: schema + checks, settle time clamped, backstop on final window, quote source gemma, decision row
+  alt Gemma offline, invalid, no tool call or past 45 s
+    S-->>P: labelled rule odds, Retry, betting allowed
+  end
+  P->>S: POST /api/bets (do nothing)
+  S->>D: bet locked: band, odds, payouts, rule band, model and prompt version (undo for 5 min)
+
+  Note over S,D: scheduler every 60 s marks the bet due at its settle time
+  S->>W: recorded weather for the bet window (modelled recent weather)
+  P->>S: after photo (x1.0) or one tap (x0.5)
+  S->>D: answer saved first in settle_progress
+  S->>G: judge job (answer, recorded weather, photos)
+  alt Gemma offline, busy, late or invalid
+    S->>D: status awaiting_gemma, retried every 2 min, the rule never settles
+  else verdict
+    G-->>S: verdict and reason (win, small, normal or harmful loss)
+    S->>D: points, multiplier, savings, lucky_win from outcome labels, decision row
+    S-->>P: PAID OUT receipt with Gemma's read
+  end
+  Note over S,D: no answer 24 h after settle time: judge decides from the weather record alone, win paid at x0.5
+  S->>D: Score: calibration by band for Gemma and for the rule, rule-odds bets excluded from Gemma

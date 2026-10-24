@@ -1,0 +1,20 @@
+flowchart TB
+  om["Open-Meteo<br/>Previous Runs day-1 lead, Historical Forecast, archive"]
+  snap["sib snapshot<br/>1 Apr 2026 to the archive's last day<br/>saved outside the repo"]
+  ds["sib dataset (offline)<br/>runs the real runBookmaker job on scripted data<br/>so the prompt cannot drift from the app"]
+  tgt["Targets: neighbour method, 30 nearest days,<br/>training months 1 Apr to 31 Aug only<br/>templated reasons and disagreement_reason"]
+  guard{"Household guard<br/>value from config/household.json in a row?"}
+  files["train.jsonl, holdout.jsonl, manifest.json<br/>fixed synthetic habit profile<br/>no hour of 1 Sep or later in training"]
+  train["training/ (Python, uv)<br/>QLoRA with TRL + PEFT, 4-bit<br/>stop Ollama first: one GPU user at a time"]
+  merge["merge adapter, GGUF with llama.cpp,<br/>Modelfile, import into Ollama as models.e4b-ft"]
+  smoke["20-prompt hold-out smoke test<br/>at least 19 valid answers"]
+  bt["sib backtest --strategies e4b,e4b-ft<br/>Sep to Oct hold-out, calibration with N, Brier score"]
+  flag["flag finetunedBookmaker routes only the bookmaker"]
+  stop["Build fails, nothing written"]
+
+  om --> snap --> ds --> tgt --> guard
+  guard -->|"yes"| stop
+  guard -->|"no"| files --> train --> merge --> smoke --> bt --> flag
+
+  classDef pending fill:#fde8e0,stroke:#b5472a,color:#1b1b1b;
+  class train,merge,smoke,bt,flag pending;

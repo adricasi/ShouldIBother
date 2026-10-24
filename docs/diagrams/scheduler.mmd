@@ -1,0 +1,10 @@
+flowchart TD
+  start(["Server start, then every 60 s"]) --> s1["1. Mark due<br/>open bets whose settle time has come become due"]
+  s1 --> s2["2. Recorded weather<br/>bets waiting for weather ask Open-Meteo again every 30 min"]
+  s2 --> s3["3. Settlement"]
+  s3 --> a["do-it decisions: judge from the weather alone"]
+  s3 --> b["answered bets that wait for Gemma:<br/>retry every 2 min"]
+  s3 --> c["no answer 24 h after the settle time:<br/>judge from the weather record, win at x0.5"]
+  s2 --> s4["4. Rescue (flag rescue)<br/>re-check the forecast of open bets every 30 min"]
+  note["Each step runs one pass at a time:<br/>a slow Open-Meteo or Gemma cannot stack passes.<br/>State lives in SQLite, so a restart resumes."]
+  s4 -.-> note

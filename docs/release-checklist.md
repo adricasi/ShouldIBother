@@ -72,9 +72,9 @@ counting the model download.
   time (nvm install && npm ci && npm run build)
   ```
 
-- [ ] Follow the README top to bottom: `config/models.json`, optional config copies, mirrored
+- [ ] Follow the README and [setup.md](setup.md) top to bottom: `config/models.json`, optional config copies, mirrored
       networking and firewall, `npm start`, scan the QR code with the phone. Do not use anything not
-      written in the README. Write down every step where you had to guess.
+      written there. Write down every step where you had to guess.
 - [ ] Stop the clock when the phone shows Today. Total time (excluding model download):
       `TODO(builder)` minutes. Target: 30 minutes or less.
 - [ ] The fresh clone uses its own data folder so the live data is not touched:
@@ -142,7 +142,7 @@ Result: `TODO(builder): what the rules page says, with the date you read it`
 - [ ] The model card states: base model and Gemma terms, the training data (public Barcelona
       weather outcomes and a fixed synthetic habit profile, never household data), the hold-out
       results with N, the licence and the link to this repository.
-- [ ] The repo link is in the README (section "Set up") and in the post, and the adapter's digest
+- [ ] The repo link is in the README (section "Quick start") and in the post, and the adapter's digest
       or revision is written next to it.
 - [ ] Close Q-11 in `docs/spec/product.md`.
 
@@ -160,8 +160,8 @@ Result: `TODO(builder): Hugging Face URL`
 - [ ] Every flag is `false` unless its feature is merged, checked on the real app and listed as
       done in `docs/spec/tasks.md`. For each flag that is `true`, write down the task that was
       checked: `TODO(builder)`.
-- [ ] The README flag table matches `config/flags.json` and `FLAG_NAMES` in
-      `src/server/flags.ts` (13 flags today).
+- [ ] The flag table in [reference.md](reference.md#feature-flags) matches `config/flags.json` and
+      `FLAG_NAMES` in `src/server/flags.ts` (15 flags today).
 - [ ] With the final flags, the app starts, and a flag that is off shows no UI entry point and
       exposes no route (AC-029.2). The `voice` flag stays off unless T-028 is merged.
 - [ ] The post and the README describe flagged features as "next", not as shipped (freeze rule in
@@ -234,7 +234,7 @@ Do this last, after sections 1 to 8, and before the post is published. Only the 
   gitleaks detect --source . --log-opts="--all"
   ```
 
-- [ ] README renders on GitHub (pairing section, flag table, screenshot placeholder replaced).
+- [ ] README renders on GitHub (screenshots and diagrams show, the Hacktoberfest section and the video link are filled in).
 - [ ] The README "Later commits" section has the freeze commit filled in.
 - [ ] GitHub, Settings, General, Danger zone, "Change repository visibility", Public.
 - [ ] Open the repository in a private browser window (not signed in): code, README, LICENSE and

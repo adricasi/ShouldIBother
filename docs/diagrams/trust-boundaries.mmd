@@ -1,0 +1,47 @@
+flowchart LR
+  subgraph untrusted["UNTRUSTED INPUT: enters at these points"]
+    direction TB
+    u1["Typed text, 500 chars<br/>and voice transcript"]
+    u2["Photos, 10 MB<br/>may contain text or EXIF"]
+    u3["Model output<br/>JSON, tool arguments"]
+    u4["Weather rows and tool results<br/>from Open-Meteo"]
+    u5["Unauthenticated HTTP<br/>other devices, web pages, DNS rebinding"]
+  end
+
+  subgraph guards["GUARDS (code)"]
+    direction TB
+    g1["Untrusted fencing: JSON-encoded, < escaped,<br/>inside untrusted_data delimiters"]
+    g2["Photo pipeline: magic-byte sniff, sharp decode,<br/>JPEG 1024 px, no metadata, random names"]
+    g3["zod schema + job checks, enums and short strings,<br/>one retry, React renders text only"]
+    g4["Weather client: five-host allowlist, https,<br/>no redirects, 1,000 calls a day, rounded coordinates"]
+    g5["Pairing token (128-bit, 10 min, hashed), session cookie,<br/>Host allowlist 421, Origin check 403, rate limit"]
+    g6["Gemma decides, code executes: points, savings,<br/>settle bounds, safety backstop, lucky_win"]
+  end
+
+  subgraph private["HOUSEHOLD-PRIVATE DATA"]
+    direction TB
+    p1[("Data folder outside the repo<br/>dir 0700, db 0600")]
+    p2["Ollama and llama.cpp<br/>127.0.0.1 only, proxy guard, no redirects"]
+  end
+
+  subgraph out["LEAVES THE MACHINE"]
+    direction TB
+    o1["Home mode: Open-Meteo only<br/>coordinates rounded to 2 decimals,<br/>plus the place search text when you press Search"]
+    o2["Hosted mode adds DigitalOcean inference:<br/>chores, habits, answers, forecast;<br/>photos only with SIB_DO_VISION=1"]
+    o3["Never: analytics, telemetry, logs with content,<br/>pairing tokens, the inference key"]
+  end
+
+  u1 --> g1
+  u2 --> g2
+  u3 --> g3
+  u4 --> g4
+  u5 --> g5
+  g1 --> g6
+  g2 --> g6
+  g3 --> g6
+  g4 --> g6
+  g5 --> g6
+  g6 --> p1
+  g6 --> p2
+  g6 --> o1
+  g6 -.-> o2

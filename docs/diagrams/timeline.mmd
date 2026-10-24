@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph one["Idea, spec and the first build"]
+    direction LR
+    a["20 Oct<br/>Idea brief, verdict Go<br/>scaffold (PR 1)"]
+    b["21 Oct<br/>Spec approved<br/>ADRs and task plan (PR 3)"]
+    c["22 Oct<br/>Project kit<br/>core loop, Gemma jobs, photos,<br/>settlement as stacked PRs<br/>planner, rescue, appeals"]
+    d["23 Oct<br/>Onboarding, split-flap board<br/>sib eval, sib snapshot, voice<br/>release README"]
+    a --> b --> c --> d
+  end
+  subgraph two["Late spec changes, freeze and release"]
+    direction LR
+    e["24 Oct, morning<br/>Presentation round, sib demo<br/>Gemma surfaces, training scripts<br/>rain bets and advice cards<br/>hosted mode (PR 52)"]
+    f["24 Oct, 14:00<br/>Feature freeze"]
+    g["24 to 25 Oct<br/>Deployment kit (PR 53)<br/>one-command release (PR 54)<br/>Caddy address fix (PR 55)"]
+    e --> f --> g
+  end
+  one --> two
+
+  classDef spec fill:#e3f0ea,stroke:#2d6a4f,color:#1b1b1b;
+  classDef build fill:#fdf3d0,stroke:#8a6d00,color:#1b1b1b;
+  classDef ship fill:#fde8e0,stroke:#b5472a,color:#1b1b1b;
+  class a,b spec;
+  class c,d,e build;
+  class f,g ship;

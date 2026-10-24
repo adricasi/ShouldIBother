@@ -1,0 +1,13 @@
+flowchart TD
+  a["Photo upload<br/>multipart, 10 MB max"] --> b["Code: sniff format, strip EXIF,<br/>resize to 1024 px, store as JPEG"]
+  b --> c["One 45 s deadline starts here<br/>shared by both jobs"]
+  c --> d["Inspector job<br/>Gemma, image"]
+  d -->|"failed, offline, invalid"| x1["Odds stay as they were + a note"]
+  d -->|"unsure + yes/no question"| x2["Odds stay, question shown as text"]
+  d -->|"ok + observations"| e["Bookmaker job<br/>same input plus photo_observations"]
+  e --> f["get_forecast tool call"]
+  f --> g{"Valid answer?<br/>schema, tool used,<br/>2+ bands rule"}
+  g -->|"no, a question,<br/>or unexplained disagreement"| x3["Odds without the photo stay"]
+  g -->|"yes"| h{"Backstop on the<br/>final window?"}
+  h -->|"heat, frost, storm"| i["Card becomes a Do it now alert"]
+  h -->|"clear"| j["New quote with_photo = 1<br/>What Gemma saw, odds before to after"]
