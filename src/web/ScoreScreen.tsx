@@ -8,6 +8,7 @@ import {
   formatNetDuration,
   formatPoints,
 } from "./format.js";
+import { SampleWatermark } from "./DemoBanner.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { Achievements, RankHero } from "./RankParts.js";
@@ -48,14 +49,21 @@ export function CalibrationChart({
   title,
   caption,
   bands,
+  sample = false,
 }: {
   readonly id: string;
   readonly title: string;
   readonly caption: string;
   readonly bands: readonly CalibrationBand[];
+  /** Sample data (`sib demo`): the chart carries a SAMPLE watermark. */
+  readonly sample?: boolean;
 }) {
   return (
-    <section aria-labelledby={`${id}-title`} className="calibration">
+    <section
+      aria-labelledby={`${id}-title`}
+      className={sample ? "calibration sample-marked" : "calibration"}
+    >
+      {sample ? <SampleWatermark /> : null}
       <h3 id={`${id}-title`}>{title}</h3>
       <table>
         <caption className="meta">{caption}</caption>
@@ -95,12 +103,20 @@ export function CalibrationChart({
   );
 }
 
-function SavingsTiles({ savings }: { readonly savings: Score["savings"] }) {
+function SavingsTiles({
+  savings,
+  sample,
+}: {
+  readonly savings: Score["savings"];
+  readonly sample: boolean;
+}) {
   return (
-    <section aria-labelledby="saved-title">
+    <section aria-labelledby="saved-title" className={sample ? "sample-marked" : undefined}>
+      {sample ? <SampleWatermark /> : null}
       <h2 id="saved-title" className="section-title">
         What the sky saved
       </h2>
+      {sample ? <p className="meta sample-label">Sample data</p> : null}
       <dl className="stat-tiles score-tiles">
         <div>
           <Icon name="check" />
@@ -186,7 +202,13 @@ export function calibrationHeadline(bands: readonly CalibrationBand[]): string |
     : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
 }
 
-function Calibration({ calibration }: { readonly calibration: Score["calibration"] }) {
+function Calibration({
+  calibration,
+  sample,
+}: {
+  readonly calibration: Score["calibration"];
+  readonly sample: boolean;
+}) {
   const { lucky_wins: lucky } = calibration;
   const headline = calibrationHeadline(calibration.gemma);
   return (
@@ -198,6 +220,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
         <p className="empty">{SCORE_EMPTY_TEXT}</p>
       ) : (
         <>
+          {sample ? <p className="meta sample-label">Sample data · fake model</p> : null}
           {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
@@ -209,6 +232,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             title="Gemma's odds"
             caption="Bets Gemma priced, under the band Gemma gave"
             bands={calibration.gemma}
+            sample={sample}
           />
           {calibration.fake_model_bets > 0 && calibration.gemma.every((band) => band.n === 0) ? (
             <p className="meta">
@@ -221,6 +245,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             title="The rule's odds"
             caption="Every settled bet, under the band the rule gave"
             bands={calibration.rule}
+            sample={sample}
           />
           <p className="meta">
             {lucky.share_pct === null
@@ -266,9 +291,9 @@ export function ScoreScreen({ score, flags, fab, notice, onReload }: ScoreScreen
             {score.rank === undefined ? null : (
               <RankHero rank={score.rank} total={score.points.total} />
             )}
-            <SavingsTiles savings={score.savings} />
+            <SavingsTiles savings={score.savings} sample={score.demo === true} />
             <JudgeLine judge={score.judge} />
-            <Calibration calibration={score.calibration} />
+            <Calibration calibration={score.calibration} sample={score.demo === true} />
             {score.achievements === undefined ? null : <Achievements items={score.achievements} />}
           </>
         )}

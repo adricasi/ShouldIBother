@@ -6,7 +6,8 @@ import { TestServer } from "./server.js";
 
 type Session = Awaited<ReturnType<ReturnType<Page["context"]>["storageState"]>>;
 
-const server = new TestServer();
+// The core journey runs with every flag off, whatever the defaults in config/flags.json are.
+const server = new TestServer({ flags: {} });
 /** The paired browser session, kept from the journey for the width checks (one token pairs 3 devices). */
 let session: Session | undefined;
 
@@ -133,11 +134,14 @@ test("capture, bet, settle at phone width", async ({ page }) => {
   server.makeBetsDue();
   await server.start();
   await page.goto(`${server.origin}/#/today`);
-  await page.reload();
 
-  // Settle by one tap.
+  // Settle by one tap. The page is read again until the restarted server's answer is on screen
+  // (a read that raced the restart shows a stale or empty Today); the check itself is the same.
   const due = page.getByRole("article", { name: /ready to settle/ });
-  await expect(due).toBeVisible({ timeout: 20_000 });
+  await expect(async () => {
+    await page.reload();
+    await expect(due).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(due.getByText("How did it turn out?")).toBeVisible();
   await expect(
     due.getByText("Gemma runs on your computer at home. Your photos never leave it."),
