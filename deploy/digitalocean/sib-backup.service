@@ -1,0 +1,14 @@
+[Unit]
+Description=Nightly backup of Should I Bother? (database copy and photos)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sib/backup.sh
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+TimeoutStartSec=30min

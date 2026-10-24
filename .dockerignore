@@ -1,0 +1,56 @@
+# Keep household data, secrets and large or irrelevant folders out of the build context (NFR-002).
+# The Dockerfile copies named paths only; this is the second layer.
+
+# version control and dependencies (rebuilt inside the image)
+.git
+.gitignore
+node_modules
+dist
+coverage
+
+# household-private data and real config (NFR-002)
+data
+data-snapshots
+.should-i-bother
+config/household.json
+config/server.json
+*.db
+*.sqlite
+*.sqlite-*
+*-wal
+*-shm
+*.jsonl
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets
+
+# model files, training, backtests, test output
+training
+models
+*.gguf
+*.safetensors
+backtest-runs
+checkpoints
+adapters
+test-results
+playwright-report
+
+# not needed at runtime
+.github
+.devcontainer
+.claude
+.agents
+.reviews
+deploy
+docs/*
+!docs/design
+docs/design/*
+!docs/design/tokens.css
+e2e
+evals
+test

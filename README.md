@@ -823,6 +823,10 @@ such below and is not part of the entry.
 and say how they are marked (for example a "Post-freeze" heading per commit or a tag). If there
 are none, say "None." and keep the sentence. -->
 
+## Hosted mode (optional)
+
+Away from home and without a GPU, the app can run on a small DigitalOcean server with Gemma from DigitalOcean's inference service (`SIB_MODE=hosted`). **That sends your chores, habits, answers and area forecast to DigitalOcean; photos stay on the server unless `SIB_DO_VISION=1`.** Home mode stays the default and keeps its promise. Step-by-step setup, costs and operations: [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md).
+
 ## Specification and decisions
 
 The specification is in [docs/spec](docs/spec/): product, requirements (with REQ and AC IDs),
