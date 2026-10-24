@@ -43,9 +43,12 @@ other than Open-Meteo.
 - [ ] Every name that is not the phone or the LAN is one of the four Open-Meteo hosts of the weather
       client's allowlist (`src/domain/open-meteo.ts`): `api.open-meteo.com`,
       `previous-runs-api.open-meteo.com`, `historical-forecast-api.open-meteo.com`,
-      `archive-api.open-meteo.com`. In a live cycle expect `api.open-meteo.com` and the archive or
-      historical host used for settlement. Anything else (telemetry, CDN, font host, update checks,
-      Ollama registry, Hugging Face) is a failure: find the cause and fix it before publishing.
+      `archive-api.open-meteo.com`. During the live capture, bet and settle cycle expect **only
+      `api.open-meteo.com`**: the forecast, and the recent hours used for settlement, both come from
+      it. The previous-runs, historical-forecast and archive hosts appear only when you run
+      `sib snapshot` or `sib backtest`; seeing one during the live cycle is a failure to explain.
+      Anything else (telemetry, CDN, font host, update checks, Ollama registry, Hugging Face) is a
+      failure: find the cause and fix it before publishing.
 - [ ] The host names in `src/domain/open-meteo.ts` carry an "UNVERIFIED" comment. Compare them with
       the names in the capture; if the capture shows a different Open-Meteo host, fix the constant,
       remove the comment and re-run the capture.

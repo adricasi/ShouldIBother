@@ -40,7 +40,7 @@ loop (T-001 spikes, T-010 live Gemma, T-012 training, T-014, T-019, T-030; see
 |---|---|
 | Job framework, prompts, schemas, checks, queue, deadlines, decision log, settlement, points, Score | Implemented and covered by tests that run on the fake model (`npm test`, no GPU, no network). |
 | Model output quality, latency, valid-JSON rate on the real E4B | **Not measured yet.** No number in this document is a real-model result. The 20-case sets and `sib eval` exist to produce them (section 11). |
-| Ollama wire format (`src/server/model/ollama-wire.ts`) | Written from Ollama's documented HTTP API. The file's header says UNVERIFIED until T-010 runs it against a real Ollama. |
+| Ollama wire format (`src/server/model/ollama-wire.ts`) | **UNVERIFIED.** Written from Ollama's documented HTTP API without a running Ollama; the file's header says UNVERIFIED until T-010 runs it against a real one. |
 | llama.cpp wire format for voice (`src/server/model/llamacpp-wire.ts`) | **UNVERIFIED**: a guess at the llama.cpp server API and at Gemma 4 audio support, listed item by item in the file header. |
 | Open-Meteo query and variable names (`src/backtest/open-meteo.ts`, `src/server/weather/open-meteo.ts`) | **UNVERIFIED**: written without access to the live API. |
 | Model tags and digests (`config/models.json`) | Empty (`"models": {}`) until the builder pins them. `sib start` refuses to start without a primary tag, unless `SIB_FAKE_MODEL=1`. |
@@ -717,7 +717,7 @@ interface ModelClient {
 
 | Implementation | File | Used for | Notes |
 |---|---|---|---|
-| `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
+| `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` (**UNVERIFIED**) | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
 | `LlamaCppAudioClient` | `llamacpp.ts`, `llamacpp-wire.ts` | `listener-audio` only | OpenAI-style `POST /v1/chat/completions` with the WAV as an `input_audio` part and a `response_format` JSON schema. Takes no tools. Health is `GET /health`. **Wire format UNVERIFIED.** |
 | `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev`, `--fake-model`, and `sib demo` (AC-029.4, T-032/T-034, in progress) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
 
@@ -914,7 +914,7 @@ result is reported whether or not it improves ([ADR-0006](adr/0006-python-traini
 ```bash
 npm run sib -- snapshot    # needs network: Open-Meteo -> <data folder>/data-snapshots/<place>_<start>_<end>/
 npm run sib -- dataset     # offline: snapshot -> <data folder>/datasets/<same name>/{train.jsonl,holdout.jsonl,manifest.json}
-# training/ (Python, uv)   # QLoRA on E4B, text only, then merge + GGUF + Ollama import   <- NOT IN THE REPO YET (T-012)
+# training/ (Python, uv)   # PLANNED (T-012): QLoRA on E4B, text only, then merge + GGUF + Ollama import; not written yet
 npm run sib -- backtest --strategies e4b,e4b-ft --splits holdout     # T-014: base vs fine-tuned
 ```
 
@@ -947,11 +947,12 @@ npm run sib -- backtest --strategies e4b,e4b-ft --splits holdout     # T-014: ba
      result and carries `meta.outcome_delivered` for evaluation only. `manifest.json` records the prompt
      version and hash, the `config/rules.json` hash, the snapshot end date, the habit profile and rows
      per chore and band, and the skips.
-3. **Training** (T-012, `training/`): QLoRA on Gemma 4 E4B, text only, with Unsloth or TRL + PEFT,
-   seeds and versions pinned with uv, then merge, GGUF conversion and import into Ollama with a
-   Modelfile as a pinned local tag. **This repository does not contain the training script yet**:
-   `training/` has the uv project, the lockfile and the synthetic habits file, and CI runs ruff and
-   pytest on a placeholder. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
+3. **Training** (T-012, `training/`) is **planned, not done**. Today `training/` holds only the uv
+   project, its lockfile, the synthetic habits file and a placeholder package with a placeholder test
+   (which is all CI's ruff and pytest run). The intended pipeline, being written separately: QLoRA on
+   Gemma 4 E4B, text only, with Unsloth or TRL + PEFT, seeds and versions pinned with uv, then merge,
+   GGUF conversion and import into Ollama with a Modelfile as a pinned local tag. Nothing from this
+   step exists yet, and no adapter has been trained. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
 4. **Serving.** Put the tag in `config/models.json` under `models.e4b-ft` and switch on the flag
    `finetunedBookmaker`. The flag routes **only the bookmaker** to the fine-tuned model
    (`jobModels.bookmaker` in `src/server/model/select.ts`); the listener, inspector, judge, safety
@@ -974,7 +975,7 @@ Until the builder's laptop has run the real model, treat these as open:
 - **Real-model numbers.** Valid-JSON rate, latency, tool-call use, calibration, Brier, the base vs
   fine-tuned comparison, the judge overrule rate and the photo ablation are all unmeasured. Nothing in
   this repository states a real result yet.
-- **Ollama wire format.** `ollama-wire.ts` assumes `POST /api/chat` with `format` as a JSON schema,
+- **Ollama wire format (UNVERIFIED).** `ollama-wire.ts` assumes `POST /api/chat` with `format` as a JSON schema,
   `tools`, `tool_calls` and `tool_name` fields, `GET /api/tags`, and `messages: []` for a load. T-010
   checks each against a real Ollama and fixes only that file.
 - **llama.cpp wire format (UNVERIFIED).** `llamacpp-wire.ts` guesses the endpoint

@@ -98,7 +98,9 @@ text and photos are untrusted data; and **settlement is always a Gemma verdict, 
 
 **Deep dive: [docs/gemma.md](docs/gemma.md)** covers each job (input, schema, checks, fallbacks,
 decision log, what you see in the app), the model-client boundary, settlement, safety, how Gemma is
-measured and how the bookmaker is fine-tuned, including what is still unverified.
+measured and how the bookmaker is to be fine-tuned, including what is still unverified: the Ollama
+and llama.cpp wire formats are both **UNVERIFIED** until they run against a real server, and the
+fine-tuning script is planned, not written.
 
 ## Architecture
 
@@ -629,8 +631,8 @@ Playwright needs a browser once: `npx playwright install chromium` (on WSL add
 `--with-deps`). The e2e suite is not part of CI yet. Tests and CI never touch a real model,
 the network or household data.
 
-The fine-tune lives in `training/` (Python 3.12, uv, ruff, pytest) and runs on the builder's GPU
-only. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
+`training/` (Python 3.12, uv, ruff, pytest) currently holds only the uv project and placeholders; the
+QLoRA fine-tune itself is planned (T-012) and will run on the builder's GPU only. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
 
 ## Project structure
 
@@ -650,7 +652,7 @@ config/        models, flags, rules, savings, server and household settings
 evals/         the 20-case sets for sib eval
 test/          Vitest tests; test/fixtures/gemma/ holds the synthetic fixtures of the fake model
 e2e/           the Playwright journey
-training/      the Python (uv) QLoRA fine-tune project
+training/      the Python (uv) project for the planned QLoRA fine-tune: uv project and placeholders today
 docs/          spec/ (product, requirements, design, tasks), adr/, gemma.md, architecture.md, images/, post/
 ```
 
@@ -661,12 +663,12 @@ Honest state at the time of writing (details in [docs/spec/tasks.md](docs/spec/t
 - **Built and tested on the fake model and fake weather:** capture, odds, photo flow, bets, settlement,
   points, savings, Score, the flagged features, the job runner, the clients, `sib eval`,
   `sib snapshot`, `sib dataset` and `sib backtest`. CI runs without a GPU, a model or a network.
-- **Not yet verified on the real stack** (these need the builder's laptop): the Ollama and llama.cpp
-  wire formats, the Open-Meteo query and host names, the real-model valid-JSON rate and latency
+- **Not yet verified on the real stack** (these need the builder's laptop): the Ollama wire format
+  (UNVERIFIED), the llama.cpp wire format (UNVERIFIED), the Open-Meteo query and host names, the real-model valid-JSON rate and latency
   (`sib eval`), the photo-judgement time, the live week of bets, the network capture, and voice.
   `config/models.json` has no model tags pinned yet.
 - **Not done yet:** the real snapshot and dataset on the laptop (T-031), the QLoRA training script
-  (T-012; `training/` is a placeholder), the base-vs-fine-tuned evaluation (T-014), the live backtest
+  (T-012; `training/` holds the uv project and placeholders, and the script is planned), the base-vs-fine-tuned evaluation (T-014), the live backtest
   run (T-019), photo evaluation on real Gemma (T-030), release readiness and the post assets
   (T-020, T-021). `sib flags` and `sib demo` are in progress (T-032/T-034).
 - **No real-model results are published in this repository yet.** Results will be written to
