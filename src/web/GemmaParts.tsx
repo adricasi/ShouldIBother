@@ -16,8 +16,11 @@ export function OddsWho({
   source,
   gemma,
   rule,
+  fake = false,
 }: {
   readonly source: "rule" | "gemma" | undefined;
+  /** The odds came from the fixture model: the label says so (AC-028.3). */
+  readonly fake?: boolean | undefined;
   readonly gemma: BandFact | null | undefined;
   readonly rule: BandFact | undefined;
 }) {
@@ -28,7 +31,9 @@ export function OddsWho({
     source === "gemma" && gemma != null && rule !== undefined && gemma.band !== rule.band;
   return (
     <span className="odds-who">
-      <span className="odds-owner">{source === "gemma" ? "Gemma's odds" : "Rule odds"}</span>
+      <span className="odds-owner">
+        {source === "gemma" ? `Gemma's odds${fake ? " (fake model)" : ""}` : "Rule odds"}
+      </span>
       {differs ? (
         <span className="odds-compare">
           {" "}
@@ -113,7 +118,10 @@ function DecisionFacts({
           <dd>{formatLatency(decision.latency_ms)}</dd>
         </div>
       </dl>
-      {decision.forecast === null || decision.forecast.length === 0 ? null : (
+      {decision.tool_mode !== null &&
+      (decision.forecast === null || decision.forecast.length === 0) ? (
+        <p className="meta">Forecast hours not stored for this decision.</p>
+      ) : decision.forecast === null || decision.forecast.length === 0 ? null : (
         <table className="decision-forecast">
           <caption className="meta">The forecast the tool returned to Gemma</caption>
           <thead>

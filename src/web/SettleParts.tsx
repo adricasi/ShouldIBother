@@ -107,7 +107,12 @@ export function ReceiptCard({
             <dd>
               {formatOdds(receipt.band_name, receipt.odds)}
               <br />
-              <OddsWho source={receipt.odds_source} gemma={receipt.gemma} rule={receipt.rule} />
+              <OddsWho
+                source={receipt.odds_source}
+                gemma={receipt.gemma}
+                rule={receipt.rule}
+                fake={receipt.fake_model}
+              />
             </dd>
           </div>
           <div>

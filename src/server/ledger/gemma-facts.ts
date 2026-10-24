@@ -3,7 +3,7 @@ import { nameOfBand, oddsOfBand } from "../../domain/bands.js";
 import { bandTable } from "../../domain/rules/index.js";
 import type { Db } from "../db.js";
 
-import type { BetRow, CardRow } from "./rows.js";
+import type { BetRow } from "./rows.js";
 
 /** A band with its words and odds, as the surfaces show it side by side (AC-028.3). */
 export interface BandFact {
@@ -100,11 +100,16 @@ function parseForecast(text: string | null): ForecastRow[] | null {
   }
 }
 
+/** Whether a model tag or a bet's `model_version` is the fixture model's (`fake-gemma`, `fake-demo`). */
+export function isFakeModel(tag: string | null): boolean {
+  return tag !== null && /^fake/i.test(tag);
+}
+
 function viewOf(row: DecisionRow): DecisionView {
   return {
     job: row.job,
     model: row.model,
-    fake: /^fake/i.test(row.model),
+    fake: isFakeModel(row.model),
     digest: shortDigest(row.model_digest),
     prompt_version: row.prompt_version,
     tool_mode: row.tool_mode,
@@ -126,25 +131,13 @@ export function decisionView(db: Db, decisionId: number | null): DecisionView | 
 }
 
 /**
- * The decision that priced a bet on Gemma's odds: the card's last valid pricing decision made
- * before the bet was placed. Null for a bet on rule odds, which Gemma did not set.
+ * The decision that priced a bet on Gemma's odds: the one its quote pointed at when the bet was
+ * placed (`bets.decision_id`, migration 0017), not whichever decision the card made last. Null
+ * for a bet on rule odds, which Gemma did not set, for a bet placed before the migration, and
+ * when the decision was deleted with its photo (AC-015.2).
  */
-export function pricingDecisionOf(
-  db: Db,
-  bet: BetRow,
-  card: Pick<CardRow, "id">,
-): DecisionView | null {
-  if (bet.odds_source !== "gemma") {
-    return null;
-  }
-  const row = db
-    .prepare<[number, number], DecisionRow>(
-      `SELECT ${COLUMNS} FROM gemma_decisions
-       WHERE card_id = ? AND job IN ('bookmaker', 'laundry-planner') AND valid = 1 AND created_at <= ?
-       ORDER BY id DESC LIMIT 1`,
-    )
-    .get(card.id, bet.placed_at);
-  return row === undefined ? null : viewOf(row);
+export function pricingDecisionOf(db: Db, bet: Pick<BetRow, "decision_id">): DecisionView | null {
+  return decisionView(db, bet.decision_id);
 }
 
 interface QuoteFacts {

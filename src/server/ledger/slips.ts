@@ -37,7 +37,9 @@ export function getSlips(deps: LedgerDeps) {
     "SELECT * FROM settlements WHERE bet_id = ? AND final = 1 ORDER BY id DESC LIMIT 1",
   );
   const cardOf = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?");
-  const settledWins = viewsOf(deps, settledRows).map((bet, index) => {
+  const settledWins = viewsOf(deps, settledRows).map((view, index) => {
+    // The decision that priced the bet is read once: it goes on the receipt, not on the bet too.
+    const { decision: pricing, ...bet } = view;
     const settlement = settlementOf.get(bet.id)!;
     return {
       at: settlement.settled_at,
@@ -56,6 +58,7 @@ export function getSlips(deps: LedgerDeps) {
           cardOf.get(bet.card_id)!,
           settlement,
           getProgress(deps.db, bet.id),
+          pricing,
         ),
       },
     };
@@ -71,7 +74,8 @@ export function getSlips(deps: LedgerDeps) {
   const cashOutOf = deps.db.prepare<[number], CashOutRow>(
     "SELECT * FROM cash_outs WHERE bet_id = ?",
   );
-  const cashedOut = viewsOf(deps, cashedOutRows).map((bet, index) => {
+  const cashedOut = viewsOf(deps, cashedOutRows).map((view, index) => {
+    const { decision: pricing, ...bet } = view;
     const cashOut = cashOutOf.get(bet.id)!;
     return {
       at: cashOut.cashed_out_at,
@@ -83,7 +87,13 @@ export function getSlips(deps: LedgerDeps) {
           evidence: "none",
           settled_at: new Date(cashOut.cashed_out_at).toISOString(),
         },
-        receipt: cashOutReceiptOf(deps, cashedOutRows[index]!, cardOf.get(bet.card_id)!, cashOut),
+        receipt: cashOutReceiptOf(
+          deps,
+          cashedOutRows[index]!,
+          cardOf.get(bet.card_id)!,
+          cashOut,
+          pricing,
+        ),
       },
     };
   });

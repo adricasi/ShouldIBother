@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { madridParts } from "../../domain/time.js";
 import type { ForecastHour } from "../../domain/weather.js";
+import { MAX_TOOL_RESULT_HOURS } from "../ledger/decisions.js";
 import type { ToolDefinition } from "../model/client.js";
 
 import { JobToolArgumentError, JobToolError, type JobTool } from "./runner.js";
@@ -76,7 +77,7 @@ export function formatForecast(hours: readonly ForecastHour[]): string {
 }
 
 /** The most hours kept with a decision (AC-028.4); the disclosure shows the first few. */
-export const MAX_KEPT_HOURS = 24;
+export const MAX_KEPT_HOURS = MAX_TOOL_RESULT_HOURS;
 
 /**
  * The hours of a tool result in the few fields the "How Gemma decided" disclosure shows, as JSON

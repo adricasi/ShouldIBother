@@ -113,9 +113,9 @@ export function placeBet(
       deps.db
         .prepare(
           `INSERT INTO bets (card_id, kind, band, odds, odds_source, reason, gemma_band, rule_band,
-             band_without_photo, model_version, prompt_version, savings_snapshot, placed_at,
-             undo_until, settle_at, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             band_without_photo, model_version, prompt_version, decision_id, savings_snapshot,
+             placed_at, undo_until, settle_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
         )
         .run(
           cardId,
@@ -129,6 +129,7 @@ export function placeBet(
           bandWithoutPhoto,
           modelVersion,
           decision?.prompt_version ?? null,
+          quote.source === "gemma" ? quote.decision_id : null,
           savingsSnapshotText(deps, card.chore_type),
           now,
           now + UNDO_WINDOW_MS,
@@ -236,7 +237,7 @@ export function viewsOf(deps: LedgerDeps, rows: readonly BetRow[]): BetViewWithD
     return {
       ...betView(row, card, table, now, getProgress(deps.db, row.id), rescueView(deps, row)),
       /** "How Gemma decided" on the odds of a bet on Gemma's odds (AC-028.4). */
-      decision: pricingDecisionOf(deps.db, row, card),
+      decision: pricingDecisionOf(deps.db, row),
     };
   });
 }

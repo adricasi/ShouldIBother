@@ -22,6 +22,7 @@ import { appealPaysHalf, canAppeal } from "./appeal-state.js";
 import {
   bandFact,
   decisionView,
+  isFakeModel,
   pricingDecisionOf,
   type BandFact,
   type DecisionView,
@@ -67,6 +68,8 @@ export interface Receipt {
   /** The rule's band for this bet, and Gemma's when it priced it: shown side by side (AC-028.3). */
   readonly rule: BandFact;
   readonly gemma: BandFact | null;
+  /** True when the odds came from the fixture model (AC-028.3 says so honestly). */
+  readonly fake_model: boolean;
   /** The reason locked on the bet when it was placed (AC-006.1). */
   readonly odds_reason: string;
   /**
@@ -138,6 +141,7 @@ function oddsFacts(deps: Pick<LedgerDeps, "rules">, bet: BetRow) {
     odds_source: bet.odds_source,
     rule: bandFact(table, bet.rule_band),
     gemma: bet.gemma_band === null ? null : bandFact(table, bet.gemma_band),
+    fake_model: isFakeModel(bet.model_version),
     odds_reason: bet.reason,
   };
 }
@@ -202,6 +206,11 @@ export function receiptOf(
   card: CardRow,
   settlement: SettlementRow,
   progress: ProgressRow | undefined,
+  /**
+   * The decision that priced the bet, when the caller loaded it already (Slips reads it once for
+   * the bet and its receipt); undefined: it is read here.
+   */
+  pricing?: DecisionView | null,
 ): Receipt {
   const chore = betChoreSpec(card.chore_type);
   const verdict = settlement.verdict as Verdict;
@@ -226,7 +235,7 @@ export function receiptOf(
     band_name: nameOfBand(bandTable(deps.rules), bet.band),
     ...oddsFacts(deps, bet),
     decisions: {
-      odds: pricingDecisionOf(deps.db, bet, card),
+      odds: pricing === undefined ? pricingDecisionOf(deps.db, bet) : pricing,
       verdict: decisionView(deps.db, settlement.decision_id),
     },
     points: settlement.points,
@@ -282,6 +291,8 @@ export function cashOutReceiptOf(
   bet: BetRow,
   card: CardRow,
   cashOut: CashOutRow,
+  /** The decision that priced the bet, when the caller loaded it already; undefined: read here. */
+  pricing?: DecisionView | null,
 ): Receipt {
   const chore = betChoreSpec(card.chore_type);
   return {
@@ -296,7 +307,10 @@ export function cashOutReceiptOf(
     odds: bet.odds,
     band_name: nameOfBand(bandTable(deps.rules), bet.band),
     ...oddsFacts(deps, bet),
-    decisions: { odds: pricingDecisionOf(deps.db, bet, card), verdict: null },
+    decisions: {
+      odds: pricing === undefined ? pricingDecisionOf(deps.db, bet) : pricing,
+      verdict: null,
+    },
     points: cashOut.points,
     total_points: pointsTotal(deps),
     multiplier: 1,

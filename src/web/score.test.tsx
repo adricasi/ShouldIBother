@@ -153,6 +153,7 @@ describe("Score screen (REQ-020)", () => {
   it("AC-020.2: the lucky-win share is reported separately and wins stay wins", () => {
     const html = screen(populated);
     expect(html).toContain("Lucky wins: 2 of 8 labelled wins (25%)");
+    expect(html).toContain("The share counts all wins, not only Gemma&#x27;s.");
     expect(html).toContain("Every win counts, lucky wins included.");
   });
 
@@ -301,6 +302,16 @@ describe("NFR-009: Score screen accessibility (axe)", () => {
   });
 });
 
+describe("Score says what the rule's figure is scored on (AC-028.3, AC-020.x)", () => {
+  it("puts the population note under the headline, and the rule's own band wording in it", () => {
+    const html = screen(populated);
+    expect(html).toContain(
+      "The rule is scored on all settled do-nothing bets; Gemma only on the bets it priced.",
+    );
+    expect(html).toMatch(/the rule&#x27;s own [a-z -]+ calls: (\d+%|too few bets to judge)/);
+  });
+});
+
 describe("The calibration headline (mockup 08, AC-020.3, AC-028.3)", () => {
   const band = (
     index: number,
@@ -324,16 +335,18 @@ describe("The calibration headline (mockup 08, AC-020.3, AC-028.3)", () => {
         [band(1, "unlikely", 35, 8, 50), band(3, "likely", 70, 9, 74), band(0, "x", 15, 3, null)],
         [band(1, "unlikely", 35, 5, 40), band(3, "likely", 70, 9, 66)],
       ),
-    ).toBe("When Gemma says likely, doing nothing worked 74% (9 bets); the rule: 66% (9 bets).");
+    ).toBe(
+      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule's own likely calls: 66% (9 bets).",
+    );
   });
 
   it("says so when the rule has too few bets in that band, or none", () => {
     const gemma = [band(3, "likely", 70, 9, 74)];
     expect(calibrationHeadline(gemma, [band(3, "likely", 70, 2, 50)])).toBe(
-      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule: too few bets to judge (2 bets).",
+      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule's own likely calls: too few bets to judge (2 bets).",
     );
     expect(calibrationHeadline(gemma, [])).toBe(
-      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule: too few bets to judge.",
+      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule's own likely calls: too few bets to judge.",
     );
   });
 

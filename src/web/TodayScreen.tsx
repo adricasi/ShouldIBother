@@ -271,7 +271,10 @@ function CardSlip({
         </div>
         <OddsTile odds={quote.odds} bandName={quote.band_name} />
       </div>
-      <p className="label-tag">{quote.label}</p>
+      <p className="label-tag">
+        {quote.label}
+        {quote.source === "gemma" && card.decision?.fake === true ? " (fake model)" : ""}
+      </p>
       <p>{quote.reason}</p>
       {quote.source === "gemma" ? (
         <BandsSideBySide

@@ -207,8 +207,8 @@ export function calibrationHeadline(
   const rule = ruleBands.find((band) => band.band === best.band);
   const ruleText =
     rule === undefined || rule.too_few || rule.actual_pct === null
-      ? `the rule: too few bets to judge${rule === undefined ? "" : ` (${bets(rule.n)})`}`
-      : `the rule: ${rule.actual_pct}% (${bets(rule.n)})`;
+      ? `the rule's own ${best.name} calls: too few bets to judge${rule === undefined ? "" : ` (${bets(rule.n)})`}`
+      : `the rule's own ${best.name} calls: ${rule.actual_pct}% (${bets(rule.n)})`;
   return `When Gemma says ${best.name}, doing nothing worked ${best.actual_pct ?? 0}% (${bets(best.n)}); ${ruleText}.`;
 }
 
@@ -231,7 +231,14 @@ function Calibration({
       ) : (
         <>
           {sample ? <p className="meta sample-label">Sample data · fake model</p> : null}
-          {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
+          {headline === undefined ? null : (
+            <>
+              <p className="calibration-headline">{headline}</p>
+              <p className="meta">
+                The rule is scored on all settled do-nothing bets; Gemma only on the bets it priced.
+              </p>
+            </>
+          )}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
             worked. Every win counts, lucky wins included. A band needs 5 bets before it says
@@ -260,7 +267,7 @@ function Calibration({
           <p className="meta">
             {lucky.share_pct === null
               ? "Lucky wins: no win has been labelled yet."
-              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above.`}
+              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above. The share counts all wins, not only Gemma's.`}
           </p>
         </>
       )}

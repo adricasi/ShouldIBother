@@ -89,7 +89,7 @@ export function WaitingLine({
         <span className="meta">
           {formatOdds(bet.band_name, bet.odds)} · settles {formatSettleTime(bet.settle_at)}
         </span>
-        <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} />
+        <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} fake={bet.fake_model} />
       </div>
       <p className="countdown">
         <span className="count-figure">{formatTimeLeft(settleAtMs - nowMs)}</span>{" "}
@@ -142,7 +142,7 @@ export function DueSlip({
           <span className="pill ready">Ready</span>
         ) : null}
       </div>
-      <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} />
+      <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} fake={bet.fake_model} />
       {settle === null ? null : <WeatherLine weather={settle.weather} />}
       {settle?.state === "answer_needed" ? (
         <>
@@ -236,7 +236,7 @@ export function SettledLine({
         <span className="meta">
           {formatOdds(bet.band_name, bet.odds)} · {bet.receipt.verdict_title}
         </span>
-        <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} />
+        <OddsWho source={bet.odds_source} gemma={bet.gemma} rule={bet.rule} fake={bet.fake_model} />
       </div>
       <span className={`line-points ${bet.result.points < 0 ? "minus" : "plus"}`}>
         {formatPoints(bet.result.points)}

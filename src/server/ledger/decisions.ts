@@ -1,5 +1,24 @@
 import type { Db } from "../db.js";
 
+/** The most forecast hours a decision keeps (migration 0016); the log enforces it, not only the tool. */
+export const MAX_TOOL_RESULT_HOURS = 24;
+
+/**
+ * The tool result as it is stored: a JSON list of at most 24 rows. Anything else (not JSON, not a
+ * list) is dropped rather than stored, so a caller's mistake cannot put free text in the log.
+ */
+export function boundToolResult(text: string | undefined): string | null {
+  if (text === undefined) {
+    return null;
+  }
+  try {
+    const rows = JSON.parse(text) as unknown;
+    return Array.isArray(rows) ? JSON.stringify(rows.slice(0, MAX_TOOL_RESULT_HOURS)) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface DecisionInput {
   readonly job: string;
   readonly cardId: number | null;
@@ -56,7 +75,7 @@ export function logDecision(db: Db, input: DecisionInput): number {
       input.retries,
       input.latencyMs,
       photoGone ? "the photo was deleted while the job ran" : (input.error ?? null),
-      input.toolResult ?? null,
+      boundToolResult(input.toolResult),
       input.createdAt,
     );
   return Number(result.lastInsertRowid);

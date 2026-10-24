@@ -15,6 +15,7 @@ import { householdProfile } from "./0013-household-profile.js";
 import { achievements } from "./0014-achievements.js";
 import { placeLabel } from "./0015-place-label.js";
 import { decisionToolResult } from "./0016-decision-tool-result.js";
+import { betDecision } from "./0017-bet-decision.js";
 
 /**
  * Every migration in order. A new migration is one file plus one line here; numbers are
@@ -36,4 +37,5 @@ export const MIGRATIONS: readonly Migration[] = [
   achievements,
   placeLabel,
   decisionToolResult,
+  betDecision,
 ];

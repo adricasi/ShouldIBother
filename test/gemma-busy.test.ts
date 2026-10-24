@@ -1,8 +1,11 @@
+import { readdirSync } from "node:fs";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { createCoreHarness, pair, uploadPhoto, type CoreHarness } from "./core-helpers.js";
+import { HoldableModel } from "./gemma-support.js";
 import { HOUR, seedBet } from "./support/settle.js";
 import { syntheticPhoto } from "./support/photos.js";
 
@@ -35,12 +38,25 @@ function fillQueue(h: CoreHarness): void {
 const count = (h: CoreHarness, table: string): number =>
   (h.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 
+/** Everything a refused request must leave alone: rows, decisions, quotes, and photo files. */
+const state = (h: CoreHarness) => ({
+  cards: h.db.prepare("SELECT * FROM cards").all(),
+  quotes: count(h, "quotes"),
+  decisions: count(h, "gemma_decisions"),
+  photos: count(h, "photos"),
+  files: readdirSync(h.photos.dir).sort(),
+  progress: count(h, "settle_progress"),
+  settlements: count(h, "settlements"),
+});
+
 describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma, before any state changes", () => {
   it("refuses listener capture with 503 'Gemma is busy' and makes no card", async () => {
     const h = await setup();
     fillQueue(h);
+    const before = state(h);
     const response = await h.post("/api/cards", { text: "water the plants" });
     expect(response.statusCode).toBe(503);
+    expect(state(h)).toEqual(before);
     expect(response.headers["content-type"]).toContain("application/problem+json");
     expect(response.json<{ title: string }>().title).toBe("Gemma is busy");
     expect(count(h, "cards")).toBe(0);
@@ -52,7 +68,9 @@ describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma,
     await h.idle();
     const before = h.db.prepare("SELECT * FROM cards WHERE id = ?").get(card.id);
     fillQueue(h);
+    const snapshot = state(h);
     expect((await h.post(`/api/cards/${card.id}/retry`, {})).statusCode).toBe(503);
+    expect(state(h)).toEqual(snapshot);
     expect(h.db.prepare("SELECT * FROM cards WHERE id = ?").get(card.id)).toEqual(before);
   });
 
@@ -65,8 +83,10 @@ describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma,
       ((await h.get(`/api/cards/${card.id}`)).json<CardJson>().gemma ?? { state: "" }).state,
     ).toBe("question");
     fillQueue(h);
+    const snapshot = state(h);
     const response = await h.post(`/api/cards/${card.id}/answer`, { yes: true });
     expect(response.statusCode).toBe(503);
+    expect(state(h)).toEqual(snapshot);
     expect(h.db.prepare("SELECT gemma_answers AS a FROM cards WHERE id = ?").get(card.id)).toEqual({
       a: "[]",
     });
@@ -77,8 +97,10 @@ describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma,
     const h = await setup();
     const betId = seedBet(h);
     fillQueue(h);
+    const snapshot = state(h);
     const response = await h.post(`/api/bets/${betId}/settle`, { answer: "moist" });
     expect(response.statusCode).toBe(503);
+    expect(state(h)).toEqual(snapshot);
     expect(count(h, "settle_progress")).toBe(0);
     expect(count(h, "settlements")).toBe(0);
     expect(h.db.prepare("SELECT status FROM bets WHERE id = ?").get(betId)).toEqual({
@@ -91,8 +113,11 @@ describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma,
     const card = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<CardJson>();
     await h.idle();
     fillQueue(h);
+    const snapshot = state(h);
     const response = await uploadPhoto(h, card.id, await syntheticPhoto());
     expect(response.statusCode).toBe(503);
+    expect(state(h)).toEqual(snapshot);
+    expect(readdirSync(h.photos.dir)).toEqual([]);
     expect(count(h, "photos")).toBe(0);
   });
 
@@ -111,6 +136,36 @@ describe("AC-013.6: 8 Gemma jobs queued or running refuse work that needs Gemma,
       note: "Gemma is busy with other requests.",
       can_retry: true,
     });
+  });
+
+  it("the real limit of 8 queued or running jobs refuses the 9th, with no mock", async () => {
+    const model = new HoldableModel();
+    harness = await createCoreHarness({ model, weatherProfile: FAKE_WEATHER_PROFILES.mild });
+    const h = harness;
+    await pair(h);
+    // Eight cards each queue a bookmaker job, and the model holds every one of them.
+    model.hold();
+    for (let card = 0; card < 8; card += 1) {
+      expect((await h.post("/api/cards/quick", { chore_type: "plants" })).statusCode).toBe(201);
+    }
+    expect(h.core.gemma.full).toBe(true);
+    const before = state(h);
+    const refused = await h.post("/api/cards", { text: "water the plants" });
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json<{ title: string }>().title).toBe("Gemma is busy");
+    expect(state(h)).toEqual(before);
+    // A ninth quick-chip card still gets its rule odds, and says Gemma is busy.
+    const ninth = (await h.post("/api/cards/quick", { chore_type: "plants" })).json<CardJson>();
+    expect(ninth.quote?.source).toBe("rule");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((await h.get(`/api/cards/${ninth.id}`)).json<CardJson>().gemma).toMatchObject({
+      state: "offline",
+      note: "Gemma is busy with other requests.",
+    });
+    // When the queue drains the refusal is gone.
+    model.release();
+    await h.idle();
+    expect((await h.post("/api/cards", { text: "water the plants" })).statusCode).toBe(201);
   });
 
   it("a bet whose answer is saved waits in 'Settle when Gemma is back' while the queue is full", async () => {

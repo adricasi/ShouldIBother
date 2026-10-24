@@ -113,6 +113,20 @@ describe("AC-028.4: How Gemma decided", () => {
     expect(bare).not.toContain("<table");
   });
 
+  it("says when the hours of a decision were not stored, only for a job that uses the tool", () => {
+    const old = renderToStaticMarkup(
+      <HowGemmaDecided decisions={[{ decision: { ...decision, forecast: null } }]} />,
+    );
+    expect(old).toContain("Forecast hours not stored for this decision.");
+    expect(old).not.toContain("<table");
+    const judge = renderToStaticMarkup(
+      <HowGemmaDecided
+        decisions={[{ decision: { ...decision, job: "judge", tool_mode: null, forecast: null } }]}
+      />,
+    );
+    expect(judge).not.toContain("not stored");
+  });
+
   it("formats latency in words", () => {
     expect(formatLatency(820)).toBe("820 ms");
     expect(formatLatency(1000)).toBe("1 s");
@@ -278,6 +292,22 @@ describe("waiting bets and receipts", () => {
     expect(html).toContain("Gemma: likely 70% · Rule: toss-up 50%");
     // The AC-007 line is unchanged.
     expect(html).toContain("Likely · 70% · settles");
+  });
+
+  it("AC-028.3: odds from the fixture model say so, on the slip, the waiting bet and the receipt", () => {
+    const fakeDecision = { ...decision, model: "fake-gemma", fake: true };
+    expect(screen(today([{ ...card, decision: fakeDecision }]))).toContain(
+      "Gemma&#x27;s odds (fake model)",
+    );
+    expect(waiting({ ...bet, fake_model: true })).toContain("Gemma&#x27;s odds (fake model)");
+    expect(waiting({ ...bet, fake_model: false })).not.toContain("(fake model)");
+    expect(
+      renderToStaticMarkup(
+        <ReceiptCard
+          receipt={{ ...winReceipt, odds_source: "gemma", rule: tossUp, fake_model: true }}
+        />,
+      ),
+    ).toContain("Gemma&#x27;s odds (fake model)");
   });
 
   it("AC-028.3: a bet on rule odds says Rule odds", () => {

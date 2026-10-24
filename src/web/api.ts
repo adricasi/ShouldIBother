@@ -233,6 +233,7 @@ export const receiptSchema = z.object({
   odds_source: z.enum(["rule", "gemma"]).optional(),
   rule: bandFactSchema.optional(),
   gemma: bandFactSchema.nullish(),
+  fake_model: z.boolean().optional(),
   odds_reason: z.string().optional(),
   /** "How Gemma decided": the decision that set the odds and the judge's verdict (AC-028.4). */
   decisions: z
@@ -310,6 +311,8 @@ export const betSchema = z.object({
   /** The rule's band for this bet, and Gemma's when it priced it (AC-028.3). */
   rule: bandFactSchema.optional(),
   gemma: bandFactSchema.nullish(),
+  /** True when the odds came from the fixture model (tests, the demo): said honestly (AC-028.3). */
+  fake_model: z.boolean().optional(),
   /** The decision that priced a bet on Gemma's odds (AC-028.4). */
   decision: decisionSchema.nullish(),
   reason: z.string(),
