@@ -9,6 +9,7 @@ import {
   offerNotice,
   type ChoreType,
 } from "../src/domain/chores.js";
+import { isRainChore } from "../src/domain/outcomes.js";
 import { madridParts, madridWallTime, nextMadridWallTime } from "../src/domain/time.js";
 import { forecastAgeLabel } from "../src/domain/weather.js";
 
@@ -23,8 +24,18 @@ function madridClock(epochMs: number): string {
 }
 
 describe("chore types (design.md, Gemma jobs: listener enum)", () => {
-  it("include plants, laundry_line, laundry_tonight, ac and heater", () => {
-    expect([...CHORE_TYPES]).toEqual(["plants", "laundry_line", "laundry_tonight", "ac", "heater"]);
+  it("include plants, laundry_line, laundry_tonight, ac and heater, then the four city rain bets", () => {
+    expect([...CHORE_TYPES]).toEqual([
+      "plants",
+      "laundry_line",
+      "laundry_tonight",
+      "ac",
+      "heater",
+      "car_rinse",
+      "bike_rinse",
+      "terrace_rinse",
+      "rain_fill",
+    ]);
     expect(isChoreType("laundry_line")).toBe(true);
     expect(isChoreType("laundry_plan")).toBe(false);
     expect(isChoreType("not_weather")).toBe(false);
@@ -191,7 +202,10 @@ describe("rule windows and settle times (design.md, Settle-time bounds)", () => 
         const where = `${type} at ${madridClock(now)}`;
         expect(settleAt, where).toBeGreaterThanOrEqual(earliestMs);
         expect(settleAt, where).toBeLessThanOrEqual(latestMs);
-        expect(chore.ruleWindow(now).toMs, where).toBe(settleAt);
+        if (!isRainChore(type)) {
+          // The rain bets look at a fixed 24 hours (or until 08:00), tested with REQ-030.
+          expect(chore.ruleWindow(now).toMs, where).toBe(settleAt);
+        }
         if (chore.offer?.(now).offered !== false) {
           // A chore that is not offered now (line-dry after 15:00) has no window to look at.
           expect(chore.ruleWindow(now).fromMs, where).toBeLessThanOrEqual(settleAt);

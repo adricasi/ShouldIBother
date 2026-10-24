@@ -2,6 +2,8 @@ import type { ChoreType } from "./chores.js";
 import {
   IncompleteWeatherError,
   isLuckyWin,
+  isRainChore,
+  rainWindow,
   outcomeLabel,
   outcomeWindow,
   type HourlyWeather,
@@ -10,6 +12,8 @@ import {
 import { madridDateOf } from "./time.js";
 
 interface BetTimes {
+  /** When the bet's card was made (`cards.created_at`); the city rain windows start there. */
+  readonly createdAt?: number;
   readonly placedAt: number;
   readonly settleAt: number;
   /**
@@ -26,6 +30,11 @@ export class MissingSunsetError extends Error {
 
 /** The chore's full fixed window for the day of the bet (laundry tonight: from its stored sunset). */
 function fixedWindowOf(chore: ChoreType, bet: BetTimes): TimeWindow {
+  if (isRainChore(chore)) {
+    // A rain bet's label is the rain over the window its rule looked at, from its card's creation
+    // (design.md, City rain bets); the card is made at or before the bet is placed.
+    return rainWindow(chore, bet.createdAt ?? bet.placedAt);
+  }
   if (chore === "laundry_tonight") {
     if (bet.sunsetAt === undefined || bet.sunsetAt === null) {
       throw new MissingSunsetError("laundry tonight needs the sunset stored on its card");

@@ -197,8 +197,13 @@ export function betView(
     settle_at: new Date(bet.settle_at).toISOString(),
     status: bet.status,
     payouts: payoutsAt(bet.odds),
+    /** True for the city rain bets: the judge never answers harmful_loss, so −150 is not shown. */
+    no_harmful_loss: chore?.noHarmfulLoss === true,
     // A do-it decision has no question: the judge decides from the recorded weather (AC-008.9).
-    tap_answers: bet.kind === "do_nothing" ? (chore?.tapAnswers ?? []) : [],
+    tap_answers:
+      bet.kind === "do_nothing"
+        ? (chore?.tapAnswers ?? []).map(({ id, label }) => ({ id, label }))
+        : [],
     settle: settleView(bet, progress, nowMs),
     // Only with the `rescue` flag on, and only for a bet that can still be folded (REQ-022).
     ...(rescue === undefined ? {} : { rescue }),
@@ -241,6 +246,8 @@ export function cardView(
     kind: card.kind,
     title: chore?.title ?? card.input_text,
     created_at: new Date(card.created_at).toISOString(),
+    /** True for the city rain bets: the slip shows the loss range without the harmful loss. */
+    no_harmful_loss: chore?.noHarmfulLoss === true,
     /** Set on a "Do it now" alert: the reason, and the card has no odds and no bet action (AC-012.1). */
     alert_reason: card.alert_reason,
     /** Set on a card without odds that explains why (AC-014.4, AC-016.4, AC-016.5). */

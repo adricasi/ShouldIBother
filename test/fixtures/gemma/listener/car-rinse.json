@@ -1,0 +1,12 @@
+{
+  "description": "Synthetic: one rain bet, rinsing the car.",
+  "content": {
+    "chores": [
+      {
+        "label": "wash the car",
+        "chore_type": "car_rinse",
+        "item": "car"
+      }
+    ]
+  }
+}

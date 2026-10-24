@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: the rain did not clean it.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "normal_loss",
+    "reason": "It is still dirty, so the chore had to be done anyway.",
+    "evidence": ["Tapped: still dirty"]
+  }
+}

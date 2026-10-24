@@ -4,7 +4,7 @@ import { JobRunner, type JobResult } from "./runner.js";
 import { loadPrompt } from "./prompts.js";
 import { untrustedBlock } from "./untrusted.js";
 
-export const LISTENER_PROMPT = loadPrompt("listener", 1);
+export const LISTENER_PROMPT = loadPrompt("listener", 2);
 
 /** The longest sentence the listener reads (AC-002.1). */
 export const MAX_CAPTURE_CHARS = 500;
@@ -18,6 +18,14 @@ export const LISTENER_CHORE_TYPES = [
   "laundry_plan",
   "ac",
   "heater",
+  "car_rinse",
+  "bike_rinse",
+  "terrace_rinse",
+  "rain_fill",
+  "windows_clean",
+  "balcony_sweep",
+  "outdoor_paint",
+  "lawn_feed",
   "other_weather",
   "not_weather",
 ] as const;

@@ -29,9 +29,10 @@
       "expect": ["ac"]
     },
     {
-      "id": "heater-evening",
-      "text": "turn the heater on this evening?",
-      "expect": ["heater"]
+      "id": "city-chores",
+      "note": "a rain bet, an advice chore and a plants bet",
+      "text": "wash the car, sweep the balcony and water the plants",
+      "expect": ["car_rinse+balcony_sweep+plants"]
     },
     {
       "id": "laundry-plan-week",
@@ -40,9 +41,9 @@
     },
     {
       "id": "car-wash",
-      "note": "weather matters but it is not one of the bettable chores",
+      "note": "rain can do it: a city rain bet",
       "text": "wash the car",
-      "expect": ["other_weather"]
+      "expect": ["car_rinse"]
     },
     {
       "id": "bill",
@@ -66,7 +67,7 @@
       "id": "five-chores",
       "note": "the most chores the listener may return",
       "text": "water the plants, hang the laundry, use the AC, call the plumber, wash the car",
-      "expect": ["plants+laundry_line+ac+not_weather+other_weather"]
+      "expect": ["plants+laundry_line+ac+not_weather+car_rinse"]
     },
     {
       "id": "injection",

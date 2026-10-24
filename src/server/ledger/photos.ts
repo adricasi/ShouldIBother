@@ -1,4 +1,5 @@
 import { LAUNDRY_PLAN } from "../../domain/chores.js";
+import { isRainChore } from "../../domain/outcomes.js";
 import type { Db } from "../db.js";
 import { HttpError } from "../problem.js";
 import { UnsupportedPhotoError, UNSUPPORTED_PHOTO_MESSAGE } from "../photos/process.js";
@@ -52,6 +53,14 @@ function assertCardTakesPhoto(db: Db, cardId: number): CardRow {
   }
   if (card.chore_type === LAUNDRY_PLAN) {
     throw new HttpError(409, "No photo on this card", "The laundry planner does not take a photo.");
+  }
+  if (isRainChore(card.chore_type)) {
+    // The inspector's observations (soil, leaves, laundry) do not fit these chores (REQ-030).
+    throw new HttpError(
+      409,
+      "No photo on this card",
+      "A city rain bet takes an after photo or a tap when it settles, not a photo now.",
+    );
   }
   const bet = db
     .prepare<[number], { id: number }>(

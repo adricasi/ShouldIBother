@@ -6,7 +6,13 @@
  * All wall-clock times are Europe/Madrid. Instants are epoch milliseconds (UTC).
  */
 
-import { HOUR_MS, MADRID_TIME_ZONE, addDays, madridWallTimeToEpochMs } from "./time.js";
+import {
+  HOUR_MS,
+  MADRID_TIME_ZONE,
+  addDays,
+  madridDateOf,
+  madridWallTimeToEpochMs,
+} from "./time.js";
 
 // The Europe/Madrid helpers live in `./time.ts`, the one implementation; re-exported here so the
 // backtest and its tests keep their imports.
@@ -20,14 +26,32 @@ export {
 } from "./time.js";
 export const TIME_ZONE = MADRID_TIME_ZONE;
 
-/** Chores that have an outcome label (listener `chore_type` values; `laundry_plan` has none). */
-export const OUTCOME_CHORES = [
+/**
+ * The chores of REQ-016: the backtest, the fine-tune dataset, the rule-threshold review and the
+ * calibration charts cover exactly these, so earlier reports stay comparable (AC-030.3). Each has a
+ * fixed decision time and window below.
+ */
+export const BACKTEST_CHORES = [
   "plants",
   "laundry_line",
   "laundry_tonight",
   "ac",
   "heater",
 ] as const;
+export type BacktestChore = (typeof BACKTEST_CHORES)[number];
+
+/**
+ * The city rain bets (REQ-030): rain does the chore. Their label is recorded rain over the bet's
+ * own window (created_at to created_at + 24 h, or to next day 08:00 for the barrel); they have no fixed decision time and stay out of the backtest.
+ */
+export const RAIN_CHORES = ["car_rinse", "bike_rinse", "terrace_rinse", "rain_fill"] as const;
+export type RainChore = (typeof RAIN_CHORES)[number];
+export function isRainChore(value: unknown): value is RainChore {
+  return RAIN_CHORES.some((chore) => chore === value);
+}
+
+/** Chores that have an outcome label (listener `chore_type` values; `laundry_plan` has none). */
+export const OUTCOME_CHORES = [...BACKTEST_CHORES, ...RAIN_CHORES] as const;
 export type OutcomeChore = (typeof OUTCOME_CHORES)[number];
 
 /** A wet hour has precipitation >= 0.2 mm (design.md, rule baseline). */
@@ -43,6 +67,13 @@ const AC_NIGHT_MIN_LIMIT_C = 23;
 const HEATER_MAX_TEMP_C = 18;
 const HEATER_SUNNY_MAX_TEMP_C = 15;
 const HEATER_SUNNY_MIN_SECONDS = 5 * 3600;
+/** Recorded rain over the bet's window that counts as the weather having done the chore (design.md, City rain bets). */
+export const RAIN_OUTCOME_MM: Readonly<Record<RainChore, number>> = {
+  car_rinse: 4,
+  bike_rinse: 4,
+  terrace_rinse: 2,
+  rain_fill: 1.5,
+};
 
 /** Hourly weather for one hour, starting at `timeMs`. `null` means "not available". */
 export interface HourlyWeather {
@@ -90,7 +121,7 @@ export class IncompleteWeatherError extends Error {
 // ---------------------------------------------------------------------------------------------
 
 /** Fixed backtest decision time per chore (Madrid wall clock). */
-export const DECISION_TIMES: Readonly<Record<OutcomeChore, string>> = {
+export const DECISION_TIMES: Readonly<Record<BacktestChore, string>> = {
   plants: "19:00",
   laundry_line: "09:00",
   laundry_tonight: "20:00",
@@ -99,7 +130,7 @@ export const DECISION_TIMES: Readonly<Record<OutcomeChore, string>> = {
 };
 
 /** The chore's decision instant on a Madrid date. */
-export function decisionTimeMs(chore: OutcomeChore, date: string): number {
+export function decisionTimeMs(chore: BacktestChore, date: string): number {
   return madridWallTimeToEpochMs(date, DECISION_TIMES[chore]);
 }
 
@@ -107,7 +138,7 @@ export function decisionTimeMs(chore: OutcomeChore, date: string): number {
  * The window the outcome label looks at, for a decision made on `date`.
  * `sunsetMs` is required for `laundry_tonight` (window starts at sunset).
  */
-export function outcomeWindow(chore: OutcomeChore, date: string, sunsetMs?: number): TimeWindow {
+export function outcomeWindow(chore: BacktestChore, date: string, sunsetMs?: number): TimeWindow {
   const next = addDays(date, 1);
   switch (chore) {
     case "plants":
@@ -136,6 +167,19 @@ export function outcomeWindow(chore: OutcomeChore, date: string, sunsetMs?: numb
         endMs: madridWallTimeToEpochMs(date, "22:00"),
       };
   }
+}
+
+/**
+ * The window a city rain bet's label looks at (design.md, City rain bets): the 24 hours after its
+ * card was made for the rinse bets, and until 08:00 the next day for the rain barrel. The rule
+ * baseline looks at the same window.
+ */
+export function rainWindow(chore: RainChore, createdAtMs: number): TimeWindow {
+  if (chore === "rain_fill") {
+    const next = addDays(madridDateOf(createdAtMs), 1);
+    return { startMs: createdAtMs, endMs: madridWallTimeToEpochMs(next, "08:00") };
+  }
+  return { startMs: createdAtMs, endMs: createdAtMs + 24 * HOUR_MS };
 }
 
 /**
@@ -366,6 +410,20 @@ export function heaterOutcome(hours: readonly HourlyWeather[]): OutcomeLabel {
   };
 }
 
+/**
+ * City rain bets: recorded rain over the bet's window reaches the chore's threshold (design.md,
+ * City rain bets): 4 mm for the car and the bike, 2 mm for the terrace, 1.5 mm for the barrel.
+ */
+export function rainOutcome(chore: RainChore, hours: readonly HourlyWeather[]): OutcomeLabel {
+  const rain = sum(requireField(hours, "precipitationMm"));
+  return {
+    chore,
+    delivered: rain >= RAIN_OUTCOME_MM[chore],
+    basis: "recorded_weather",
+    measures: { rainMm: rain },
+  };
+}
+
 /** Label a chore from recorded hours; `hours` may be longer than the window. */
 export function outcomeLabel(
   chore: OutcomeChore,
@@ -384,6 +442,11 @@ export function outcomeLabel(
       return acOutcome(windowHours);
     case "heater":
       return heaterOutcome(windowHours);
+    case "car_rinse":
+    case "bike_rinse":
+    case "terrace_rinse":
+    case "rain_fill":
+      return rainOutcome(chore, windowHours);
   }
 }
 

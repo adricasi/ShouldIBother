@@ -21,6 +21,16 @@ const JUDGE_SCENARIO_BY_ANSWER: Readonly<Record<string, string>> = {
   ac_warm: "small-loss",
   heater_fine: "ok",
   heater_cold: "small-loss",
+  car_clean: "rain-win",
+  car_dirty: "rain-dirty-loss",
+  car_dirtier: "rain-dirtier-loss",
+  bike_clean: "rain-win",
+  bike_dirty: "rain-dirty-loss",
+  bike_dirtier: "rain-dirtier-loss",
+  terrace_rinsed: "rain-win",
+  terrace_dirty: "rain-dirty-loss",
+  fill_full: "rain-win",
+  fill_low: "rain-dirty-loss",
   plan_dry: "ok",
   plan_damp: "small-loss",
   plan_wet: "normal-loss",
@@ -50,14 +60,20 @@ export const judgeScenarioFromAnswer: ScenarioSelector = (request) => {
     // A do-it decision is scored on the recorded weather: wet hours mean the weather had it.
     return /"wet_hours":[1-9]/.test(text) ? "do-it-would-have" : "do-it-would-not";
   }
+  // The answer is in the data block, not in the prompt, which quotes some labels (REQ-030).
+  const data = request.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => message.content)
+    .join("\n");
   for (const chore of [...Object.values(CHORES), LAUNDRY_PLAN_SPEC]) {
     for (const answer of chore.tapAnswers) {
-      if (text.includes(answer.label)) {
+      if (data.includes(answer.label)) {
         return JUDGE_SCENARIO_BY_ANSWER[answer.id] ?? "ok";
       }
     }
   }
-  return "ok";
+  // An after photo of a city rain bet (no tap to read): the rain did its job.
+  return data.includes('"chore":"let the rain') ? "rain-win" : "ok";
 };
 
 /**

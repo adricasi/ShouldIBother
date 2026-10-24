@@ -1,4 +1,5 @@
 import type { ChoreType } from "./chores.js";
+import { isRainChore, type BacktestChore, type RainChore } from "./outcomes.js";
 
 /** The dryer types of the household baseline (`config/household.json`, A-6). */
 export const DRYER_TYPES = ["heat-pump", "condenser", "vented", "none"] as const;
@@ -29,8 +30,15 @@ export interface SavingsFigure {
  * the household's dryer; every other chore has one figure.
  */
 export type SavingsCatalogue = Readonly<
-  Record<Exclude<ChoreType, "laundry_line">, SavingsFigure>
-> & { readonly laundry_line: Readonly<Record<Dryer, SavingsFigure>> };
+  Record<Exclude<BacktestChore, "laundry_line">, SavingsFigure>
+> & {
+  readonly laundry_line: Readonly<Record<Dryer, SavingsFigure>>;
+  /**
+   * The city rain bets' figures (REQ-030), attached when the app loads the `rain` rows of `config/savings.json`;
+   * the backtest loads `config/savings.json` alone, so its hashed catalogue never changes.
+   */
+  readonly rain?: Readonly<Record<RainChore, SavingsFigure>>;
+};
 
 /**
  * The figure written on a bet when it is placed (design.md, Points and savings): the catalogue
@@ -41,13 +49,31 @@ export interface SavingsSnapshot extends SavingsFigure {
   readonly chore_type: ChoreType;
 }
 
+function figureFor(
+  catalogue: SavingsCatalogue,
+  choreType: ChoreType,
+  baseline: { readonly dryer: Dryer },
+): SavingsFigure {
+  if (isRainChore(choreType)) {
+    const figure = catalogue.rain?.[choreType];
+    if (figure === undefined) {
+      throw new Error(
+        "The city rain savings (the rain rows of config/savings.json) are not loaded",
+      );
+    }
+    return figure;
+  }
+  return choreType === "laundry_line"
+    ? catalogue.laundry_line[baseline.dryer]
+    : catalogue[choreType];
+}
+
 export function snapshotFor(
   catalogue: SavingsCatalogue,
   choreType: ChoreType,
   baseline: { readonly dryer: Dryer },
 ): SavingsSnapshot {
-  const figure =
-    choreType === "laundry_line" ? catalogue.laundry_line[baseline.dryer] : catalogue[choreType];
+  const figure = figureFor(catalogue, choreType, baseline);
   return { version: 1, chore_type: choreType, ...figure };
 }
 

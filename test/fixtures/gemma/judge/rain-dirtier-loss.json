@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer: dusty rain left it dirtier than before (AC-030.2).",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "normal_loss",
+    "reason": "Dusty rain left it dirtier than before, so it needs doing anyway.",
+    "evidence": ["Tapped: dirtier than before", "Recorded rain 2 mm"]
+  }
+}

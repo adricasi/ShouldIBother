@@ -31,6 +31,11 @@ const catalogueSchema = z
     laundry_tonight: figureSchema,
     ac: figureSchema,
     heater: figureSchema,
+    // The city rain bets (REQ-030); optional so the backtest's older copies of the file still load.
+    car_rinse: figureSchema.optional(),
+    bike_rinse: figureSchema.optional(),
+    terrace_rinse: figureSchema.optional(),
+    rain_fill: figureSchema.optional(),
   })
   .strict()
   // Hanging laundry instead of the dryer replaces a step: time counts skipped steps only (AC-011.4).
@@ -41,12 +46,23 @@ const catalogueSchema = z
 
 export const DEFAULT_SAVINGS_PATH = `${CONFIG_DIR}savings.json`;
 
-/** Loads `config/savings.json`: the savings of one won bet per chore (REQ-011, design.md). */
-export function loadSavings(path: string = DEFAULT_SAVINGS_PATH): SavingsCatalogue {
-  const result = catalogueSchema.safeParse(readJsonFile(path));
+/**
+ * Loads `config/savings.json`: the savings of one won bet per chore (REQ-011, design.md). Called
+ * with no path (the app) it also returns the city rain figures (REQ-030) under `rain`; given a
+ * path (the backtest) it returns the five REQ-016 chores alone, so the catalogue the backtest
+ * report hashes stays as it was (AC-030.3).
+ */
+export function loadSavings(path?: string): SavingsCatalogue {
+  const file = path ?? DEFAULT_SAVINGS_PATH;
+  const result = catalogueSchema.safeParse(readJsonFile(file));
   if (!result.success) {
-    throw new Error(`Invalid savings config ${path}: ${result.error.message}`);
+    throw new Error(`Invalid savings config ${file}: ${result.error.message}`);
   }
-  const { plants, laundry_line, laundry_tonight, ac, heater } = result.data;
-  return { plants, laundry_line, laundry_tonight, ac, heater };
+  const { plants, laundry_line, laundry_tonight, ac, heater, car_rinse, bike_rinse } = result.data;
+  const { terrace_rinse, rain_fill } = result.data;
+  const base = { plants, laundry_line, laundry_tonight, ac, heater };
+  if (path !== undefined || !car_rinse || !bike_rinse || !terrace_rinse || !rain_fill) {
+    return base;
+  }
+  return { ...base, rain: { car_rinse, bike_rinse, terrace_rinse, rain_fill } };
 }

@@ -14,11 +14,11 @@ import {
   type WeatherSnapshot,
 } from "../../src/backtest/index.js";
 import {
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   addDays,
   dateRange,
   madridDateOf,
-  type OutcomeChore,
+  type BacktestChore,
 } from "../../src/domain/outcomes.js";
 import { syntheticSnapshot, withoutVariables } from "./support/synthetic-weather.js";
 
@@ -36,7 +36,7 @@ beforeAll(async () => {
   dataset = buildDataset(snapshot);
 });
 
-function skippedFor(result: Dataset, chore: OutcomeChore, reason: SkippedDay["reason"]): string[] {
+function skippedFor(result: Dataset, chore: BacktestChore, reason: SkippedDay["reason"]): string[] {
   return result.skipped.filter((s) => s.chore === chore && s.reason === reason).map((s) => s.date);
 }
 
@@ -48,7 +48,7 @@ describe("AC-019.1: train/hold-out split", () => {
   it("trains on 1 Apr-31 Aug and holds out 1 Sep to the archive's last day, with no date in both", () => {
     expect(snapshot.endDate).toBe("2026-10-09");
     expect(dataset.snapshotEndDate).toBe("2026-10-09");
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const trainDates = dataset.train.filter((r) => r.chore === chore).map((r) => r.date);
       const holdoutDates = dataset.holdout.filter((r) => r.chore === chore).map((r) => r.date);
       expect(trainDates.length).toBeGreaterThan(100);
@@ -60,7 +60,7 @@ describe("AC-019.1: train/hold-out split", () => {
   });
 
   it("ends the hold-out at the snapshot's last archive day", () => {
-    const last = (chore: OutcomeChore): string | undefined =>
+    const last = (chore: BacktestChore): string | undefined =>
       dataset.holdout.filter((r) => r.chore === chore).at(-1)?.date;
     expect(last("heater")).toBe("2026-10-09");
     expect(last("laundry_line")).toBe("2026-10-09");
@@ -83,7 +83,7 @@ describe("AC-019.1: train/hold-out split", () => {
   });
 
   it("orders rows by chore, then date", () => {
-    const keys = dataset.train.map((r) => `${OUTCOME_CHORES.indexOf(r.chore)}|${r.date}`);
+    const keys = dataset.train.map((r) => `${BACKTEST_CHORES.indexOf(r.chore)}|${r.date}`);
     expect(keys).toEqual([...keys].sort());
   });
 });
@@ -386,9 +386,9 @@ describe("NFR-012: reproducibility", () => {
   });
 
   it("covers every day in the periods, minus the reported skips", () => {
-    const rows = (list: readonly (TrainingRow | HoldoutRow)[], chore: OutcomeChore): string[] =>
+    const rows = (list: readonly (TrainingRow | HoldoutRow)[], chore: BacktestChore): string[] =>
       list.filter((r) => r.chore === chore).map((r) => r.date);
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const all = new Set([...rows(dataset.train, chore), ...rows(dataset.holdout, chore)]);
       const skipped = new Set(dataset.skipped.filter((s) => s.chore === chore).map((s) => s.date));
       for (const date of dateRange("2026-03-30", "2026-10-09")) {

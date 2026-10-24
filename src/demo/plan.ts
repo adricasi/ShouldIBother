@@ -160,6 +160,8 @@ export const HISTORY: readonly Row[] = [
   r(3, "19:30", "ac", 22, "L", win()),
   r(3, "19:55", "plants", "rainy", "L", win("photo")),
   r(2, "09:25", "laundry_line", "breezy", "VL", lose("small_loss")),
+  // A city rain bet (REQ-030): the rain rinses the car, one tap.
+  r(2, "10:30", "car_rinse", "rainy", "T", win()),
   r(2, "20:00", "plants", "downpour", "VL", win("photo")),
   r(2, "20:30", "plants", "rainy", "L", { how: "do_it", verdict: "weather_would_have" }),
   r(2, "20:45", "laundry_tonight", "muggy", "U", lose("normal_loss")),

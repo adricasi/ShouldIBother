@@ -1,5 +1,6 @@
 import { nameOfBand, oddsOfBand, type Band, type BandTable } from "../../domain/bands.js";
 import { LAUNDRY_PLAN, isChoreType, type ChoreType } from "../../domain/chores.js";
+import { isRainChore } from "../../domain/outcomes.js";
 import { PLAN_FORECAST_HOURS, planBetWindow } from "../../domain/laundry-plan.js";
 import { CASH_OUT_POINTS } from "../../domain/points.js";
 import { bandDroppedEnough } from "../../domain/rescue.js";
@@ -45,7 +46,7 @@ export function rescueRuleChore(choreType: string): ChoreType | undefined {
  */
 export function remainingWindow(
   bet: BetRow,
-  card: Pick<CardRow, "chore_type" | "sunset_at">,
+  card: Pick<CardRow, "chore_type" | "sunset_at"> & { readonly created_at?: number },
   nowMs: number,
 ): { fromMs: number; toMs: number } | null {
   const chore = rescueRuleChore(card.chore_type);
@@ -55,7 +56,13 @@ export function remainingWindow(
   const window =
     card.chore_type === LAUNDRY_PLAN
       ? planBetWindow(bet.settle_at)
-      : ruleWindowAt(chore, bet.placed_at, bet.settle_at, card.sunset_at ?? undefined);
+      : ruleWindowAt(
+          chore,
+          // A city rain bet's window starts when its card was made (design.md, City rain bets).
+          isRainChore(chore) ? (card.created_at ?? bet.placed_at) : bet.placed_at,
+          bet.settle_at,
+          card.sunset_at ?? undefined,
+        );
   const fromMs = Math.max(window.fromMs, nowMs);
   return fromMs < window.toMs ? { fromMs, toMs: window.toMs } : null;
 }
@@ -63,6 +70,7 @@ export function remainingWindow(
 interface CheckCandidate extends BetRow {
   readonly chore_type: string;
   readonly card_sunset_at: number | null;
+  readonly card_created_at: number;
   readonly location_lat: number | null;
   readonly location_lon: number | null;
 }
@@ -80,7 +88,7 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
   const now = deps.now();
   const due = deps.db
     .prepare<[number, number], CheckCandidate>(
-      `SELECT b.*, c.chore_type AS chore_type, c.sunset_at AS card_sunset_at,
+      `SELECT b.*, c.chore_type AS chore_type, c.sunset_at AS card_sunset_at, c.created_at AS card_created_at,
               c.location_lat AS location_lat, c.location_lon AS location_lon
        FROM bets b JOIN cards c ON c.id = b.card_id
        LEFT JOIN rescue_checks r ON r.bet_id = b.id
@@ -142,7 +150,11 @@ export async function runRescueChecks(deps: LedgerDeps): Promise<number> {
       }
       const window = remainingWindow(
         bet,
-        { chore_type: bet.chore_type, sunset_at: bet.card_sunset_at },
+        {
+          chore_type: bet.chore_type,
+          sunset_at: bet.card_sunset_at,
+          created_at: bet.card_created_at,
+        },
         checkedAt,
       );
       const chore = rescueRuleChore(bet.chore_type);

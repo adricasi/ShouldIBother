@@ -130,6 +130,31 @@ describe("REQ-002: typed capture through the Gemma listener", () => {
     expect(model.calls.filter((call) => call.job === "bookmaker").length).toBeGreaterThan(0);
   });
 
+  it("AC-030.1, AC-031.1: the listener knows the eight city chore types; with their flags off each is 'Coming later'", async () => {
+    const { h, model } = await setup();
+    model.setScenario("listener", "city-chores");
+    const { cards } = (
+      await capture(h, "wash the car, sweep the balcony and water the plants")
+    ).json<Captured>();
+    expect(cards.map((c) => [c.kind, c.chore_type, c.notice])).toEqual([
+      ["coming_later", "car_rinse", "Coming later"],
+      ["coming_later", "balcony_sweep", "Coming later"],
+      ["weather", "plants", null],
+    ]);
+    await h.idle();
+  });
+
+  it.each(["rain-chores", "advice-chores"])(
+    "AC-030.1, AC-031.1: the %s scenario is four valid listener answers",
+    async (scenario) => {
+      const { h, model } = await setup();
+      model.setScenario("listener", scenario);
+      const response = await capture(h, "the city chores");
+      expect(response.statusCode).toBe(201);
+      expect(response.json<Captured>().cards).toHaveLength(4);
+    },
+  );
+
   it("maps laundry_line to the line-dry card with its rule odds and a bookmaker run", async () => {
     const { h, model } = await setup(FAKE_WEATHER_PROFILES.mild);
     model.setScenario("listener", "laundry-line");
@@ -192,7 +217,7 @@ describe("REQ-002: typed capture through the Gemma listener", () => {
     const row = h.db
       .prepare<[], Record<string, unknown>>("SELECT * FROM gemma_decisions WHERE job = 'listener'")
       .get();
-    expect(row).toMatchObject({ prompt_version: "listener.v1", valid: 1, tool_mode: null });
+    expect(row).toMatchObject({ prompt_version: "listener.v2", valid: 1, tool_mode: null });
     expect(String(row?.["input_summary"])).not.toContain("garden");
   });
 

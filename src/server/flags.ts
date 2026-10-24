@@ -20,6 +20,8 @@ export const FLAG_NAMES = [
   "heater",
   "splitFlap",
   "voice",
+  "rainChores",
+  "adviceCards",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];

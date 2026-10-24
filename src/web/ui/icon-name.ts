@@ -1,7 +1,10 @@
 /** The names of the icons the app draws (the glyphs are mapped in `Icon.tsx`). */
 export type IconName =
   | "arrow"
+  | "barrel"
+  | "bike"
   | "bolt"
+  | "car"
   | "camera"
   | "check"
   | "clock"
@@ -11,6 +14,7 @@ export type IconName =
   | "pin"
   | "shirt"
   | "sparkle"
+  | "terrace"
   | "plant"
   | "sun"
   | "thermo"

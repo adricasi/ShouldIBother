@@ -4,7 +4,7 @@ import {
   DECISION_TIMES,
   HOUR_MS,
   IncompleteWeatherError,
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   acOutcome,
   addDays,
   dateRange,
@@ -22,7 +22,7 @@ import {
   selectWindowHours,
   windowHourStarts,
   type HourlyWeather,
-  type OutcomeChore,
+  type BacktestChore,
 } from "../../src/domain/outcomes.js";
 
 function hour(timeMs: number, overrides: Partial<HourlyWeather> = {}): HourlyWeather {
@@ -161,7 +161,7 @@ describe("decision times and windows (design.md, Outcome labels)", () => {
   });
 
   it("keeps every decision before its window ends by less than 24 hours", () => {
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const sunset = madridWallTimeToEpochMs("2026-07-15", "21:00");
       const window = outcomeWindow(chore, "2026-07-15", sunset);
       expect(window.endMs - decisionTimeMs(chore, "2026-07-15")).toBeLessThan(24 * HOUR_MS);
@@ -384,7 +384,7 @@ describe("label windows are half-open: hours just outside never count", () => {
   const sunset = madridWallTimeToEpochMs(day, "21:20");
 
   interface BoundCase {
-    chore: OutcomeChore;
+    chore: BacktestChore;
     expected: boolean;
     /** The window's hours; `index` is the position inside the window. */
     inside: (index: number) => Partial<HourlyWeather>;

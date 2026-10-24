@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
-import { OUTCOME_CHORES } from "../../domain/outcomes.js";
+import { BACKTEST_CHORES } from "../../domain/outcomes.js";
 
 import { STRATEGY_IDS, recordKey, type DecisionRecord } from "./types.js";
 
@@ -60,7 +60,7 @@ export const decisionRecordSchema = z
   .object({
     v: z.literal(1),
     strategy: z.enum(STRATEGY_IDS),
-    chore: z.enum(OUTCOME_CHORES),
+    chore: z.enum(BACKTEST_CHORES),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     split: z.enum(["train", "holdout"]),
     action: z.enum(["skip", "do_it"]),

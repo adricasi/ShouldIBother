@@ -20,7 +20,11 @@ import { createHash } from "node:crypto";
 
 import type { Band } from "../domain/bands.js";
 import { CHORES } from "../domain/chores.js";
-import { OUTCOME_CHORES, madridWallTimeToEpochMs, type OutcomeChore } from "../domain/outcomes.js";
+import {
+  BACKTEST_CHORES,
+  madridWallTimeToEpochMs,
+  type BacktestChore,
+} from "../domain/outcomes.js";
 import type { RulesConfig } from "../domain/rules/index.js";
 import { madridParts } from "../domain/time.js";
 import { migrate, openDatabase } from "../server/db.js";
@@ -135,7 +139,7 @@ export interface FinetuneRowMeta {
 export interface FinetuneRow {
   readonly id: string;
   readonly split: Split;
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly messages: readonly TemplateMessage[];
   readonly tools: typeof TEMPLATE_TOOLS;
@@ -162,7 +166,7 @@ interface ReasonTemplate {
   readonly verdicts: readonly [string, string, string, string, string];
 }
 
-const REASONS: Readonly<Record<OutcomeChore, ReasonTemplate>> = {
+const REASONS: Readonly<Record<BacktestChore, ReasonTemplate>> = {
   plants: {
     facts: (f) =>
       `${round1(f["rain_mm"])} mm of rain overnight, up to ${round1(f["max_temperature_c"])} °C`,
@@ -221,7 +225,7 @@ const REASONS: Readonly<Record<OutcomeChore, ReasonTemplate>> = {
 };
 
 /** The reason line, templated from the forecast values of the chore's window (not generated). */
-export function targetReason(chore: OutcomeChore, features: Features, band: Band): string {
+export function targetReason(chore: BacktestChore, features: Features, band: Band): string {
   const template = REASONS[chore];
   return `${template.facts(features)}, so ${template.verdicts[band]}`;
 }
@@ -243,7 +247,7 @@ export function targetDisagreement(
  * settle bounds, and the rule window (plants run to the settle time) stays what the prompt's rule
  * band was computed over.
  */
-export function targetSettleInHours(chore: OutcomeChore, decisionAtMs: number): number {
+export function targetSettleInHours(chore: BacktestChore, decisionAtMs: number): number {
   const hours = (CHORES[chore].ruleSettleAt(decisionAtMs) - decisionAtMs) / 3_600_000;
   return Math.floor(hours * 10 + 1e-9) / 10;
 }
@@ -392,7 +396,7 @@ export interface SplitCounts {
   readonly rows: number;
   /** Training: bands of the target. Hold-out: bands of the rule (it has no target). */
   readonly band_basis: "target" | "rule";
-  readonly by_chore: Readonly<Record<OutcomeChore, BandCounts>>;
+  readonly by_chore: Readonly<Record<BacktestChore, BandCounts>>;
   readonly skipped: Readonly<Record<RowSkipReason, number>>;
 }
 
@@ -431,8 +435,8 @@ export interface Manifest {
   /** Days with an outcome label that the T-011 dataset itself skipped, by reason. */
   readonly dataset_skips: Readonly<Record<string, number>>;
   readonly features: {
-    readonly used: Readonly<Record<OutcomeChore, readonly string[]>>;
-    readonly dropped: Readonly<Record<OutcomeChore, readonly string[]>>;
+    readonly used: Readonly<Record<BacktestChore, readonly string[]>>;
+    readonly dropped: Readonly<Record<BacktestChore, readonly string[]>>;
   };
   readonly files: Readonly<
     Record<
@@ -463,8 +467,8 @@ function countRows(
   skipped: readonly RowSkipReason[],
   basis: SplitCounts["band_basis"],
 ): SplitCounts {
-  const byChore = {} as Record<OutcomeChore, BandCounts>;
-  for (const chore of OUTCOME_CHORES) {
+  const byChore = {} as Record<BacktestChore, BandCounts>;
+  for (const chore of BACKTEST_CHORES) {
     const mine = rows.filter((row) => row.chore === chore);
     const bands = zeroBands();
     for (const row of mine) {
