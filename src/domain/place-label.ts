@@ -8,6 +8,11 @@ export const MAX_PLACE_LABEL_CODE_POINTS = 40;
  */
 const CONTROL = /[\p{Cc}\p{Cf}]/u;
 
+/** True when `text` holds a control or invisible character (the same test as the place label). */
+export function hasControlOrInvisibleCharacters(text: string): boolean {
+  return CONTROL.test(text);
+}
+
 export type PlaceLabelResult =
   | { readonly ok: true; readonly label: string | null }
   | { readonly ok: false; readonly problem: string };

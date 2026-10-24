@@ -22,6 +22,10 @@ import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client.js";
 import { PLANNER_FORECAST_DAYS } from "./weather/open-meteo.js";
+import { PersistentCallCounter } from "./weather/cache.js";
+import { FakeGeocoder } from "./weather/fake-geocoder.js";
+import { OpenMeteoGeocoder, type Geocoder } from "./weather/geocoding.js";
+import { OpenMeteoHttp } from "./weather/http.js";
 
 /**
  * Human-facing console output goes to stderr: stdout carries the JSON logs, so
@@ -110,10 +114,21 @@ export async function startServer(
           // The planner scores four days (REQ-021); with it off the request is what it was.
           ...(flags.laundryPlanner ? { forecastDays: PLANNER_FORECAST_DAYS } : {}),
         });
+    // The onboarding place search (AC-024.4): synthetic places with fake weather, so the demo and
+    // the e2e run need no network; otherwise Open-Meteo geocoding, counted like every other call.
+    const geocoder: Geocoder = useFakeWeather
+      ? new FakeGeocoder()
+      : new OpenMeteoGeocoder(
+          new OpenMeteoHttp({
+            counter: new PersistentCallCounter(runtime.db, now),
+            log: (entry) => appRef?.log.info(entry),
+          }),
+        );
     core = createCore({
       db: runtime.db,
       now,
       weather,
+      geocoder,
       model: selection.model,
       rules: loadRules(),
       household,

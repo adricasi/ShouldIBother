@@ -13,9 +13,14 @@ export const OPEN_METEO_HOSTS = {
   previousRuns: "previous-runs-api.open-meteo.com",
   historicalForecast: "historical-forecast-api.open-meteo.com",
   archive: "archive-api.open-meteo.com",
+  /** The onboarding place search (AC-024.4): the one host that receives text the person typed. */
+  geocoding: "geocoding-api.open-meteo.com",
 } as const;
 
-/** Every host the app may call (design.md, Weather service): the weather client's allowlist. */
+/**
+ * Every host the app may call (design.md, Weather service): the weather client's allowlist. The
+ * geocoding host is called by the place search only (`src/server/weather/geocoding.ts`).
+ */
 export const OPEN_METEO_ALLOWED_HOSTS: readonly string[] = Object.values(OPEN_METEO_HOSTS);
 
 export const ATTRIBUTION =

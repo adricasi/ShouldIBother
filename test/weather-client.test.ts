@@ -270,10 +270,11 @@ describe("AC-014.7: only the Open-Meteo hosts of the allowlist are called", () =
       sleep: () => Promise.resolve(),
     });
 
-  it("the allowlist is the four hosts of the design", () => {
+  it("the allowlist is the five hosts of the design, the geocoding host for the place search included", () => {
     expect([...OPEN_METEO_ALLOWED_HOSTS].sort()).toEqual([
       "api.open-meteo.com",
       "archive-api.open-meteo.com",
+      "geocoding-api.open-meteo.com",
       "historical-forecast-api.open-meteo.com",
       "previous-runs-api.open-meteo.com",
     ]);
@@ -293,7 +294,10 @@ describe("AC-014.7: only the Open-Meteo hosts of the allowlist are called", () =
     "https://u:p@api.open-meteo.com/v1/forecast",
     "https://api.open-meteo.com:8443/v1/forecast",
     "https://open-meteo.com/",
-    "https://geocoding-api.open-meteo.com/v1/search",
+    "http://geocoding-api.open-meteo.com/v1/search",
+    "https://geocoding-api.open-meteo.com.evil.example/v1/search",
+    "https://air-quality-api.open-meteo.com/v1/air-quality",
+    "https://nominatim.openstreetmap.org/search",
     "https://127.0.0.1:11434/api/chat",
     "file:///etc/passwd",
   ])("refuses %s before any request, and spends no budget", async (url) => {
