@@ -187,13 +187,21 @@ export class DigitalOceanClient implements ModelClient {
     return this.safe(`DigitalOcean answered ${status}${code === undefined ? "" : ` (${code})`}`);
   }
 
-  async chat(request: ChatRequest): Promise<ChatResponse> {
-    // Household photos and voice notes go to DigitalOcean only when the builder said so.
+  /** Household photos and voice notes go to DigitalOcean only when the builder said so. */
+  refuses(request: ChatRequest): string | undefined {
     if (request.images !== undefined && request.images.length > 0 && !this.vision) {
-      throw new ModelUnavailableError("photos are not sent to DigitalOcean (SIB_DO_VISION is 0)");
+      return "photos are not sent to DigitalOcean (SIB_DO_VISION is 0)";
     }
     if (request.audio !== undefined && request.audio.length > 0) {
-      throw new ModelUnavailableError("audio is never sent to DigitalOcean");
+      return "audio is never sent to DigitalOcean";
+    }
+    return undefined;
+  }
+
+  async chat(request: ChatRequest): Promise<ChatResponse> {
+    const refusal = this.refuses(request);
+    if (refusal !== undefined) {
+      throw new ModelUnavailableError(refusal);
     }
     const payload = await this.request(
       "POST",

@@ -430,6 +430,19 @@ export class Settler {
     this.deps.log({ event: "settle-photo-missing", bet_id: betId });
   }
 
+  /** Clears a saved photo answer without deleting the photo (vision is off): the bet asks again. */
+  private setAsidePhotoAnswer(betId: number): void {
+    this.deps.db
+      .prepare(
+        `UPDATE settle_progress
+         SET evidence = NULL, answer_id = NULL, photo_id = NULL, before_photo_id = NULL,
+             answered_at = NULL, failure = NULL, tried_at = NULL
+         WHERE bet_id = ? AND evidence = 'photo'`,
+      )
+      .run(betId);
+    this.deps.log({ event: "settle-photo-set-aside", bet_id: betId });
+  }
+
   private readPhoto(id: string | null): Buffer | undefined {
     if (id === null) {
       return undefined;
@@ -459,6 +472,17 @@ export class Settler {
       return { state: "awaiting_weather" };
     }
     const pastWindow = this.deps.now() >= bet.settle_at + ANSWER_WINDOW_MS;
+    if (this.deps.photosEnabled === false && progress?.evidence === "photo") {
+      // Hosted mode with vision off: the photo cannot go to the model, and trying would be a call
+      // that is refused every two minutes for ever. The photo answer is set aside (the photo stays
+      // on the server) and the bet is back to "answer needed" (a tap), or, 24 h after the settle
+      // time, judged on the recorded weather alone, like any unanswered bet (AC-008.7).
+      this.setAsidePhotoAnswer(bet.id);
+      progress = getProgress(db, bet.id);
+      if (!pastWindow) {
+        return { state: "answer_needed" };
+      }
+    }
     let evidence = this.evidenceOf(bet, progress);
     if (evidence === undefined) {
       this.dropMissingPhoto(bet.id, progress?.photo_id ?? null);

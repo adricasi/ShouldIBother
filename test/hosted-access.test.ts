@@ -10,6 +10,7 @@ const ORIGIN = "https://sib.example.com";
 const HOST = "sib.example.com";
 const DAY = 24 * 60 * 60 * 1000;
 const PROXY = "172.18.0.2"; // Caddy on the Compose network
+const PROXY_NET = "172.18.0.0/24";
 
 let harness: Harness;
 afterEach(async () => {
@@ -17,7 +18,13 @@ afterEach(async () => {
 });
 
 async function hosted(options: Parameters<typeof createHarness>[0] = {}): Promise<Harness> {
-  harness = await createHarness({ features: appRoutes, hostedOrigin: ORIGIN, ...options });
+  harness = await createHarness({
+    features: appRoutes,
+    hostedOrigin: ORIGIN,
+    // The deploy kit gives Caddy a fixed address on a fixed subnet and names it in SIB_TRUSTED_PROXY.
+    trustedProxy: [PROXY_NET],
+    ...options,
+  });
   return harness;
 }
 
@@ -86,6 +93,21 @@ describe("AC-032.3: the pairing page, the token in the URL fragment", () => {
     expect((await viaCaddy({ url: "/pair.css" })).headers["content-type"]).toContain("text/css");
   });
 
+  it("takes the token out of the address bar only after the pairing worked", async () => {
+    await hosted();
+    const script = (await viaCaddy({ url: "/pair.js" })).body;
+    expect(script.indexOf("replaceState")).toBeGreaterThan(script.indexOf("response.ok"));
+    expect(script.indexOf("replaceState")).toBeLessThan(script.indexOf("location.replace"));
+    expect(script.match(/replaceState/g)).toHaveLength(1);
+  });
+
+  it("tells an unpaired browser to run sib pair on the server", async () => {
+    await hosted();
+    const response = await viaCaddy({ url: "/api/today" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json<{ detail: string }>().detail).toContain("`sib pair` on the server");
+  });
+
   it("sends Referrer-Policy: no-referrer on every response", async () => {
     await hosted();
     for (const url of ["/pair", "/pair.js", "/api/today", "/nothing-here"]) {
@@ -151,9 +173,9 @@ describe("AC-032.3: the pairing page, the token in the URL fragment", () => {
     expect(malformed.statusCode).toBe(401);
   });
 
-  it("a link is good for three devices, then used up", async () => {
+  it("a link is good for the devices it was made for, then used up", async () => {
     await hosted();
-    const { token } = harness.store.issuePairingToken();
+    const { token } = harness.store.issuePairingToken(3);
     for (let device = 0; device < 3; device += 1) {
       expect((await post(token, {}, `203.0.113.${10 + device}`)).statusCode).toBe(204);
     }
@@ -252,30 +274,79 @@ describe("AC-032.3: the client address is the one the trusted proxy reports", ()
     expect((await viaCaddy({ url: "/api/today", client: "198.51.100.4" })).statusCode).toBe(401);
   });
 
-  it("believes forwarded headers from loopback and every private range, never from a public peer", async () => {
-    await hosted();
-    const seenFrom = async (peer: string, forwarded: string): Promise<boolean> => {
-      for (let attempt = 0; attempt < 11; attempt += 1) {
-        await harness.app.inject({
-          url: "/api/today",
-          remoteAddress: peer,
-          headers: { host: HOST, "x-forwarded-for": forwarded },
-        });
-      }
-      // True when the forwarded address, not the peer, was the one blocked.
-      const byForwarded = await harness.app.inject({
+  /** True when the forwarded address, not the peer, is the one the limiter blocks. */
+  async function limitedByForwarded(peer: string, forwarded: string): Promise<boolean> {
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      await harness.app.inject({
         url: "/api/today",
-        remoteAddress: "10.255.255.254",
+        remoteAddress: peer,
         headers: { host: HOST, "x-forwarded-for": forwarded },
       });
-      return byForwarded.statusCode === 429;
-    };
-    expect(await seenFrom("127.0.0.1", "203.0.113.21")).toBe(true);
-    expect(await seenFrom("10.1.2.3", "203.0.113.22")).toBe(true);
-    expect(await seenFrom("172.20.0.5", "203.0.113.23")).toBe(true);
-    expect(await seenFrom("192.168.5.5", "203.0.113.24")).toBe(true);
-    // A peer on the internet cannot choose its own address: its header is ignored.
-    expect(await seenFrom("198.51.100.77", "203.0.113.25")).toBe(false);
+    }
+    // Another peer (the proxy) now reports the same forwarded address.
+    const byForwarded = await harness.app.inject({
+      url: "/api/today",
+      remoteAddress: PROXY,
+      headers: { host: HOST, "x-forwarded-for": forwarded },
+    });
+    return byForwarded.statusCode === 429;
+  }
+
+  it("believes X-Forwarded-For only from the configured proxy addresses", async () => {
+    await hosted({ trustedProxy: [PROXY_NET, "127.0.0.1"] });
+    expect(await limitedByForwarded("172.18.0.9", "203.0.113.21")).toBe(true);
+    expect(await limitedByForwarded("127.0.0.1", "203.0.113.22")).toBe(true);
+    // Private and public peers that are not on the list cannot choose their address either.
+    expect(await limitedByForwarded("10.1.2.3", "203.0.113.23")).toBe(false);
+    expect(await limitedByForwarded("172.20.0.5", "203.0.113.24")).toBe(false);
+    expect(await limitedByForwarded("192.168.5.5", "203.0.113.25")).toBe(false);
+    expect(await limitedByForwarded("198.51.100.77", "203.0.113.26")).toBe(false);
+  });
+
+  it("spoofing case 1: with no trusted proxy configured, the header is ignored and the peer is the client", async () => {
+    await hosted({ trustedProxy: [] });
+    // A client that rotates the header cannot get a fresh allowance: it is still the one peer.
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      await harness.app.inject({
+        url: "/api/today",
+        remoteAddress: "198.51.100.77",
+        headers: { host: HOST, "x-forwarded-for": `203.0.113.${attempt}` },
+      });
+    }
+    const blocked = await harness.app.inject({
+      url: "/api/today",
+      remoteAddress: "198.51.100.77",
+      headers: { host: HOST, "x-forwarded-for": "203.0.113.200" },
+    });
+    expect(blocked.statusCode).toBe(429);
+    // And it cannot lock out someone else by claiming their address: the other peer is free.
+    const other = await harness.app.inject({
+      url: "/api/today",
+      remoteAddress: "198.51.100.88",
+      headers: { host: HOST, "x-forwarded-for": "198.51.100.77" },
+    });
+    expect(other.statusCode).toBe(401);
+  });
+
+  it("spoofing case 2: a peer outside the list cannot borrow a trusted address or hide behind one", async () => {
+    await hosted({ trustedProxy: ["172.18.0.2"] });
+    // Locking out the proxy's own forwarded client addresses is not possible from outside.
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      await harness.app.inject({
+        url: "/api/today",
+        remoteAddress: "198.51.100.77",
+        headers: { host: HOST, "x-forwarded-for": "203.0.113.50" },
+      });
+    }
+    const victim = await harness.app.inject({
+      url: "/api/today",
+      remoteAddress: "172.18.0.2",
+      headers: { host: HOST, "x-forwarded-for": "203.0.113.50" },
+    });
+    expect(victim.statusCode).toBe(401);
+    // The listed proxy is honoured, a neighbour on the same subnet is not.
+    expect(await limitedByForwarded("172.18.0.2", "203.0.113.51")).toBe(true);
+    expect(await limitedByForwarded("172.18.0.3", "203.0.113.52")).toBe(false);
   });
 
   it("a forged first entry in X-Forwarded-For does not hide the client", async () => {

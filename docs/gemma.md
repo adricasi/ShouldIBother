@@ -797,7 +797,11 @@ the tool turns of the history go to the service as plain text turns, so it is ne
 calling. Voice and `finetunedBookmaker` are forced off. The cap counts chat-completions requests per
 Madrid day in `model_calls` (migration 0019): from 80 % only `judge` verdicts call Gemma (the other
 jobs fail with `daily_limit`, which cards show as "Gemma's daily limit · rule odds"), at the cap the
-verdicts wait like Gemma offline, and after the reset waiting verdicts go first. The decision rows
+verdicts fail with `cap_reached` and wait for the next Madrid day, and after the reset the other jobs
+are held back until a verdict has been tried (at most ten minutes, and not while every waiting
+verdict is in its retry back-off). A request the client would refuse (a photo with vision off) is
+checked first and never counted. With vision off a saved photo answer is set aside and the bet asks
+for a tap. The decision rows
 keep the model ID the service reports and no digest. Hosted-mode Gemma is not E4B and never the
 fine-tune, so compare its decisions apart from home mode's (filter by `model`).
 

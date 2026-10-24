@@ -3,6 +3,7 @@ import type { Db } from "../db.js";
 
 import {
   ModelBusyError,
+  ModelCapReachedError,
   ModelDailyLimitError,
   ModelUnavailableError,
   type ChatRequest,
@@ -27,7 +28,10 @@ export interface CappedOptions {
   /** `SIB_DAILY_MODEL_CALLS`. */
   readonly cap: number;
   readonly log?: (entry: ModelCapLogEntry) => void;
-  /** How many bets wait for a Gemma verdict now; they go first after the reset. */
+  /**
+   * How many bets wait for a Gemma verdict and could be tried now (a bet in its retry back-off does
+   * not count); they go first after the reset.
+   */
   readonly waitingVerdicts?: () => number;
   /** Asks the settlement step to run now, when a call was held back for the waiting verdicts. */
   readonly runWaitingVerdicts?: () => void;
@@ -35,7 +39,12 @@ export interface CappedOptions {
 
 /** The job whose calls are the verdicts the last 20 % of the cap is reserved for. */
 export const VERDICT_JOB = "judge";
-/** The other jobs stop at this share of the cap. */
+/** The other jobs wait this long at most for the verdicts of a new day to be tried. */
+export const VERDICTS_FIRST_MAX_MS = 10 * 60 * 1000;
+/**
+ * The other jobs stop at this share of the cap. The limit is `floor(cap * 0.8)`: a cap of 10 gives
+ * 8 calls to every job and 2 to verdicts, a cap of 7 gives 5 and 2, a cap of 1 gives 0 and 1.
+ */
 export const OTHER_JOBS_SHARE = 0.8;
 
 interface DayRow {
@@ -59,6 +68,8 @@ interface DayRow {
 export class CappedModelClient implements ModelClient {
   private readonly log: (entry: ModelCapLogEntry) => void;
   private readonly softLimit: number;
+  /** When the verdicts-first hold began, per Madrid day: it ends after `VERDICTS_FIRST_MAX_MS`. */
+  private readonly holdSince = new Map<string, number>();
   /** Refusals are logged once per day and reason, so a busy day does not flood the log. */
   private readonly loggedRefusals = new Set<string>();
 
@@ -103,13 +114,19 @@ export class CappedModelClient implements ModelClient {
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    // A request the client would refuse anyway (a photo with vision off) costs nothing: it is not
+    // counted, so a bet that can never be sent cannot use up the day's calls.
+    const refusal = this.inner.refuses?.(request);
+    if (refusal !== undefined) {
+      throw new ModelUnavailableError(refusal);
+    }
     const { day, row } = this.today();
     const verdict = request.job === VERDICT_JOB;
     const { cap } = this.options;
     if (row.calls >= cap) {
       this.refuse(request, day, row.calls, "cap-reached");
       throw verdict
-        ? new ModelUnavailableError(`the daily cap of ${cap} model calls is used up`)
+        ? new ModelCapReachedError(`the daily cap of ${cap} model calls is used up`)
         : new ModelDailyLimitError(`the daily cap of ${cap} model calls is used up`);
     }
     if (!verdict && row.calls >= this.softLimit) {
@@ -118,7 +135,7 @@ export class CappedModelClient implements ModelClient {
         `${this.softLimit} of ${cap} daily model calls are used; the rest is for verdicts`,
       );
     }
-    if (!verdict && row.judge_calls === 0 && (this.options.waitingVerdicts?.() ?? 0) > 0) {
+    if (!verdict && row.judge_calls === 0 && this.holdForVerdicts(day)) {
       this.refuse(request, day, row.calls, "verdicts-first");
       this.options.runWaitingVerdicts?.();
       throw new ModelBusyError("verdicts that were waiting for Gemma go first");
@@ -131,6 +148,20 @@ export class CappedModelClient implements ModelClient {
       .run({ day, judge: verdict ? 1 : 0 });
     this.log({ event: "model-call", job: request.job, callsToday: row.calls + 1, cap });
     return this.inner.chat(request);
+  }
+
+  /**
+   * True while a verdict that could be tried now waits and the hold is younger than ten minutes.
+   * It ends when none is callable (all done, or all in back-off) or when the ten minutes are up.
+   */
+  private holdForVerdicts(day: string): boolean {
+    if ((this.options.waitingVerdicts?.() ?? 0) === 0) {
+      return false;
+    }
+    const now = this.options.now();
+    const since = this.holdSince.get(day) ?? now;
+    this.holdSince.set(day, since);
+    return now - since < VERDICTS_FIRST_MAX_MS;
   }
 
   async health(): Promise<ModelHealth> {

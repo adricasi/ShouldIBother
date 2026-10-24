@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { Allowlist } from "./allowlist.js";
 import { formatMadridTime } from "./banner.js";
+import { summarizeDevice } from "./device.js";
 import { PAIR_PAGE_HTML, PAIR_PAGE_PATHS, PAIR_PAGE_SCRIPT, PAIR_PAGE_STYLE } from "./pair-page.js";
 import type { FailureLimiter, SlidingWindowLimiter } from "./rate-limit.js";
 import { hashSecret } from "./secrets.js";
@@ -159,8 +160,13 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
   const now = store.now;
   const pairHint = hosted === undefined ? PAIR_HINT : HOSTED_PAIR_HINT;
 
-  /** The cookie value of a live session, or undefined. Hosted mode takes the `__Host-` cookie only. */
-  const liveSession = (request: FastifyRequest): string | undefined => {
+  /**
+   * The cookie value of a live session, or undefined; `renewed` says the hosted session was just
+   * given a full lifetime again. Hosted mode takes the `__Host-` cookie only.
+   */
+  const liveSession = (
+    request: FastifyRequest,
+  ): { value: string; renewed: boolean } | undefined => {
     const candidates =
       hosted === undefined
         ? [
@@ -168,13 +174,17 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
             ...readCookies(request.headers.cookie, SESSION_COOKIE),
           ]
         : readCookies(request.headers.cookie, SECURE_SESSION_COOKIE);
-    const valid = candidates
-      .slice(0, MAX_COOKIE_CANDIDATES)
-      .find((candidate) => store.isValidSession(candidate));
-    if (valid !== undefined) {
-      sessionKeys.set(request, hashSecret(valid));
+    for (const candidate of candidates.slice(0, MAX_COOKIE_CANDIDATES)) {
+      // Hosted mode checks and renews in one look at the session (a remembered device, AC-032.3).
+      const renewedUntil = hosted === undefined ? undefined : store.useSession(candidate);
+      const valid =
+        hosted === undefined ? store.isValidSession(candidate) : renewedUntil !== undefined;
+      if (valid) {
+        sessionKeys.set(request, hashSecret(candidate));
+        return { value: candidate, renewed: typeof renewedUntil === "number" };
+      }
     }
-    return valid;
+    return undefined;
   };
 
   /** True when the request came in through an https public origin (AC-001.10). */
@@ -210,13 +220,10 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
         limiter.recordFailure(client);
         return problem(reply, 401, "Unauthorized", pairHint);
       }
-    } else if (hosted !== undefined) {
+    } else if (session.renewed) {
       // A remembered device (AC-032.3): the session and its cookie are renewed when used, once a
       // day at most, so a phone in use is never signed out.
-      const renewedUntil = store.renewSession(session);
-      if (renewedUntil !== undefined) {
-        reply.header("set-cookie", sessionCookie(session, SESSION_TTL_MS / 1000, true));
-      }
+      reply.header("set-cookie", sessionCookie(session.value, SESSION_TTL_MS / 1000, true));
     }
 
     if (!SAFE_METHODS.has(request.method)) {
@@ -232,7 +239,10 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
     // No HEAD twin: a HEAD request must not use up a device slot or set a cookie.
     app.get("/pair", { config: { public: true }, exposeHeadRoute: false }, (request, reply) => {
       const { token } = request.query as { token?: unknown };
-      const session = typeof token === "string" ? store.pair(token) : null;
+      const session =
+        typeof token === "string"
+          ? store.pair(token, summarizeDevice(request.headers["user-agent"]))
+          : null;
       if (session === null) {
         limiter.recordFailure(request.ip);
         return problem(
@@ -302,7 +312,9 @@ function registerHostedPairing(app: FastifyInstance, deps: GuardDeps, hosted: Ho
     },
     (request, reply) => {
       const body = pairBody.safeParse(request.body);
-      const session = body.success ? store.pair(body.data.token) : null;
+      const session = body.success
+        ? store.pair(body.data.token, summarizeDevice(request.headers["user-agent"]))
+        : null;
       if (session === null) {
         limiter.recordFailure(request.ip);
         return problem(

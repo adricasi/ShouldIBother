@@ -10,7 +10,8 @@ import type { ChatRequest } from "./client.js";
  * the server. It calls the inference API once per check and says what works, so the builder knows
  * whether `SIB_TOOL_USE=native` and `SIB_DO_VISION=1` are safe. Nothing here is household data:
  * the prompts are fixed words, the image is a few synthetic pixels, and no database or data
- * folder is opened.
+ * folder is opened. Its calls are made by hand, outside the app, so they do not count against the
+ * daily cap (`SIB_DAILY_MODEL_CALLS`): four calls, once after a deploy.
  */
 
 export interface CheckResult {
@@ -38,10 +39,13 @@ const FORECAST_TOOL = {
   },
 } as const;
 
+/** The synthetic image is solid red; a model that sees it says one of these. */
+const RED_ANSWER = /red|pink|orange/i;
+
 /** Eight by eight pixels of one colour: nothing a person could be recognised in. */
 async function syntheticImage(): Promise<Uint8Array> {
   return sharp({
-    create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 60, b: 60 } },
+    create: { width: 8, height: 8, channels: 3, background: { r: 220, g: 20, b: 20 } },
   })
     .png()
     .toBuffer();
@@ -160,11 +164,14 @@ export async function runHostedChecks(
     await attempt(
       "image accepted",
       async () => {
-        await ask({
+        const answer = await ask({
           messages: [{ role: "user", content: "Name the main colour of this image in one word." }],
           images: [await syntheticImage()],
         });
-        return { ok: true, detail: "An image was accepted. SIB_DO_VISION=1 can be tried." };
+        // Accepting the request is not enough: a model that ignores the image still answers.
+        return RED_ANSWER.test(answer.content)
+          ? { ok: true, detail: "The image was seen (red). SIB_DO_VISION=1 can be tried." }
+          : { ok: false, detail: "The model answered without seeing the image." };
       },
       "Keep SIB_DO_VISION off.",
     ),

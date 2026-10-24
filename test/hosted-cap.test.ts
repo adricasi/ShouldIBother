@@ -8,9 +8,14 @@ import { z } from "zod";
 import { migrate, openDatabase, type Db } from "../src/server/db.js";
 import { JobRunner } from "../src/server/gemma/runner.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
-import { CappedModelClient, type ModelCapLogEntry } from "../src/server/model/capped.js";
+import {
+  CappedModelClient,
+  VERDICTS_FIRST_MAX_MS,
+  type ModelCapLogEntry,
+} from "../src/server/model/capped.js";
 import {
   ModelBusyError,
+  ModelCapReachedError,
   ModelDailyLimitError,
   ModelUnavailableError,
   type ChatRequest,
@@ -23,6 +28,7 @@ import { FAKE_WEATHER_PROFILES } from "../src/server/weather/fake.js";
 
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 import { FakeClock } from "./helpers.js";
+import { HOUR, seedBet, settlementOf, tap } from "./support/settle.js";
 
 /** A model that counts what reaches it. */
 class CountingModel implements ModelClient {
@@ -133,9 +139,10 @@ describe("AC-032.5: the daily cap on model calls (fake clock)", () => {
     }
     await model.chat(call("judge"));
     const failure = await model.chat(call("judge")).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ModelCapReachedError);
     expect(failure).toBeInstanceOf(ModelUnavailableError);
     expect(failure).not.toBeInstanceOf(ModelDailyLimitError);
-    await expect(model.chat(call("judge"))).rejects.toBeInstanceOf(ModelUnavailableError);
+    await expect(model.chat(call("judge"))).rejects.toBeInstanceOf(ModelCapReachedError);
     expect(inner.calls).toBe(5);
     const health = await model.health();
     expect(health.state).toBe("offline");
@@ -177,6 +184,36 @@ describe("AC-032.5: the daily cap on model calls (fake clock)", () => {
     expect(inner.calls).toBe(3);
   });
 
+  it("floor(cap * 0.8) is the limit of the other jobs: a cap of 7 leaves them 5 calls and verdicts 2", async () => {
+    setup();
+    const model = capped(7);
+    for (let index = 0; index < 5; index += 1) {
+      await model.chat(call("advisor"));
+    }
+    await expect(model.chat(call("advisor"))).rejects.toBeInstanceOf(ModelDailyLimitError);
+    await model.chat(call("judge"));
+    await model.chat(call("judge"));
+    await expect(model.chat(call("judge"))).rejects.toBeInstanceOf(ModelCapReachedError);
+    expect(inner.calls).toBe(7);
+  });
+
+  it("counts the 25-hour day when the clocks go back (25 Oct 2026) as one Madrid date", async () => {
+    setup();
+    const model = capped(100);
+    // 00:30 CEST on the 25th, and 23:30 CET the same date, 24 h later by the wall clock.
+    clock.current = Date.UTC(2026, 9, 24, 22, 30);
+    await model.chat(call("listener"));
+    clock.current = Date.UTC(2026, 9, 25, 22, 30);
+    await model.chat(call("listener"));
+    expect(db.prepare("SELECT day, calls FROM model_calls ORDER BY day").all()).toEqual([
+      { day: "2026-10-25", calls: 2 },
+    ]);
+    // The next date starts at 00:00 CET, i.e. 23:00 UTC.
+    clock.current = Date.UTC(2026, 9, 25, 23, 0);
+    await model.chat(call("listener"));
+    expect(model.callsToday()).toBe(1);
+  });
+
   it("logs the cap and the count, never content", async () => {
     setup();
     const model = capped(5);
@@ -203,8 +240,53 @@ describe("AC-032.5: the daily cap on model calls (fake clock)", () => {
   });
 });
 
+describe("AC-032.5: requests the client would refuse, and the verdicts-first hold", () => {
+  it("a request the inner client refuses is not counted: a photo with vision off never uses the cap", async () => {
+    setup();
+    const refusing: ModelClient = {
+      chat: () => Promise.reject(new Error("must not be reached")),
+      health: () => Promise.resolve({ state: "online" }),
+      refuses: (request) =>
+        request.images === undefined ? undefined : "photos are not sent to DigitalOcean",
+    };
+    const model = new CappedModelClient(refusing, { db, now: clock.now, cap: 10 });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await expect(model.chat({ ...call("judge"), images: [new Uint8Array([1])] })).rejects.toThrow(
+        "photos are not sent",
+      );
+    }
+    expect(model.callsToday()).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM model_calls").get()).toEqual({ n: 0 });
+  });
+
+  it("the hold ends when no verdict is callable any more (all done or in back-off)", async () => {
+    setup();
+    const model = capped(10);
+    waiting = 1;
+    await expect(model.chat(call("bookmaker"))).rejects.toBeInstanceOf(ModelBusyError);
+    waiting = 0; // the one verdict went into its retry back-off, or was settled
+    await model.chat(call("bookmaker"));
+    expect(inner.calls).toBe(1);
+  });
+
+  it("the hold ends after ten minutes even if a verdict still waits", async () => {
+    setup();
+    const model = capped(10);
+    waiting = 1;
+    await expect(model.chat(call("bookmaker"))).rejects.toBeInstanceOf(ModelBusyError);
+    clock.advance(VERDICTS_FIRST_MAX_MS - 1_000);
+    await expect(model.chat(call("bookmaker"))).rejects.toBeInstanceOf(ModelBusyError);
+    clock.advance(1_000);
+    await model.chat(call("bookmaker"));
+    expect(inner.calls).toBe(1);
+    // The next Madrid day holds again, for its own ten minutes.
+    clock.current += DAY;
+    await expect(model.chat(call("bookmaker"))).rejects.toBeInstanceOf(ModelBusyError);
+  });
+});
+
 describe("AC-032.5: what the jobs and cards do over the cap", () => {
-  it("the job runner reports daily_limit for a card job and unavailable for a verdict", async () => {
+  it("the job runner reports daily_limit for a card job and cap_reached for a verdict", async () => {
     setup();
     const model = capped(5);
     for (let index = 0; index < 4; index += 1) {
@@ -224,10 +306,63 @@ describe("AC-032.5: what the jobs and cards do over the cap", () => {
     expect(card).toMatchObject({ ok: false, failure: "daily_limit", calls: 1 });
     const verdict = await run("judge");
     // The verdict used the last call; "{}" does not fit the schema, and its retry is refused.
-    expect(verdict).toMatchObject({ ok: false, failure: "unavailable", calls: 2 });
+    expect(verdict).toMatchObject({ ok: false, failure: "cap_reached", calls: 2 });
     const next = await run("judge");
-    expect(next).toMatchObject({ ok: false, failure: "unavailable" });
+    expect(next).toMatchObject({ ok: false, failure: "cap_reached" });
     expect(inner.calls).toBe(5);
+  });
+});
+
+describe("AC-032.5: a verdict at the cap waits and says so", () => {
+  let harness: CoreHarness | undefined;
+  let dir: string | undefined;
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+    if (dir !== undefined) {
+      rmSync(dir, { recursive: true, force: true });
+      dir = undefined;
+    }
+  });
+
+  it("shows the daily-limit words on the settle screen, then settles first after midnight (Madrid)", async () => {
+    dir = mkdtempSync(join(tmpdir(), "sib-cap-verdict-"));
+    const path = join(dir, "sib.db");
+    const clockForCap = new FakeClock();
+    clockForCap.current = Date.UTC(2026, 9, 22, 21, 50); // 23:50 in Madrid
+    const capDb = openDatabase(path);
+    migrate(capDb, MIGRATIONS);
+    capDb
+      .prepare("INSERT INTO model_calls (day, calls, judge_calls) VALUES ('2026-10-22', 10, 4)")
+      .run();
+    const fakeModel = new FakeModelClient({ scenario: judgeScenarioFromAnswer });
+    const model = new CappedModelClient(fakeModel, { db: capDb, now: clockForCap.now, cap: 10 });
+    harness = await createCoreHarness({
+      dbPath: path,
+      clock: clockForCap,
+      model: model as unknown as FakeModelClient,
+    });
+    await pair(harness);
+    const betId = seedBet(harness, { settleOffsetMs: -2 * HOUR });
+    expect(await tap(harness, betId, "moist")).toMatchObject({
+      status: 202,
+      body: { state: "awaiting_gemma" },
+    });
+    expect(harness.db.prepare("SELECT failure FROM settle_progress").get()).toEqual({
+      failure: "cap_reached",
+    });
+    const slips = (await harness.get("/api/slips")).json<{
+      settle_now: { id: number; settle: { note: string } }[];
+    }>();
+    expect(slips.settle_now.find((bet) => bet.id === betId)?.settle.note).toBe(
+      "Gemma's daily limit is used up; this settles after midnight (Madrid).",
+    );
+    expect(fakeModel.calls).toHaveLength(0);
+
+    clockForCap.current += 20 * 60 * 1000; // 00:10 in Madrid, the next date
+    await harness.core.scheduler.tickSettlement();
+    expect(settlementOf(harness, betId)).toMatchObject({ evidence: "tap" });
+    capDb.close();
   });
 });
 

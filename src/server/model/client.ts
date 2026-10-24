@@ -62,6 +62,12 @@ export class ModelUnavailableError extends Error {
  */
 export class ModelDailyLimitError extends ModelUnavailableError {}
 
+/**
+ * Hosted mode's daily cap is used up and the call was a verdict: it waits for the next Madrid day,
+ * like Gemma offline, and the settle screen says so (AC-032.5).
+ */
+export class ModelCapReachedError extends ModelUnavailableError {}
+
 /** Hosted mode holds a call back so waiting verdicts run first after the reset (AC-032.5). */
 export class ModelBusyError extends ModelUnavailableError {}
 
@@ -90,6 +96,11 @@ export interface ModelClient {
   chat(request: ChatRequest): Promise<ChatResponse>;
   /** A cheap check that never loads the model or runs a generation; it must not throw. */
   health(): Promise<ModelHealth>;
+  /**
+   * Why this client will not take the request (a photo with vision off, audio), or undefined when
+   * it will. Optional; a wrapper that counts calls asks first, so a refused request costs nothing.
+   */
+  refuses?(request: ChatRequest): string | undefined;
   /** Frees the model's memory now (Ollama `keep_alive: 0`); optional, never throws. */
   unload?(): Promise<void>;
 }

@@ -4,6 +4,7 @@ import { migrate, openDatabase } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
 const upTo18 = MIGRATIONS.filter((migration) => migration.id <= 18);
+const upTo19 = MIGRATIONS.filter((migration) => migration.id <= 19);
 
 describe("migration 0019: the hosted daily model-call counter (AC-032.5, NFR-003)", () => {
   it("is number 19, after 0018", () => {
@@ -28,7 +29,7 @@ describe("migration 0019: the hosted daily model-call counter (AC-032.5, NFR-003
       quotes: db.prepare("SELECT * FROM quotes").all(),
       bets: db.prepare("SELECT * FROM bets").all(),
     };
-    expect(migrate(db, MIGRATIONS)).toEqual([19]);
+    expect(migrate(db, upTo19)).toEqual([19]);
     expect({
       cards: db.prepare("SELECT * FROM cards").all(),
       quotes: db.prepare("SELECT * FROM quotes").all(),
@@ -43,7 +44,7 @@ describe("migration 0019: the hosted daily model-call counter (AC-032.5, NFR-003
     expect(db.prepare("SELECT COUNT(*) AS n FROM model_calls").get()).toEqual({ n: 0 });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
     expect(db.pragma("foreign_key_check")).toEqual([]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, upTo19)).toEqual([]);
     db.close();
   });
 

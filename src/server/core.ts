@@ -193,6 +193,7 @@ export function createCore(deps: CoreDeps): Core {
     ...(deps.demo === true ? { demo: true } : {}),
     savings: deps.savings,
     photos: deps.photos,
+    ...(deps.deployment?.photos === false ? { photosEnabled: false } : {}),
     background: new BackgroundTasks(deps.onBackgroundError ?? (() => undefined)),
   };
   const settler = new Settler(ledger);

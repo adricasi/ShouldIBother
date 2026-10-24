@@ -30,10 +30,13 @@ export interface AuthOptions {
 export interface HostedAppOptions {
   /** Pairing POSTs allowed per client address and minute (AC-032.3). */
   readonly pairAttemptsPerMinute?: number;
+  /**
+   * The reverse proxy's addresses (IP or CIDR, `SIB_TRUSTED_PROXY`). `X-Forwarded-For` is believed
+   * only from a connection that comes from one of them; none (the default) means the socket's peer
+   * is the client and the header is ignored, so nobody can choose the address a limit counts.
+   */
+  readonly trustedProxy?: readonly string[];
 }
-
-/** Named ranges of proxy-addr: loopback, link-local and private (RFC 1918, fc00::/7) addresses. */
-export const TRUSTED_PROXY_RANGES: readonly string[] = ["loopback", "linklocal", "uniquelocal"];
 /** Pairing attempts per client address and minute in hosted mode. */
 export const PAIR_ATTEMPTS_PER_MINUTE = 10;
 
@@ -118,9 +121,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const now = options.auth.store.now;
   const app = Fastify({
     // Behind Caddy the peer is the proxy; `request.ip` (and so every rate limit) must be the client
-    // address the proxy reports in `X-Forwarded-For`. Forwarded headers are believed only from
-    // loopback and private addresses (the Compose network), never from the internet (AC-032.3).
-    ...(options.hosted === undefined ? {} : { trustProxy: [...TRUSTED_PROXY_RANGES] }),
+    // address the proxy reports in `X-Forwarded-For`. Forwarded headers are believed only from the
+    // configured proxy addresses, never from anyone else (AC-032.3).
+    ...(options.hosted?.trustedProxy === undefined || options.hosted.trustedProxy.length === 0
+      ? {}
+      : { trustProxy: [...options.hosted.trustedProxy] }),
     frameworkErrors: frameworkErrorHandler,
     logger: options.logger
       ? {

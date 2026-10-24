@@ -48,7 +48,6 @@ export const PAIR_PAGE_SCRIPT = `(function () {
     return;
   }
   var token = found[1];
-  window.history.replaceState(null, "", window.location.pathname);
   button.addEventListener("click", function () {
     button.disabled = true;
     status.textContent = "Pairing...";
@@ -60,6 +59,9 @@ export const PAIR_PAGE_SCRIPT = `(function () {
     })
       .then(function (response) {
         if (response.ok) {
+          // The token is spent: drop it from the address bar. After a failure it stays, so the
+          // person can try again or reload this page.
+          window.history.replaceState(null, "", window.location.pathname);
           window.location.replace("/");
           return;
         }
