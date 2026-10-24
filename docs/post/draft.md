@@ -87,7 +87,7 @@ Screenshots:
 
 The code is MIT-licensed: https://github.com/adricasi/ShouldIBother <!-- src: docs/spec/product.md · Q-7 repo name; builder: confirm the repo is public (T-020) before publishing -->
 
-Setup in one breath: clone, `npm ci`, install Ollama, `npm run setup`, WSL2 mirrored networking plus a firewall rule for the phone, `npm start`, scan the QR code. <!-- builder: the steps here must match README.md (T-020). Add one true sentence about the step that bit you during setup, or nothing. -->
+Setup in one breath: clone, `npm ci`, install Ollama and `ollama pull` the Gemma 4 tags named in `config/models.json`, WSL2 mirrored networking plus a firewall rule for the phone, `npm start`, scan the QR code. <!-- builder: the steps here must match README.md (T-020). Add one true sentence about the step that bit you during setup, or nothing. -->
 
 You need an NVIDIA GPU laptop (8 GB of VRAM or more) and a phone on the same Wi-Fi. Mine: {{gpu_model}} with {{vram_gb}} GB of VRAM. <!-- src: docs/results/backtest.md · run environment (GPU, VRAM). builder: if the report does not list the hardware, add a line to the report first -->
 
@@ -99,18 +99,24 @@ Everything runs on one laptop: a Node.js process serves a React app to my phone 
 
 The rule: **Gemma decides, code executes.** Gemma makes every judgement. Code fetches the weather, stores bets, counts points and savings, and enforces a safety backstop that Gemma cannot overrule.
 
-### Six jobs, one model
+### Eight Gemma prompts, one model
+
+Gemma runs eight prompts (seven jobs, with the judge also used for appeals), all through one job runner. The full tour, with each job's input, schema, checks and fallbacks, is in [docs/gemma.md](https://github.com/adricasi/ShouldIBother/blob/main/docs/gemma.md).
 
 | Job | What Gemma gets | What comes back |
 |---|---|---|
-| **Listener** | A typed sentence (or a voice note, if audio shipped) | One card per chore |
+| **Listener** | A typed sentence | One card per chore |
+| **Voice listener** (flag `voice`) | A recorded voice note, Gemma 4 audio on llama.cpp | A transcript, which the listener then reads |
+| **Bookmaker** | Chore, habits, inspector notes, the rule's band, and the `get_forecast` **function call** it must make | An odds band, a short reason, a settle time |
 | **Inspector** | A photo of the plant or washing | What it sees, or "unsure" plus a question |
-| **Bookmaker** | Chore, habits, inspector notes, the rule's band, a `get_forecast` **function call** | An odds band, a short reason, a settle time |
-| **Safety guard** | The chore and the forecast | Alert or not (a fixed backstop applies even if Gemma is off) |
 | **Judge** | Before / after photos or a tap, recorded weather | Win, a loss grade, or "unsure" plus a question |
-| **Laundry planner** | A four-day drying forecast | Wash today, skip today, or no good day |
+| **Judge, on appeal** (flag `appeals`) | A new photo and the first verdict | A second, final verdict |
+| **Safety guard** (flag `safetyGuard`) | The chore and the forecast | Alert or not (a fixed backstop applies even if Gemma is off) |
+| **Laundry planner** (flag `laundryPlanner`) | A four-day drying forecast | Wash today, skip today, or no good day |
 
-<!-- builder: the safety guard and the laundry planner are tier 3 and tier 5 and sit behind flags. If either is off at the freeze (Sat 14:00), mark its row "next" instead of listing it as built. The post must not claim a job that is not in the shipped app. Same for voice: say "typed" unless the Gemma audio path shipped; if whisper.cpp was the fallback, say so here. -->
+<!-- builder: the fixtures in test/fixtures/gemma/ are hand-written synthetic answers, not recordings of Gemma, until T-010 re-records them from the real model on staged inputs. Do not quote a fixture as a Gemma output in the post. -->
+
+<!-- builder: the safety guard, the laundry planner, the appeal and the voice listener sit behind flags. If either is off at the freeze (Sat 14:00), mark its row "next" instead of listing it as built. The post must not claim a job that is not in the shipped app. Same for voice: say "typed" unless the Gemma audio path shipped; if whisper.cpp was the fallback, say so here. -->
 
 ### Bands, not percentages
 
@@ -404,5 +410,5 @@ Small N, one household, weather labels rather than observed plants:
 
 ---
 
-**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); non-commercial use. Code: MIT. Gemma 4: Apache 2.0. Fonts: Big Shoulders Display, IBM Plex Mono, Figtree (SIL OFL). Icons: Lucide (ISC). All photos here are staged or synthetic; none are of my home.
+**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); non-commercial use. Code: MIT. Gemma 4: {{TODO(builder): licence from the Gemma 4 model card}}. Fonts: Big Shoulders Display, IBM Plex Mono, Figtree (SIL OFL). Icons: Lucide (ISC). All photos here are staged or synthetic; none are of my home.
 <!-- builder: check Open-Meteo's attribution wording at https://open-meteo.com/en/licence and use their exact text. The same attribution must be in the app and README (AC-014.6, T-020). -->
