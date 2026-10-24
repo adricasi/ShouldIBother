@@ -32,6 +32,12 @@ export const QUICK_CHIPS: readonly QuickChip[] = [
 /** The chip for "Skip the heater" (REQ-016, AC-016.3); shown only while the `heater` flag is on. */
 export const HEATER_CHIP: QuickChip = { choreType: "heater", label: "Skip the heater" };
 
+/** The chips for the city rain bets (REQ-030); shown only while the `rainChores` flag is on. */
+export const RAIN_CHIPS: readonly QuickChip[] = [
+  { choreType: "car_rinse", label: "Rinse the car" },
+  { choreType: "terrace_rinse", label: "Terrace" },
+];
+
 export interface TodayScreenProps {
   readonly today: Today | undefined;
   /** A card above the chips: the household question while onboarding is pending (REQ-024). */
@@ -349,6 +355,7 @@ export function TodayScreen(props: TodayScreenProps) {
   const chips: QuickChip[] = [
     ...QUICK_CHIPS,
     ...(today?.flags["heater"] === true ? [HEATER_CHIP] : []),
+    ...(today?.flags["rainChores"] === true ? RAIN_CHIPS : []),
     ...(today?.flags["laundryPlanner"] === true
       ? [{ choreType: PLANNER_CHIP, label: "Plan the wash" }]
       : []),

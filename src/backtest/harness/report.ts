@@ -11,7 +11,7 @@
  * labelled breakdown, with their counts.
  */
 
-import { OUTCOME_CHORES, type OutcomeChore } from "../../domain/outcomes.js";
+import { BACKTEST_CHORES, type BacktestChore } from "../../domain/outcomes.js";
 import { madridParts } from "../../domain/time.js";
 import type { RulesConfig } from "../../domain/rules/index.js";
 import type { SavingsCatalogue } from "../../domain/savings.js";
@@ -143,7 +143,7 @@ export interface BacktestReport {
   readonly results: readonly StrategyReport[];
   readonly method: MethodInfo & {
     readonly decisionPolicy: string;
-    readonly fixedRoutine: Readonly<Record<OutcomeChore, string>>;
+    readonly fixedRoutine: Readonly<Record<BacktestChore, string>>;
     readonly assumptions: readonly string[];
     readonly toolHorizon: string;
     readonly habitsNote: string;
@@ -552,7 +552,7 @@ function choreTable(
   const present = report.results.filter((result) => pick(result) !== null);
   return table(
     ["Chore", ...present.map((result) => `${result.label}: skips (worked)`)],
-    OUTCOME_CHORES.map((chore) => [
+    BACKTEST_CHORES.map((chore) => [
       chore,
       ...present.map((result) => {
         const row = pick(result)?.byChore[chore];
@@ -658,7 +658,7 @@ export function renderMarkdown(report: BacktestReport): string {
     `- Tool horizon: ${report.method.toolHorizon}`,
     "- Plant-risk day: a day a strategy skipped watering and the plants outcome label was false.",
     "- Fixed routine (the habit baseline, no forecast, no odds):",
-    ...OUTCOME_CHORES.map((chore) => `  - ${chore}: ${report.method.fixedRoutine[chore]}`),
+    ...BACKTEST_CHORES.map((chore) => `  - ${chore}: ${report.method.fixedRoutine[chore]}`),
     `- Savings assumptions behind the figures (dryer: ${BACKTEST_DRYER}):`,
   );
   const assumptions = new Map<string, string>();

@@ -25,6 +25,43 @@ const plantsSchema = z
   })
   .strict();
 
+const rainRowSchema = z
+  .object({
+    rainMmAtLeast: z.number().optional(),
+    anyOf: z
+      .object({
+        rainMmAtLeast: z.number().optional(),
+        maxHourlyProbabilityPctAtLeast: z.number().optional(),
+      })
+      .strict()
+      .optional(),
+    band: bandSchema,
+  })
+  .strict();
+
+const rainChoreSchema = z
+  .object({
+    window: z.string(),
+    rows: z.array(rainRowSchema).min(1),
+    otherwiseBand: bandSchema,
+  })
+  .strict();
+
+/**
+ * `config/rules-rain.json`: the rule baseline of the city rain bets (REQ-030), a separate file so
+ * that `config/rules.json` and the hash the backtest and the dataset report stay as they were.
+ */
+export const rainRulesSchema = z
+  .object({
+    _comment: z.string().optional(),
+    version: z.number().int(),
+    carRinse: rainChoreSchema,
+    bikeRinse: rainChoreSchema,
+    terraceRinse: rainChoreSchema,
+    rainFill: rainChoreSchema,
+  })
+  .strict();
+
 const dryingRowSchema = z.object({ atLeast: z.number(), band: bandSchema }).strict();
 
 const dryingIndexSchema = z
@@ -131,11 +168,25 @@ export const rulesConfigSchema = z
   })
   .strict();
 
-export type RulesConfig = z.infer<typeof rulesConfigSchema>;
+export type RainRulesConfig = z.infer<typeof rainRulesSchema>;
+export type RainRow = z.infer<typeof rainRowSchema>;
+/**
+ * The rules the app runs on: `config/rules.json` plus, when `loadRules` attached it, the city rain
+ * rows of `config/rules-rain.json`. The backtest and the dataset parse `rules.json` alone.
+ */
+export type RulesConfig = z.infer<typeof rulesConfigSchema> & { readonly rain?: RainRulesConfig };
 export type PlantsRow = z.infer<typeof plantsRowSchema>;
 export type DryingRow = z.infer<typeof dryingRowSchema>;
 export type HeaterRow = RulesConfig["chores"]["heater"]["rows"][number];
 export type SafetyBackstopConfig = z.infer<typeof safetyBackstopSchema>;
+
+export function parseRainRules(raw: unknown): RainRulesConfig {
+  const result = rainRulesSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`Invalid rain rules config: ${result.error.message}`);
+  }
+  return result.data;
+}
 
 export function parseRulesConfig(raw: unknown): RulesConfig {
   const result = rulesConfigSchema.safeParse(raw);

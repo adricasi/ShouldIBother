@@ -4,6 +4,7 @@ import {
   type BandCount,
   type CalibrationBand,
 } from "../../domain/calibration.js";
+import { RAIN_CHORES } from "../../domain/outcomes.js";
 import { rankFor, type RankStanding } from "../../domain/ranks.js";
 import { bandTable } from "../../domain/rules/index.js";
 import type { SavingsTotals } from "../../domain/savings.js";
@@ -72,6 +73,14 @@ const FINAL_SETTLEMENT = `JOIN settlements s ON s.id = (
 const SETTLED_DO_NOTHING = "b.kind = 'do_nothing' AND b.status = 'settled'";
 
 /**
+ * The calibration charts cover the chores of REQ-016 only (AC-030.3): a city rain bet counts for
+ * points and savings but is not in any band's N, so the charts stay comparable with the backtest.
+ */
+export const NOT_A_CITY_RAIN_BET = `b.card_id NOT IN (
+  SELECT id FROM cards WHERE chore_type IN (${RAIN_CHORES.map((chore) => `'${chore}'`).join(", ")})
+)`;
+
+/**
  * A model name that is a fixture, not Gemma. Outside `sib demo` every name starting `fake` is one;
  * in demo mode the demo model's own name (`fake-demo`) is counted, as labelled sample data
  * (NFR-010).
@@ -98,7 +107,7 @@ function countsBy(deps: Pick<LedgerDeps, "db">, bandColumn: string, extra: strin
       `SELECT b.${bandColumn} AS band, COUNT(*) AS n,
               COALESCE(SUM(CASE WHEN s.verdict = 'win' THEN 1 ELSE 0 END), 0) AS wins
        FROM bets b ${FINAL_SETTLEMENT}
-       WHERE ${SETTLED_DO_NOTHING} ${extra}
+       WHERE ${SETTLED_DO_NOTHING} AND ${NOT_A_CITY_RAIN_BET} ${extra}
        GROUP BY b.${bandColumn}`,
     )
     .all();
@@ -147,7 +156,8 @@ function fakeModelBets(deps: Pick<LedgerDeps, "db" | "demo">): number {
   return deps.db
     .prepare<[], { n: number }>(
       `SELECT COUNT(*) AS n FROM bets b
-       WHERE ${SETTLED_DO_NOTHING} AND b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
+       WHERE ${SETTLED_DO_NOTHING} AND ${NOT_A_CITY_RAIN_BET}
+         AND b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
          AND ${fixtureModel("b.model_version", deps.demo)}`,
     )
     .get()!.n;

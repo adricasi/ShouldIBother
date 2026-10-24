@@ -16,7 +16,7 @@ import {
 import { buildCases } from "../../../src/backtest/harness/cases.js";
 import { bookmakerInputFor } from "../../../src/backtest/harness/gemma-strategy.js";
 import { CHORES } from "../../../src/domain/chores.js";
-import { DECISION_TIMES, OUTCOME_CHORES } from "../../../src/domain/outcomes.js";
+import { DECISION_TIMES, BACKTEST_CHORES } from "../../../src/domain/outcomes.js";
 import { migrate, openDatabase } from "../../../src/server/db.js";
 import {
   BAND_NAMES,
@@ -65,7 +65,7 @@ function answerOf(row: FinetuneRow) {
 describe("AC-019.6: a row is the conversation the live bookmaker has", () => {
   it("has the same messages the live bookmaker job sends, for every chore, in both files", async () => {
     const decisions = buildCases(snapshot, RULES, { fallback: "none" }).cases;
-    const picks: FinetuneRow[] = OUTCOME_CHORES.flatMap((chore) => [
+    const picks: FinetuneRow[] = BACKTEST_CHORES.flatMap((chore) => [
       train.find((row) => row.chore === chore && row.meta.target?.bands_from_rule === 0),
       train.find((row) => row.chore === chore && (row.meta.target?.bands_from_rule ?? 0) >= 2),
       holdout.find((row) => row.chore === chore),
@@ -289,7 +289,7 @@ describe("AC-019.7: the manifest", () => {
       const counts = build.manifest.rows[split];
       expect(counts.rows).toBe(rows.length);
       expect(counts.band_basis).toBe(basis);
-      for (const chore of OUTCOME_CHORES) {
+      for (const chore of BACKTEST_CHORES) {
         const mine = rows.filter((row) => row.chore === chore);
         const entry = counts.by_chore[chore];
         expect(entry.total).toBe(mine.length);
@@ -372,7 +372,7 @@ describe("the other T-001 fallbacks give rows the live job would send", () => {
     expect(injected.manifest.conversation.tool_use).toBe("injected");
 
     const decisions = buildCases(slice, RULES, { fallback: "none" }).cases;
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const row = rows.find((candidate) => candidate.chore === chore);
       expect(row, chore).toBeDefined();
       const decision = decisions.find((c) => c.key === row?.id);

@@ -47,6 +47,34 @@ export const BOOKMAKER_REASONS: Readonly<Record<ChoreType, ByBand>> = {
     likely: "A mild day close to 18 degrees: comfortable with a jumper.",
     very_likely: "Sunny and above 20 degrees: the heater can stay off.",
   },
+  car_rinse: {
+    very_unlikely: "No rain in the forecast, so the car stays as dusty as it is.",
+    unlikely: "Only a few drops are possible, not enough to rinse the car.",
+    toss_up: "A shower or two may come through; it might rinse the car, it might not.",
+    likely: "A steady shower is due tomorrow, which should rinse most of the dust off.",
+    very_likely: "Heavy rain is due for hours tomorrow: the car gets a free wash.",
+  },
+  bike_rinse: {
+    very_unlikely: "Dry all day, so the bike keeps its dust.",
+    unlikely: "Just a few drops expected, not enough to rinse the bike.",
+    toss_up: "A shower may pass; the bike could end up rinsed or just wet.",
+    likely: "A steady shower tomorrow should rinse the bike.",
+    very_likely: "Heavy rain tomorrow will wash the bike for you.",
+  },
+  terrace_rinse: {
+    very_unlikely: "No rain expected, so the terrace stays dusty.",
+    unlikely: "A few drops at most, not enough to rinse the terrace.",
+    toss_up: "A passing shower might rinse the terrace, or just spot it.",
+    likely: "A good shower is due, which should rinse the terrace and the chairs.",
+    very_likely: "Heavy rain is forecast: the terrace and furniture get a full rinse.",
+  },
+  rain_fill: {
+    very_unlikely: "No rain in sight, so the barrel will not fill.",
+    unlikely: "Hardly any rain expected, so the barrel will stay low.",
+    toss_up: "Some showers may add a little water to the barrel.",
+    likely: "A decent shower should add a good amount to the barrel.",
+    very_likely: "Heavy rain tomorrow will fill the barrel and the bird bath.",
+  },
 };
 
 type VerdictCopy = Readonly<Partial<Record<Verdict, readonly string[]>>>;
@@ -79,6 +107,22 @@ export const JUDGE_REASONS: Readonly<Record<ChoreType, VerdictCopy>> = {
   heater: {
     win: ["The flat stayed comfortable without the heater."],
     small_loss: ["It got too cold and the heater went on, so the bet is lost."],
+  },
+  car_rinse: {
+    win: ["The rain rinsed the car, so skipping the wash worked."],
+    normal_loss: ["The car is still dirty, so it needed a wash after all."],
+  },
+  bike_rinse: {
+    win: ["The rain rinsed the bike, so skipping the wash worked."],
+    normal_loss: ["The bike is still dirty, so it needed a wash after all."],
+  },
+  terrace_rinse: {
+    win: ["The rain rinsed the terrace and the chairs, so the hose stayed away."],
+    normal_loss: ["The terrace is still dirty, so it needed a hose-down."],
+  },
+  rain_fill: {
+    win: ["The barrel filled up with rain, so no tap water was needed."],
+    normal_loss: ["The barrel is still low, so it needed filling by hand."],
   },
 };
 

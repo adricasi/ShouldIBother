@@ -13,7 +13,7 @@ import {
 } from "../../src/backtest/index.js";
 import {
   HOUR_MS,
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   addDays,
   dateRange,
   decisionTimeMs,
@@ -42,7 +42,7 @@ describe("AC-018.1: no lookahead", () => {
   // API exposes run times, derive `issuedAtMs` from them instead.
   it("uses only values issued before the decision time, for every chore and every day", () => {
     let checked = 0;
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       for (const date of dateRange("2026-03-27", "2026-10-28")) {
         const forecast = decisionForecast(snapshot, chore, date);
         expect(forecast.decisionAtMs).toBe(decisionTimeMs(chore, date));
@@ -61,7 +61,7 @@ describe("AC-018.1: no lookahead", () => {
   });
 
   it("fails when a decision is made before a model run that it uses started", () => {
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const date = "2026-07-15";
       const sunset = madridWallTimeToEpochMs(date, "21:20");
       const window = outcomeWindow(chore, date, sunset);

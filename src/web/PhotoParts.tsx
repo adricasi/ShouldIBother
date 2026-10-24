@@ -1,6 +1,6 @@
 import { useId, type ChangeEvent } from "react";
 
-import type { Card } from "./api.js";
+import { RAIN_CHORE_TYPES, type Card } from "./api.js";
 import { Icon } from "./ui/Icon.js";
 import { OddsMeter } from "./ui/OddsMeter.js";
 import { PrivacyNote } from "./ui/PrivacyNote.js";
@@ -77,7 +77,8 @@ export function PhotoBlock({
   actions: PhotoActions | undefined;
 }) {
   const photo = card.photo ?? null;
-  if (actions === undefined) {
+  // A city rain bet takes no before photo: the inspector's observations do not fit (REQ-030).
+  if (actions === undefined || RAIN_CHORE_TYPES.includes(card.chore_type)) {
     return null;
   }
   if (photo === null) {

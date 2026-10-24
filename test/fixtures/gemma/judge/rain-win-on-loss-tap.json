@@ -1,0 +1,10 @@
+{
+  "description": "Hand-written synthetic judge answer that breaks the rule: a win on a Still dirty or Dirtier than before tap.",
+  "model": "fake-gemma",
+  "content": {
+    "status": "ok",
+    "verdict": "win",
+    "reason": "It rained, so it must be clean.",
+    "evidence": ["Recorded rain 6 mm"]
+  }
+}

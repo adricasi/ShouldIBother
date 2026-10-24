@@ -228,7 +228,7 @@ describe("walking skeleton: Water plants, bet, settle by tap, points (fake model
       job: "judge",
       bet_id: bet.id,
       model: "fake-gemma",
-      prompt_version: "judge.v2",
+      prompt_version: "judge.v3",
       valid: 1,
       tool_mode: null,
     });

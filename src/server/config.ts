@@ -24,7 +24,15 @@ export function readJsonFile(path: string): unknown {
 }
 
 /** What the household has outside the door (onboarding, AC-024.1). */
-export const OUTDOOR_ITEMS = ["balcony_plants", "clothes_line"] as const;
+export const OUTDOOR_ITEMS = [
+  "balcony_plants",
+  "clothes_line",
+  // The city rain bets' items (REQ-030, flag `rainChores`); they change no price.
+  "car",
+  "bike",
+  "terrace",
+  "rain_barrel",
+] as const;
 export type OutdoorItem = (typeof OUTDOOR_ITEMS)[number];
 
 /** The household baseline behind the savings figures (A-6). */

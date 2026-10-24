@@ -6,7 +6,7 @@
  */
 
 import type { Band } from "../../domain/bands.js";
-import type { OutcomeBasis, OutcomeChore, TimeWindow } from "../../domain/outcomes.js";
+import type { OutcomeBasis, BacktestChore, TimeWindow } from "../../domain/outcomes.js";
 import type { SafetyAlert } from "../../domain/rules/index.js";
 import type { ForecastHour } from "../../domain/weather.js";
 import type { Split } from "../dataset.js";
@@ -80,7 +80,7 @@ export interface GemmaFacts {
 export interface DecisionRecord {
   readonly v: 1;
   readonly strategy: StrategyId;
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly split: Split;
   readonly action: Action;
@@ -96,7 +96,7 @@ export interface DecisionRecord {
 
 /** What is known at a chore's fixed decision time. There is no outcome in here. */
 export interface DecisionInput {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly decisionAtMs: number;
   /** The day-1-lead forecast with its provenance (model-run start per value). */
@@ -127,7 +127,7 @@ export type CaseSkipReason =
   "outside_periods" | "no_sunset" | "incomplete_archive_window" | "no_rule_quote";
 
 export interface CaseSkip {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   readonly reason: CaseSkipReason;
 }
@@ -148,10 +148,10 @@ export type StrategyDecision = Omit<
   "v" | "strategy" | "chore" | "date" | "split" | "delivered" | "forecastQuality" | "ruleBand"
 >;
 
-export function caseKey(chore: OutcomeChore, date: string): string {
+export function caseKey(chore: BacktestChore, date: string): string {
   return `${chore}|${date}`;
 }
 
-export function recordKey(strategy: StrategyId, chore: OutcomeChore, date: string): string {
+export function recordKey(strategy: StrategyId, chore: BacktestChore, date: string): string {
   return `${strategy}|${chore}|${date}`;
 }

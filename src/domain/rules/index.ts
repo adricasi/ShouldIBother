@@ -7,9 +7,15 @@ import { heaterBand, heaterFacts } from "./heater.js";
 import { laundryTonightBand, laundryTonightFacts } from "./laundry-tonight.js";
 import { lineDryBand, lineDryFacts } from "./line-dry.js";
 import { plantsBand, plantsFacts } from "./plants.js";
+import { rainBand, rainFacts } from "./rain.js";
 import type { RulesConfig } from "./schema.js";
 
-export { parseRulesConfig, type RulesConfig } from "./schema.js";
+export {
+  parseRainRules,
+  parseRulesConfig,
+  type RainRulesConfig,
+  type RulesConfig,
+} from "./schema.js";
 export { plantsBand, plantsFacts, type PlantsFacts } from "./plants.js";
 export { lineDryBand, lineDryFacts, type LineDryFacts } from "./line-dry.js";
 export {
@@ -17,6 +23,7 @@ export {
   laundryTonightFacts,
   type LaundryTonightFacts,
 } from "./laundry-tonight.js";
+export { rainBand, rainFacts, type RainFacts } from "./rain.js";
 export { acBand, acFacts, type AcFacts } from "./ac.js";
 export { heaterBand, heaterFacts, type HeaterFacts } from "./heater.js";
 export { safetyAlert, type SafetyAlert, type SafetyKind } from "./safety.js";
@@ -38,6 +45,13 @@ function sentence(config: RulesConfig, band: Band, seen: string, forWhat: string
     reason: `Rule: ${seen} That is ${nameOfBand(table, band)} (${oddsOfBand(table, band)}%) for ${forWhat}.`,
   };
 }
+
+const RAIN_RULE_PURPOSE = {
+  car_rinse: "the rain rinsing the car",
+  bike_rinse: "the rain rinsing the bike",
+  terrace_rinse: "the rain rinsing the terrace",
+  rain_fill: "the rain filling the barrel",
+} as const;
 
 /**
  * The rule baseline of a chore over `[fromMs, toMs)` (design.md, Rule baseline and safety
@@ -108,6 +122,20 @@ export function ruleQuote(
             heaterBand(facts, config),
             `high of ${facts.dayMaxC} °C with ${facts.sunshineHours} h of sun.`,
             "skipping the heater",
+          );
+    }
+    case "car_rinse":
+    case "bike_rinse":
+    case "terrace_rinse":
+    case "rain_fill": {
+      const facts = rainFacts(forecast, fromMs, toMs);
+      return facts === null
+        ? null
+        : sentence(
+            config,
+            rainBand(chore, facts, config),
+            `${facts.rainMm} mm of rain expected${facts.maxHourlyProbabilityPct === null ? "" : `, up to ${facts.maxHourlyProbabilityPct}% chance in an hour`}.`,
+            RAIN_RULE_PURPOSE[chore],
           );
     }
   }

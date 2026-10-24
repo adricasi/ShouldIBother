@@ -9,11 +9,11 @@ import {
   DECISION_TIMES,
   HOUR_MS,
   IncompleteWeatherError,
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   dateRange,
   decisionTimeMs,
   outcomeLabel,
-  type OutcomeChore,
+  type BacktestChore,
   type TimeWindow,
 } from "../../domain/outcomes.js";
 import { madridParts } from "../../domain/time.js";
@@ -65,7 +65,7 @@ export const TOOL_HORIZON_HOURS = 24;
  */
 export function toolForecastOf(
   snapshot: WeatherSnapshot,
-  chore: OutcomeChore,
+  chore: BacktestChore,
   date: string,
   decisionAtMs: number,
 ): DecisionForecast {
@@ -139,7 +139,7 @@ export function toAppHours(
  * (`CHORES[chore].ruleWindow`); plants run to the settle time, which `settleAtMs` replaces.
  */
 export function ruleWindowOf(
-  chore: OutcomeChore,
+  chore: BacktestChore,
   decisionAtMs: number,
   sunsetMs: number | null,
   settleAtMs?: number,
@@ -185,7 +185,7 @@ export function buildCases(
   const skipped: CaseSkip[] = [];
 
   for (const date of dateRange(first, last)) {
-    for (const chore of OUTCOME_CHORES) {
+    for (const chore of BACKTEST_CHORES) {
       const skip = (reason: CaseSkip["reason"]): void => {
         skipped.push({ chore, date, reason });
       };
@@ -257,7 +257,7 @@ const DAY1_ONLY: ReadonlySet<ForecastSource> = new Set<ForecastSource>(["previou
 
 /** The decision time every chore has (design.md, Outcome labels); a case at any other time is lookahead. */
 export class DecisionTimeError extends Error {
-  constructor(chore: OutcomeChore, date: string, atMs: number) {
+  constructor(chore: BacktestChore, date: string, atMs: number) {
     super(
       `${chore} on ${date}: decision at ${new Date(atMs).toISOString()} is not the fixed ${DECISION_TIMES[chore]} Madrid time`,
     );

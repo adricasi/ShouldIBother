@@ -12,13 +12,13 @@
 
 import type { Band } from "../domain/bands.js";
 import {
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   dewHours,
   dryingIndex,
   isWetHour,
   selectWindowHours,
   type HourlyWeather,
-  type OutcomeChore,
+  type BacktestChore,
   type TimeWindow,
 } from "../domain/outcomes.js";
 
@@ -56,7 +56,7 @@ interface FeatureSpec {
 }
 
 /** Feature names per chore, in fixed order. They are the rule's inputs (design.md). */
-export const CHORE_FEATURES: Readonly<Record<OutcomeChore, readonly FeatureSpec[]>> = {
+export const CHORE_FEATURES: Readonly<Record<BacktestChore, readonly FeatureSpec[]>> = {
   plants: [
     { name: "rain_mm", optional: false },
     { name: "max_precipitation_probability_pct", optional: true },
@@ -115,7 +115,7 @@ function meanDrying(hours: readonly HourlyWeather[]): number | null {
  * `hours` may be longer than the window; incomplete windows give all-null features.
  */
 export function choreFeatures(
-  chore: OutcomeChore,
+  chore: BacktestChore,
   hours: readonly HourlyWeather[],
   window: TimeWindow,
 ): FeatureVector {
@@ -169,7 +169,7 @@ export function choreFeatures(
 }
 
 export interface TrainingExample {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   /** Decision date (Madrid). */
   readonly date: string;
   readonly features: FeatureVector;
@@ -178,7 +178,7 @@ export interface TrainingExample {
 }
 
 export interface TargetBand {
-  readonly chore: OutcomeChore;
+  readonly chore: BacktestChore;
   readonly date: string;
   /** Null when there is no usable feature or no other row to compare with. */
   readonly band: BandIndex | null;
@@ -191,8 +191,8 @@ export interface TargetBand {
 export interface TargetBandResult {
   readonly targets: readonly TargetBand[];
   /** Features left out per chore because they were unavailable in some training row. */
-  readonly droppedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
-  readonly usedFeatures: Readonly<Record<OutcomeChore, readonly string[]>>;
+  readonly droppedFeatures: Readonly<Record<BacktestChore, readonly string[]>>;
+  readonly usedFeatures: Readonly<Record<BacktestChore, readonly string[]>>;
 }
 
 export class HoldoutLeakError extends Error {
@@ -203,7 +203,7 @@ export class HoldoutLeakError extends Error {
 }
 
 /** Training features: those that are available in every training row of the chore. */
-function usableFeatures(chore: OutcomeChore, examples: readonly TrainingExample[]): string[] {
+function usableFeatures(chore: BacktestChore, examples: readonly TrainingExample[]): string[] {
   return CHORE_FEATURES[chore]
     .map((spec) => spec.name)
     .filter((name) => examples.every((example) => example.features[name] != null));
@@ -230,10 +230,10 @@ export function computeTargetBands(examples: readonly TrainingExample[]): Target
   }
 
   const targets: TargetBand[] = [];
-  const droppedFeatures = {} as Record<OutcomeChore, string[]>;
-  const usedFeatures = {} as Record<OutcomeChore, string[]>;
+  const droppedFeatures = {} as Record<BacktestChore, string[]>;
+  const usedFeatures = {} as Record<BacktestChore, string[]>;
 
-  for (const chore of OUTCOME_CHORES) {
+  for (const chore of BACKTEST_CHORES) {
     const rows = examples
       .filter((example) => example.chore === chore)
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

@@ -1,0 +1,44 @@
+{
+  "_comment": "Rule baseline of the city rain bets (design.md, City rain bets; flag rainChores). Kept apart from config/rules.json, whose hash is in the backtest and dataset reports. Final values for this version, no tuning. Bands are ordinal 0 (very unlikely) to 4 (very likely); rows are evaluated top to bottom, first match wins; intervals are half-open. 'rain' is total precipitation over the window and 'probability' the highest hourly probability in it.",
+  "version": 1,
+  "carRinse": {
+    "window": "created_at to created_at + 24 h",
+    "rows": [
+      { "rainMmAtLeast": 8, "band": 4 },
+      { "rainMmAtLeast": 4, "band": 3 },
+      { "anyOf": { "rainMmAtLeast": 1, "maxHourlyProbabilityPctAtLeast": 60 }, "band": 2 },
+      { "rainMmAtLeast": 0.1, "band": 1 }
+    ],
+    "otherwiseBand": 0
+  },
+  "bikeRinse": {
+    "window": "created_at to created_at + 24 h",
+    "rows": [
+      { "rainMmAtLeast": 8, "band": 4 },
+      { "rainMmAtLeast": 4, "band": 3 },
+      { "anyOf": { "rainMmAtLeast": 1, "maxHourlyProbabilityPctAtLeast": 60 }, "band": 2 },
+      { "rainMmAtLeast": 0.1, "band": 1 }
+    ],
+    "otherwiseBand": 0
+  },
+  "terraceRinse": {
+    "window": "created_at to created_at + 24 h",
+    "rows": [
+      { "rainMmAtLeast": 5, "band": 4 },
+      { "rainMmAtLeast": 2, "band": 3 },
+      { "anyOf": { "rainMmAtLeast": 0.5, "maxHourlyProbabilityPctAtLeast": 60 }, "band": 2 },
+      { "rainMmAtLeast": 0.1, "band": 1 }
+    ],
+    "otherwiseBand": 0
+  },
+  "rainFill": {
+    "window": "created_at to next day 08:00",
+    "rows": [
+      { "rainMmAtLeast": 4, "band": 4 },
+      { "rainMmAtLeast": 1.5, "band": 3 },
+      { "anyOf": { "rainMmAtLeast": 0.5, "maxHourlyProbabilityPctAtLeast": 60 }, "band": 2 },
+      { "rainMmAtLeast": 0.1, "band": 1 }
+    ],
+    "otherwiseBand": 0
+  }
+}

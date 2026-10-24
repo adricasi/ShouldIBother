@@ -5,7 +5,7 @@ import type { WeatherSnapshot } from "../../../src/backtest/index.js";
 import {
   DECISION_TIMES,
   HOUR_MS,
-  OUTCOME_CHORES,
+  BACKTEST_CHORES,
   decisionTimeMs,
   madridWallTimeToEpochMs,
 } from "../../../src/domain/outcomes.js";
@@ -49,7 +49,7 @@ describe("AC-018.1: decisions at each chore's fixed time, from day-1 forecasts i
     const dates = [...new Set(built.cases.map((c) => c.input.date))];
     expect(dates).toEqual([...dates].sort());
     const first = built.cases.filter((c) => c.input.date === "2026-08-25");
-    expect(first.map((c) => c.input.chore)).toEqual([...OUTCOME_CHORES]);
+    expect(first.map((c) => c.input.chore)).toEqual([...BACKTEST_CHORES]);
   });
 
   it("leaves out days the archive can not label, with the reason", () => {

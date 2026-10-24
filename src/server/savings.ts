@@ -1,4 +1,9 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+
 import { z } from "zod";
+
+import { RAIN_CHORES } from "../domain/outcomes.js";
 
 import { DRYER_TYPES, FIGURE_BASES, type SavingsCatalogue } from "../domain/savings.js";
 
@@ -40,9 +45,39 @@ const catalogueSchema = z
   });
 
 export const DEFAULT_SAVINGS_PATH = `${CONFIG_DIR}savings.json`;
+/** The city rain figures (REQ-030), apart from `savings.json` so the backtest's hash never moves. */
+export const RAIN_SAVINGS_FILE = "savings-rain.json";
+
+const rainCatalogueSchema = z
+  .object({
+    _comment: z.string().optional(),
+    ...(Object.fromEntries(RAIN_CHORES.map((chore) => [chore, figureSchema])) as Record<
+      (typeof RAIN_CHORES)[number],
+      typeof figureSchema
+    >),
+  })
+  .strict();
 
 /** Loads `config/savings.json`: the savings of one won bet per chore (REQ-011, design.md). */
-export function loadSavings(path: string = DEFAULT_SAVINGS_PATH): SavingsCatalogue {
+export function loadSavings(path?: string): SavingsCatalogue {
+  const base = loadBaseSavings(path ?? DEFAULT_SAVINGS_PATH);
+  if (path !== undefined) {
+    return base;
+  }
+  // The app (no path) also gets the city rain figures; the backtest passes its path and does not.
+  const rainPath = join(dirname(DEFAULT_SAVINGS_PATH), RAIN_SAVINGS_FILE);
+  if (!existsSync(rainPath)) {
+    return base;
+  }
+  const rain = rainCatalogueSchema.safeParse(readJsonFile(rainPath));
+  if (!rain.success) {
+    throw new Error(`Invalid savings config ${rainPath}: ${rain.error.message}`);
+  }
+  const { car_rinse, bike_rinse, terrace_rinse, rain_fill } = rain.data;
+  return { ...base, rain: { car_rinse, bike_rinse, terrace_rinse, rain_fill } };
+}
+
+function loadBaseSavings(path: string): SavingsCatalogue {
   const result = catalogueSchema.safeParse(readJsonFile(path));
   if (!result.success) {
     throw new Error(`Invalid savings config ${path}: ${result.error.message}`);
