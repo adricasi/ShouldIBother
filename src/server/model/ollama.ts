@@ -17,6 +17,7 @@ import {
   type ListedModel,
   type WireSettings,
 } from "./ollama-wire.js";
+import { NonLoopbackRuntimeError, loopbackOrigin } from "./loopback.js";
 import { assertNoProxyForLoopback } from "./proxy-guard.js";
 import { MAX_RESPONSE_BYTES, isTimeout, readLimited } from "./http.js";
 
@@ -67,6 +68,12 @@ export class OllamaClient implements ModelClient {
   private warming = false;
 
   constructor(options: OllamaOptions) {
+    // Checked again here, not only at config load: Ollama stays on this laptop (NFR-001).
+    if (loopbackOrigin(options.baseUrl) === undefined) {
+      throw new NonLoopbackRuntimeError(
+        `Ollama must be an http URL on 127.0.0.1 or [::1], got ${JSON.stringify(options.baseUrl)}`,
+      );
+    }
     // The global fetch may be routed through an environment proxy; a client given its own fetch
     // (tests) is not.
     if (options.fetch === undefined) {

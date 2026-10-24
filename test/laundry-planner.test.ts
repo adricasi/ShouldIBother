@@ -948,7 +948,7 @@ describe("the weather client asks for four days only when the planner needs them
         return new OpenMeteoWeatherClient({
           db,
           now: clock.now,
-          location: { latitude: 41.4012, longitude: 2.1587 },
+          location: { latitude: 41.4045, longitude: 2.1555 },
           fetch: server.transport,
           sleep: () => Promise.resolve(),
           random: () => 0,

@@ -1,3 +1,8 @@
+/** Thrown when the configured address is not on this laptop; a setup error, not a Gemma outage. */
+export class NonLoopbackRuntimeError extends Error {
+  override readonly name = "NonLoopbackRuntimeError";
+}
+
 /** Literal loopback addresses only: a name like `localhost` can be pointed elsewhere. */
 export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
 

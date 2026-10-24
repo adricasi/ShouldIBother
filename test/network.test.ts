@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -263,6 +264,20 @@ describe("resolveDataDir", () => {
       expect(statSync(path).mode & 0o777).toBe(0o600);
     } finally {
       rmSync(parent, { recursive: true });
+    }
+  });
+
+  it("NFR-002: refuses a data folder inside a git working tree that git would not ignore", () => {
+    const repo = mkdtempSync(join(tmpdir(), "sib-repo-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      expect(() => resolveDataDir({ SIB_DATA_DIR: join(repo, "mydata") })).toThrow(
+        /could be committed/,
+      );
+      writeFileSync(join(repo, ".gitignore"), "mydata/\n");
+      expect(resolveDataDir({ SIB_DATA_DIR: join(repo, "mydata") })).toBe(join(repo, "mydata"));
+    } finally {
+      rmSync(repo, { recursive: true });
     }
   });
 
