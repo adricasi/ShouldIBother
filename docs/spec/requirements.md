@@ -1,7 +1,7 @@
 # Requirements: Should I Bother?
 
 - Status: Approved (2026-10-21) <!-- Draft | In review | Approved -->
-- Last updated: 2026-10-22
+- Last updated: 2026-10-24
 
 IDs are permanent: never renumber or reuse. Deprecate with ~~strikethrough~~ and a note.
 Acceptance criteria use EARS style: `WHEN <trigger> [WHILE <state>] THE SYSTEM SHALL <response>`
@@ -327,6 +327,25 @@ Fixed values used below:
   - AC-029.3: THE SYSTEM SHALL provide `sib flags` on the laptop to list the flags and turn them on or off in `config/flags.json`, including presets read from `config/flags.presets.json`, an explicit list of flag names per preset that the builder edits; the `presentation` preset lists every merged feature except `voice` and `finetunedBookmaker`, which need the laptop checks of T-028 and T-014 and are turned on by name; the committed defaults in `config/flags.json` stay off (AC-029.1), and applying a preset is the builder turning flags on.
   - AC-029.4: THE SYSTEM SHALL provide `sib demo` to run the app for rehearsals and screenshots on a separate temporary data folder seeded with synthetic bets, with the fake model, fake weather and the flags of the `presentation` preset (AC-029.3) applied in memory; every screen shows a fixed "Sample data" banner, the Score tiles and calibration chart carry a "SAMPLE" watermark, and `sib export` refuses in demo mode; it never reads or writes the live data folder or `config/household.json`; the seeded rows carry `model_version = 'fake-demo'` and Score counts them only in demo mode, labelled "Sample data · fake model" (NFR-010); its numbers are never reported as results (G-1).
 
+### REQ-030: City rain bets
+- Story: As a household member in a city flat, I want to bet that the rain rinses the car, the bike and the terrace or fills the rain barrel, so that I skip those chores when the sky does them.
+- Priority: Could
+- Goals: G-1, G-3
+- Acceptance criteria:
+  - AC-030.1: WHILE the `rainChores` flag is on THE SYSTEM SHALL offer four more do-nothing bets: rinse the car (`car_rinse`), rinse the bike (`bike_rinse`), rinse the terrace or outdoor furniture (`terrace_rinse`) and fill the rain barrel, pond or bird bath (`rain_fill`). They are priced, placed, settled and paid like the plants bet (REQ-004 to REQ-011), with the rule baseline, outcome labels, settle bounds, judge answers and savings in design.md (City rain bets); WHILE the flag is off they are "Coming later".
+  - AC-030.2: THE SYSTEM SHALL settle the rinse bets by after photo or one tap and `rain_fill` by one tap (a photo is accepted and pays ×1.0 like any photo), with no before photo or inspector step for these chores. The judge SHALL count "Dirtier than before" (dusty rain) as a loss: a "Still dirty", "Dirtier than before" or "Still low" tap with a `win` verdict is invalid (one retry), and `harmful_loss` is invalid for these chores.
+  - AC-030.3: THE SYSTEM SHALL keep these chores out of the backtest, the fine-tune dataset and the Score calibration (AC-020.2): the backtest, `sib dataset` and the calibration charts of T-019 and T-014 cover the chores of REQ-016 only, so earlier reports stay comparable; their rows live outside `config/rules.json`, whose hash stays unchanged. They still count toward points and savings.
+
+### REQ-031: Advice cards
+- Story: As a household member, I want Gemma to tell me when to clean the windows, sweep the balcony, paint outdoors or feed the lawn, so that the weather does not undo the job.
+- Priority: Could
+- Goals: G-2
+- Acceptance criteria:
+  - AC-031.1: WHILE the `adviceCards` flag is on, WHEN the person adds one of the advice chores (clean windows `windows_clean`, sweep balcony leaves `balcony_sweep`, paint or varnish outdoors `outdoor_paint`, fertilise or treat the lawn `lawn_feed`) THE SYSTEM SHALL ask Gemma's advisor job, which calls `get_forecast` (up to 72 h), for one of "do it now", "wait for <window>" or "no good window in the next 72 h", with a reason ≤ 140 chars; the card shows the `tool_result` numbers for the window; WHILE the flag is off these chores are "Coming later".
+  - AC-031.2: THE SYSTEM SHALL compute a rule advice for every advice card (design.md, Advice rules), show Gemma's advice with the rule advice beside it when the advice differs or the window starts differ by ≥ 3 h, and refuse (and retry once) a Gemma window that the forecast contradicts (for example a paint window with forecast rain); with Gemma offline or still refused the card shows the rule advice labelled "Rule advice".
+  - AC-031.3: THE SYSTEM SHALL keep advice cards out of points, savings and calibration (advice only, no bet, no time counted), log every advisor decision in `gemma_decisions`, and offer the "How Gemma decided" disclosure (AC-028.4) on the card.
+  - AC-031.4: THE SYSTEM SHALL run the safety backstop and the safety guard on advice cards as on every card; an alert replaces the advice.
+
 ## Non-functional requirements
 | ID | Category | Requirement (measurable) | Verification |
 |---|---|---|---|
@@ -334,7 +353,7 @@ Fixed values used below:
 | NFR-002 | Privacy / data classification | Photos, chore text, habits and audio are **household-private**: stored only in the git-ignored data folder, never sent off the laptop. Committed test fixtures are recorded only from staged or synthetic inputs and reviewed by hand. The only outbound host at runtime is Open-Meteo, with coordinates rounded to 2 decimals; a place search typed in onboarding (AC-024.4) is the one text that leaves the laptop, sent only to Open-Meteo geocoding when the person searches. 0 analytics or telemetry. Photos EXIF-stripped and ≤ 1024 px. | Test that stored photos have no EXIF; CI test that the weather client refuses non-allowlisted hosts (AC-014.7); network capture during one capture → settle cycle shows only Open-Meteo hosts |
 | NFR-003 | Reliability | 100% of open bets and their settle times survive a server or laptop restart, and every schema migration keeps existing rows (tested on a copy of the live database before it is applied). With Open-Meteo down, odds use the cached forecast (REQ-014); with Gemma down, odds fall back to the rule and settlements wait (REQ-013, AC-008.8). SQLite writes are transactional. | Restart test with open bets; fault-injection tests for weather and Gemma offline |
 | NFR-004 | Performance | Rule odds on a new card ≤ 1 s (AC-004.1). Photo judgement (inspector + bookmaker, incl. the tool call) ≤ 15 s in ≥ 19 of 20 tries on the builder's laptop; each model call times out at 30 s and each Gemma job at 45 s. Schema-valid JSON ≥ 19 of 20 per job. App screens interactive ≤ 3 s on the phone over home Wi-Fi. | T-001 spike measurements, re-run before the freeze; logged latencies (NFR-007) |
-| NFR-005 | Scale | Sized for 1 household, ≤ 3 paired devices per pairing token (enforced, AC-001.2), ≤ 100 bets/week (not enforced). Backtest (Apr–Oct 2026, all supported chores, E4B + E2B; the fine-tuned model is evaluated on the hold-out in AC-019.3) completes in ≤ 8 h on the laptop, resumable, paused from 07:00 so morning settlements get the GPU. | Backtest run time and call-count estimate in T-015 |
+| NFR-005 | Scale | Sized for 1 household, ≤ 3 paired devices per pairing token (enforced, AC-001.2), ≤ 100 bets/week (not enforced). Backtest (Apr–Oct 2026, the REQ-016 chores, E4B + E2B; the fine-tuned model is evaluated on the hold-out in AC-019.3) completes in ≤ 8 h on the laptop, resumable, paused from 07:00 so morning settlements get the GPU. | Backtest run time and call-count estimate in T-015 |
 | NFR-006 | Cost | 0 € running cost; Open-Meteo ≤ 1,000 calls/day (limit 10,000); fine-tune on the laptop GPU, Colab free tier as fallback. | Call counter in logs |
 | NFR-007 | Observability | Local structured JSON logs; every Gemma call logs job, model version, prompt version, latency, schema-valid flag and retries; never tokens, session IDs or photo bytes. Gemma status visible in the UI (AC-013.5). | Log inspection test |
 | NFR-008 | Compliance / licensing | Repo MIT; README lists third-party licences (Gemma 4 Apache 2.0, Open-Meteo CC BY 4.0 non-commercial, fonts SIL OFL, Lucide ISC). Points only: no stakes, purchases or value. Challenge rules (repo window, public, tags) met. | Release checklist before publishing |

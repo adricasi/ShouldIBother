@@ -92,12 +92,12 @@ files from this list with the `project-kit` skill when you work from a fresh clo
 workers get the checklists in their task brief.
 - Skill `gemma-job` (`.claude/skills/gemma-job/`): checklist for adding or changing a Gemma
   job: versioned prompt, zod schema, retry budget and deadline, fixtures by job + scenario,
-  decision logging, eval set. Use for T-006, T-007, T-009, T-013, T-022, T-028, T-030.
-  (REQ-002/003/005/008/012/021/027/028, NFR-004/007/010)
+  decision logging, eval set. Use for T-006, T-007, T-009, T-013, T-022, T-028, T-030, T-038, T-039.
+  (REQ-002/003/005/008/012/021/027/028/030/031, NFR-004/007/010)
 - Subagent `bookie-rules-reviewer` (`.claude/agents/`): read-only check of a diff against
   odds, points, settlement, savings, rules, outcome labels, calibration populations and
-  leakage. Use with `code-reviewer` on T-004, T-008, T-009, T-011, T-015, T-016, T-031.
-  (REQ-006/008/009/011/013/016/018/019/020)
+  leakage. Use with `code-reviewer` on T-004, T-008, T-009, T-011, T-015, T-016, T-031, T-038.
+  (REQ-006/008/009/011/013/016/018/019/020/030)
 - Permissions (`.claude/settings.json`): routine npm/npx test, lint and build commands
   allowed; agents may not read or edit household data (`~/.should-i-bother/**`, `data/**`;
   NFR-002).
