@@ -1,0 +1,104 @@
+# Hosted mode on a DigitalOcean Droplet (REQ-032, NFR-013): Caddy (TLS) in front of the app.
+# Copy this folder to /opt/sib on the Droplet and follow docs/deploy-digitalocean.md.
+#
+# Compose reads /opt/sib/.env (not secret; see compose.env.example) for SIB_HOST and SIB_IMAGE_TAG.
+# The app's secrets are in /etc/sib/sib.env (root-owned, 0600; see env.example).
+name: sib
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    # Built on the laptop and loaded with `docker load`; never pulled from a registry.
+    image: sib:${SIB_IMAGE_TAG:?set SIB_IMAGE_TAG in /opt/sib/.env}
+    pull_policy: never
+    init: true
+    user: "10001:10001"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: /etc/sib/sib.env
+    environment:
+      SIB_DATA_DIR: /data
+      SIB_BIND_ADDRESS: 0.0.0.0
+      # Only Caddy's fixed address may tell the app the client's address (X-Forwarded-For).
+      SIB_TRUSTED_PROXY: 172.30.10.2
+    volumes:
+      - /srv/sib/data:/data
+    # Reachable only from the Compose network. No published ports.
+    expose:
+      - "8787"
+    networks:
+      - sib
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.SIB_PORT||8787)+'/healthz',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *logging
+
+  caddy:
+    # TODO(builder): verify the digest before you deploy:
+    #   docker buildx imagetools inspect caddy:2.11.7   (the "Digest:" line; looked up 2026-10-24)
+    image: caddy:2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      SIB_HOST: ${SIB_HOST:?set SIB_HOST in /opt/sib/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key: keep this volume or Caddy asks Let's Encrypt again.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      sib:
+        # Fixed, so the app can trust exactly this address (SIB_TRUSTED_PROXY above).
+        ipv4_address: 172.30.10.2
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 128
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+# A private bridge network between Caddy and the app. It is not `internal`: the app calls the
+# inference API and Open-Meteo, and Caddy calls Let's Encrypt.
+networks:
+  sib:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24

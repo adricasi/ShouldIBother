@@ -1,0 +1,9 @@
+[Unit]
+Description=Report a failed backup of Should I Bother?
+
+[Service]
+Type=oneshot
+# Shows in `journalctl -p err` and leaves /srv/sib/backups/LAST_FAILURE with the time.
+ExecStart=/usr/bin/logger -p user.err -t sib-backup "BACKUP FAILED: run journalctl -u sib-backup.service"
+ExecStart=/bin/sh -c 'date -u +%%FT%%TZ > /srv/sib/backups/LAST_FAILURE'
+UMask=0077

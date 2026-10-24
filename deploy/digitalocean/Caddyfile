@@ -1,0 +1,33 @@
+# Caddy in front of the app (hosted mode). SIB_HOST is the bare host name, e.g. sib.example.com;
+# Caddy gets a Let's Encrypt certificate for it and renews it by itself (ports 80 and 443 must be
+# open). There is no `log` directive on purpose: Caddy writes no access log (NFR-013), so the
+# pairing page and client addresses are not recorded.
+{
+	# No admin API; configuration changes need a restart of the container.
+	admin off
+}
+
+{$SIB_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# The app's container health check is for the container only (AC-032.7).
+	@healthz path /healthz /healthz/*
+	respond @healthz 404
+
+	# The app accepts photos up to 10 MiB (MAX_UPLOAD_BYTES in src/server/photos/process.ts);
+	# 11 MB leaves room for the multipart envelope. Keep both in step.
+	request_body {
+		max_size 11MB
+	}
+
+	# Caddy replaces any X-Forwarded-For the client sent with the client's address, which the
+	# app uses for rate limits (AC-032.3). Port 8787 is the image's SIB_PORT.
+	reverse_proxy app:8787
+}

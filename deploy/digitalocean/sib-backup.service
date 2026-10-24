@@ -1,0 +1,16 @@
+[Unit]
+Description=Nightly backup of Should I Bother? (database copy and photos)
+Wants=docker.service
+After=docker.service
+# A failed backup is logged loudly and leaves a marker file (guide 10.4).
+OnFailure=sib-backup-failed.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sib/backup.sh
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+TimeoutStartSec=30min
