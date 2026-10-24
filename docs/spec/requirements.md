@@ -311,7 +311,9 @@ Fixed values used below:
 - Goals: G-2, G-4
 - Acceptance criteria:
   - AC-028.1: WHEN a card or settle screen shows a Gemma decision THE SYSTEM SHALL show "What Gemma saw" / "Gemma's read" with its observations, the weather numbers it used and its reason.
-  - AC-028.2: THE SYSTEM SHALL store with every Gemma decision the job, model version, prompt version, latency and raw validated output, for evaluation.
+  - AC-028.2: THE SYSTEM SHALL store with every Gemma decision the job, model version, prompt version, latency and its raw output (the last answer, whether or not it passed validation, with the validation result), for evaluation; a voice transcript is never stored (AC-027.2).
+  - AC-028.3: WHEN a slip, a waiting bet or a receipt shows odds THE SYSTEM SHALL say whose odds they are ("Gemma's odds" or "Rule odds" from `odds_source`), and WHEN Gemma's band differs from the rule's THE SYSTEM SHALL show both bands side by side with Gemma's reason.
+  - AC-028.4: WHEN a Gemma decision is shown THE SYSTEM SHALL offer a "How Gemma decided" disclosure with the model tag and short digest, the prompt version, whether the forecast tool was called (`tool_mode`), the forecast numbers returned to Gemma, retries and latency, read from `gemma_decisions`; nothing in it is sent anywhere.
 
 ### REQ-029: Feature flags for unfinished work
 - Story: As the builder, I want unfinished features hidden behind flags, so that the app stays working at the feature freeze.
