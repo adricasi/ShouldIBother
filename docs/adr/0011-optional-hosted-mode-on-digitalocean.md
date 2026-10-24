@@ -18,9 +18,9 @@ Home mode (ADR-0002) needs a laptop with an NVIDIA GPU and the phone on the same
 We will use option 1, opt-in with `SIB_MODE=hosted`. Home mode is unchanged.
 
 - **Model:** a new `DigitalOceanClient` behind `ModelClient` calls the OpenAI-compatible `POST https://inference.do-ai.run/v1/chat/completions` with a dedicated, inference-only model access key (`Authorization: Bearer`) from a root-owned 0600 env file. Same JobRunner, schemas, deadlines and decision logging. Tool use is `injected` by default, until `sib hosted-check` shows that tool calls work. Photos go to the model only with `SIB_DO_VISION=1`; the default is off, so photos stay on the server.
-- **Access:** there are no accounts. The pairing token is hardened for a public host: no token at start; `sib pair` prints `/pair#t=…` to the terminal only; the `/pair` page POSTs the token. The session cookie is `__Host-`prefixed, `Secure`, `SameSite=Strict`, lasting 7 days. Host and Origin are exactly `SIB_PUBLIC_ORIGIN`. Caddy terminates TLS (Let's Encrypt, HSTS, access logs off).
+- **Access:** there are no accounts. The pairing token is hardened for a public host: no token at start; `sib pair` prints `/pair#t=…` to the terminal only; the `/pair` page POSTs the token. The session cookie is `__Host-`prefixed, `Secure`, `SameSite=Strict`; the device stays remembered for 30 days, renewed on use, so there is never a login. Host and Origin are exactly `SIB_PUBLIC_ORIGIN`. Caddy terminates TLS (Let's Encrypt, HSTS, access logs off).
 - **Spend:** a daily call cap (`SIB_DAILY_MODEL_CALLS`, default 300, stored in SQLite) with a reserve for judge verdicts. A monthly budget on the model access key pauses the key at 100 %, and account spend alerts are on.
-- **Infrastructure:** Terraform in `infra/digitalocean/` (local, git-ignored state; token from `DIGITALOCEAN_TOKEN`) creates:
+- **Infrastructure:** the builder creates by hand in the DigitalOcean control panel (no Terraform, by the builder's choice; steps in `docs/deploy-digitalocean.md`):
   - a 1 GiB Basic Droplet in AMS3 (the closest region with daily backups), with daily backups;
   - a reserved IP;
   - a Cloud Firewall (22 from the builder's IP; 80 and 443 public);
@@ -47,7 +47,6 @@ Search-engine extracts of DigitalOcean's pages are marked [S]; the builder re-ch
 | Cloud Firewall | free | unverified (marketing page) |
 | Encryption at rest of Droplet disks and backups | — | unverified: check before storing household data |
 | Images | `caddy:2.11.7`, `node:24.22.1-trixie-slim`; pin both by digest | Docker Hub, read directly |
-| Terraform provider | `digitalocean/digitalocean` 2.106.0 | GitHub releases, read directly |
 
 **Cost estimate per month** (4.33 weeks a month; about 6 calls per bet of 2–5k input and 300 output tokens; no domain, tax or image tokens):
 
