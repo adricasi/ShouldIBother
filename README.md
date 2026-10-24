@@ -1,26 +1,179 @@
 # Should I Bother?
 
-A local Gemma 4 bookmaker that bets on doing nothing.
+**A local Gemma 4 bookmaker that bets on doing nothing.**
+
+[![CI](https://github.com/adricasi/ShouldIBother/actions/workflows/ci-node.yml/badge.svg)](https://github.com/adricasi/ShouldIBother/actions/workflows/ci-node.yml)
+![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)
+![Node.js 24](https://img.shields.io/badge/node-24-339933.svg)
 
 "The Lazy Bookie" turns weather chores (watering balcony plants and line-drying in the core loop;
-laundry overnight, the AC and the heater behind feature flags) into bets on doing nothing. You tell
-it a chore or send a photo; Gemma 4 E4B, running on your own laptop through Ollama, reads the
-forecast and the photo and quotes odds (very likely to very unlikely). You bet that the weather
-will do the job, or you do it yourself. When the bet comes due, the app fetches the recorded
-weather and asks for an after photo or one tap, Gemma gives the verdict, and the points, the time,
-the water and the electricity you saved are counted with their assumptions shown. Code only
-executes: Gemma decides, and your photos, chores and habits never leave the laptop. It is an entry
-for the DEV Hacktoberfest Open-Source AI Challenge, Week 3 "Slow and Steady".
+laundry overnight, the AC and the heater behind feature flags) into bets on doing nothing. **Gemma 4
+E4B, running on your own laptop through Ollama, is the bookmaker and the judge:** it reads what you
+type or say, looks at your photo, fetches the forecast itself with a function call, and quotes odds
+as one of five bands (very likely to very unlikely). You bet that the weather will do the job, or you
+do it yourself. When the bet comes due, the app fetches the recorded weather and asks for an after
+photo or one tap, Gemma gives the verdict, and the points, the time, the water and the electricity you
+saved are counted with their assumptions shown. Code only executes: Gemma decides, and your photos,
+chores and habits never leave the laptop. It is an entry for the DEV Hacktoberfest Open-Source AI
+Challenge, Week 3 "Slow and Steady" (Overall and Best Use of Gemma).
 
-<!-- TODO(builder): add the screenshots after T-021 (for example docs/images/02-today.png and
-05-slips.png as a side-by-side) and delete this comment. Only staged or synthetic photos. -->
+**No GPU? See it in two minutes:** `npm ci && npm run build && npm run sib -- demo` runs the whole app
+on sample data with the fake model ([Quick start](#quick-start)). **How Gemma runs it, in depth:
+[docs/gemma.md](docs/gemma.md).**
 
-![Screenshot placeholder: Today and Slips on the phone](docs/images/02-today.png)
+<!-- TODO(builder): after T-021 replace the mockups below with real screenshots of the running app
+(staged or synthetic photos only, never a photo of the home) and drop the "design mockups" caption. -->
 
-Contents: [What you need](#what-you-need) · [Set up](#set-up) · [Phone access](#phone-access-over-wi-fi) ·
+| Today | Bet slip | Settle |
+|---|---|---|
+| ![Design mockup: Today](docs/images/02-today.png) | ![Design mockup: a bet slip with Gemma's odds](docs/images/04-place-a-bet.png) | ![Design mockup: settle a bet with Gemma's read](docs/images/06-settle-a-bet.png) |
+
+*Design mockups from the Figma handoff (`docs/images/`), not screenshots of the running app.*
+
+Contents: [How Gemma runs the app](#how-gemma-runs-the-app) · [What you see of Gemma](#what-you-see-of-gemma) ·
+[Features](#features) · [Architecture](#architecture) · [Quick start](#quick-start) ·
+[What you need](#what-you-need) · [Set up](#set-up) · [Phone access](#phone-access-over-wi-fi) ·
 [Pair a phone](#pair-a-phone) · [Tailscale Serve](#optional-https-with-tailscale-serve) ·
-[Run](#run) · [Feature flags](#feature-flags) · [Presentation](#presentation) · [Commands](#commands-sib) · [Privacy](#privacy-and-your-data) ·
-[Testing](#testing) · [Licences](#licences) · [Spec and ADRs](#specification-and-decisions)
+[Voice](#optional-voice-capture-flag-voice) · [Run](#run) · [Configuration](#configuration) ·
+[Feature flags](#feature-flags) · [Presentation](#presentation) · [Commands](#commands-sib) ·
+[Privacy](#privacy-and-your-data) · [Testing](#testing) · [Project structure](#project-structure) ·
+[Status](#status-and-roadmap) · [Contributing](#contributing) · [Licences](#licences) ·
+[Acknowledgements](#acknowledgements) · [Spec and ADRs](#specification-and-decisions)
+
+## How Gemma runs the app
+
+Gemma is the protagonist. One model, **eight prompts for seven jobs** (the voice listener and the
+appeal judge included), and one rule for the split of labour: **Gemma decides; code executes.** Gemma
+makes every judgement; code fetches the weather, enforces limits, counts points and savings, applies
+a fixed safety backstop and stores everything.
+
+| Job | What Gemma does | Prompt |
+|---|---|---|
+| Listener | Splits a sentence into chores and classifies them | `prompts/listener.v1.md` |
+| Listener (audio) | Writes down a voice note with Gemma 4 audio on llama.cpp (flag `voice`) | `prompts/listener-audio.v1.md` |
+| Bookmaker | **Calls the `get_forecast` tool itself**, then picks an odds band, a reason and a settle time | `prompts/bookmaker.v1.md` |
+| Inspector | Reads a photo of the plant or washing ("What Gemma saw") and sharpens the odds | `prompts/inspector.v1.md` |
+| Safety guard | Says whether a chore touches safety, on top of the fixed backstop (flag `safetyGuard`) | `prompts/safety.v1.md` |
+| Judge | Decides how a bet turned out, from the recorded weather and your photo or tap | `prompts/judge.v2.md` |
+| Judge (appeal) | Looks again at a settled bet with a new photo (flag `appeals`) | `prompts/judge-appeal.v1.md` |
+| Laundry planner | Scores the next four drying days: wash today, skip today or no good day (flag `laundryPlanner`) | `prompts/laundry-planner.v1.md` |
+
+What keeps a 4B model honest:
+
+- **Bands, never raw percentages.** Gemma picks one of five bands; code maps them to 85, 70, 50, 35 and
+  15 %. Points, savings, settle-time bounds and safety are computed by code.
+- **A rule baseline beside Gemma.** Plain code prices every card too and the rule band is stored on
+  every bet. Gemma two or more bands away from it must explain or ask. The rule is the fallback when
+  Gemma is offline, and it never settles a bet: **settlement is always a Gemma verdict**, and a bet
+  waits while Gemma is away.
+- **Tool use is enforced.** The bookmaker's only tool is a read-only `get_forecast`. An answer without
+  a valid call is retried once, then the card keeps labelled rule odds.
+- **Every job is checked.** A versioned prompt, a zod schema, code checks on the answer, one retry, a
+  30 s timeout per model call and a 45 s deadline per job, one FIFO queue of at most 8 jobs. Typed
+  text, photos and tool results are untrusted data.
+- **Local.** Ollama and llama.cpp listen on 127.0.0.1 only; photos, chores, habits and audio never
+  leave the laptop.
+- **Measured, with N.** Score shows Gemma's calibration against the rule; `sib eval`, `sib backtest`
+  (no lookahead, Sep-Oct hold-out) and a QLoRA fine-tune of the bookmaker measure it offline.
+
+**Read more: [docs/gemma.md](docs/gemma.md)** (each job's input, schema, checks, fallbacks, decision
+log and screen; the model-client boundary; settlement; safety; measurement; fine-tuning; what is
+unverified) and **[docs/architecture.md](docs/architecture.md)** (components, data folder, security,
+privacy boundaries).
+
+## What you see of Gemma
+
+Gemma is visible on every screen, not hidden behind the numbers:
+
+- **Today** carries a one-line status, "Gemma 4 E4B · on this laptop" (or "(fake model)" or "Gemma is
+  offline, rule odds only"), and each card says who set the odds: **"Gemma's odds"** or **"Rule odds"**.
+- **The bet slip** shows Gemma's one-line reason with the numbers it used, the settle time and the
+  payout for each outcome. When Gemma's band differs from the rule's, **both bands are shown side by
+  side** (for example "Gemma: likely 70% · Rule: toss-up 50%"). Gemma's yes/no question appears as
+  two buttons, and "Retry Gemma" appears when it did not answer.
+- **"How Gemma decided"** opens under a slip, a waiting bet and a receipt: the model tag and short
+  digest, the prompt version, whether Gemma called the forecast tool, the forecast hours it was
+  given, retries and latency, read from the decision log. A fake-model decision says it is recorded
+  test output, not Gemma.
+- **"What Gemma saw"** lists what the inspector read in your photo and shows the odds before and
+  after, for example 35% to 50%.
+- **A "Do it now" alert** with Gemma's reason when the safety guard (or the fixed backstop) says the
+  weather is not a bet.
+- **"Gemma's read"** on the receipt: the judge's reason and the evidence it used, including the weather
+  numbers. "Gemma has a question" and "Settle when Gemma is back" say what a bet waits for.
+- **Score**, "How honest is Gemma?": Gemma's calibration chart beside the rule's, N per band ("too few
+  to judge" under 5 bets), a headline such as "When Gemma says likely, doing nothing worked 74% (9
+  bets); the rule's own likely calls: 61% (12 bets)", the lucky-win share and the judge overrule rate
+  from appeals. Score needs the `score` flag and the overrule rate the `appeals` flag.
+
+## Features
+
+- **Capture in a sentence.** Type, tap a chip, or (flag `voice`) say your chores; Gemma finds each
+  chore and makes one card per chore, and says "Not a weather chore" or "Coming later" when that is
+  true.
+- **Odds from the forecast, set by Gemma.** Five bands, a one-line reason with the numbers, a settle
+  time, and the payout for each outcome; the rule baseline shows at once and is the fallback.
+- **A photo sharpens the odds.** The inspector lists what it sees and the odds move.
+- **Bet, do it, or undo.** Odds, band and payouts lock when you bet; Undo works for 5 minutes.
+- **Settlement on evidence.** Recorded weather plus an after photo (full points) or one tap (half).
+  If nobody answers within 24 hours Gemma settles from the weather record at half points.
+- **Honest points and savings.** Win = (100 - odds) x multiplier, losses -25, -50 or -150, a PAID OUT
+  receipt, and time, water and electricity saved with the assumption shown and 30 s of app time
+  subtracted per bet. A slip shows what a win would save as an estimate.
+- **Safety is never a bet.** A fixed heat, frost and storm backstop turns risky weather into a "Do it
+  now" alert; with a flag a Gemma safety guard adds a judgement on top.
+- **Private by design.** Everything runs on one laptop; the only outbound call is the weather lookup
+  to Open-Meteo.
+- **Behind flags (off by default):** laundry overnight, the AC and the heater, a Gemma laundry planner,
+  rescue alerts and cash-out, appeals, onboarding, ranks and achievements, a split-flap weather board,
+  voice capture and the fine-tuned bookmaker. See [Feature flags](#feature-flags).
+
+## Architecture
+
+One Node.js 24 process (Fastify) serves the React app and the JSON API, keeps everything in SQLite and
+a photo folder outside the repository, and runs a 60 s scheduler. Gemma runs in Ollama on 127.0.0.1
+(llama.cpp on 127.0.0.1 for voice only) behind one `ModelClient` interface with a fixture-backed fake
+for tests. The phone pairs over home Wi-Fi with a one-time token. Overview, components, security and
+privacy boundaries: [docs/architecture.md](docs/architecture.md); full design:
+[docs/spec/design.md](docs/spec/design.md); decisions: [docs/adr/](docs/adr/).
+
+## Quick start
+
+### No GPU, no model: the sample-data demo (two minutes)
+
+For a judge or a first look. The demo runs the whole app on a temporary folder of made-up bets with
+the fake model and fake weather, and every screen says "Sample data". It never touches your own data
+([Presentation](#presentation)).
+
+```bash
+git clone https://github.com/adricasi/ShouldIBother.git
+cd ShouldIBother
+nvm install            # reads .nvmrc (Node 24)
+npm ci
+npm run build
+npm run sib -- demo    # prints a pairing link; open the "Laptop" link in a browser; Ctrl+C stops it
+```
+
+The demo starts on port 8788 (`--port N` changes it) and shows Gemma's surfaces on sample data: the
+odds labels, "How Gemma decided", "Gemma's read" and the Score calibration. Those figures come from the
+fake model's recorded fixtures, **not from Gemma**, and are never results.
+
+### Develop on the fake model
+
+```bash
+SIB_FAKE_WEATHER=1 npm run dev   # builds the screens, starts with SIB_FAKE_MODEL=1, fake weather, no network
+```
+
+Open the "Laptop" pairing link the console prints, tap "Water plants", read the odds and place a bet;
+it comes due at its settle time (the next morning for plants). Drop `SIB_FAKE_WEATHER=1` to use real
+Open-Meteo weather. Details in [Development without a GPU](#development-without-a-gpu).
+
+### The real thing: Gemma 4 on your laptop
+
+1. [What you need](#what-you-need): Windows 11 + WSL2, an NVIDIA GPU with 8 GB or more, Node.js 24, Ollama.
+2. [Set up](#set-up): clone, `npm ci`, `npm run build`, `ollama pull` the Gemma 4 models, name the tag in `config/models.json`.
+3. [Phone access](#phone-access-over-wi-fi) and [Pair a phone](#pair-a-phone).
+4. [Run](#run): `npm start`.
 
 ## What you need
 
@@ -303,6 +456,43 @@ SIB_FAKE_WEATHER=1 npm run dev   # also no network: fake weather
 After editing a screen, run `npm run build:web` and reload (or restart `npm run dev`; each restart
 prints a new pairing link).
 
+## Configuration
+
+A few files in `config/` and some environment variables. The app starts without the git-ignored ones
+(the committed `*.example.json` files are the fallback).
+
+| File | Committed | What it holds |
+|---|---|---|
+| `config/models.json` | yes | Which Gemma model the app runs on, runtime addresses, tool-use and answer modes |
+| `config/flags.json` | yes (all off) | Feature flags ([below](#feature-flags)); change them with `sib flags` ([Presentation](#presentation)) |
+| `config/flags.presets.json` | yes | Named lists of flags to turn on together; `presentation` is the preset `sib flags` and `sib demo` use |
+| `config/server.json` | no (git-ignored) | Port, extra hosts and origins ([Set up, step 3](#3-optional-config-files)) |
+| `config/household.json` | no (git-ignored) | Your dryer, AC, heater and neighbourhood coordinates ([step 3](#3-optional-config-files)) |
+| `config/rules.json`, `config/savings.json` | yes | Rule and safety thresholds (final for this version, not tuned) and the savings catalogue |
+
+### `config/models.json`
+
+| Key | Meaning | Default |
+|---|---|---|
+| `primary` | Key in `models` of the model the app runs on | `"e4b"` |
+| `models.<key>` | `{ "tag", "quantization", "digest" }` for `e4b`, `e2b` (backtest comparison) and the optional `e4b-ft` (fine-tuned bookmaker) | none: `sib start` refuses to start without `models.<primary>.tag` unless `SIB_FAKE_MODEL=1` |
+| `ollama.baseUrl` | Where Ollama listens; only `127.0.0.1` or `[::1]` is accepted | `http://127.0.0.1:11434` |
+| `ollama.keepAlive` | How long Ollama keeps the model loaded | `24h` |
+| `ollama.temperature` | Sampling temperature | `0` |
+| `llamaCpp.baseUrl`, `llamaCpp.model` | The llama.cpp server for voice (flag `voice`); loopback only; `model` is only a label for the decision log | `http://127.0.0.1:8080`, `gemma4-audio` |
+| `gemma.toolUse` | `native` (Gemma calls `get_forecast`) or `injected` (the app fetches the forecast and hands it over; the fallback if tool calling fails on the runtime) | `native` |
+| `gemma.answerMode` | `single_call` (tool and schema together) or `two_step` (tool first, schema with the answer) | `single_call` |
+
+The step-by-step is under [Set up](#2-install-ollama-and-pull-gemma-4). What each setting does to the
+jobs: [docs/gemma.md, section 8](docs/gemma.md#8-the-modelclient-boundary).
+
+### Environment variables
+
+The table is under [Development without a GPU](#development-without-a-gpu): `SIB_FAKE_MODEL`,
+`SIB_FAKE_WEATHER`, `SIB_DATA_DIR`, `SIB_PORT`, `SIB_LAN_ADDRESS`. If you run Node with
+`NODE_USE_ENV_PROXY=1` and a proxy, set `NO_PROXY=127.0.0.1,localhost,::1`: the app refuses to start
+its model clients otherwise, so nothing local goes through a proxy.
+
 ## Feature flags
 
 `config/flags.json` switches unfinished or optional features on. **Every flag is off by default**,
@@ -425,8 +615,8 @@ npm run sib -- eval bookmaker --out ~/sib-evals/bookmaker-1 --record-fixtures ~/
 
 `export` and `delete-photos` refuse to run while the app is running (stop it first). They touch only
 the files the app owns in the data folder (`sib.db` and its `-wal`/`-shm` files, and the photos);
-`config/household.json` is never touched. `export` refuses a folder that is not empty or is a
-symlink.
+`config/household.json` is never touched. `export` refuses a folder that is not empty, is a
+symlink, or is inside a git working tree that git would not ignore.
 
 ### Building the fine-tune dataset (`sib snapshot`, `sib dataset`)
 The fine-tune dataset (REQ-019) is built in two steps. The first needs the network (Open-Meteo);
@@ -519,6 +709,71 @@ dataset loading, QLoRA training, merge and GGUF export, a hold-out smoke test) a
 step-by-step list are in [training/README.md](training/README.md); CI runs ruff and pytest there
 with no GPU and no model.
 
+## Project structure
+
+```text
+src/
+  server/      Fastify app, pairing and session guard, ledger (cards, bets, settlement), scheduler, weather client, photos, voice
+    gemma/     the Gemma jobs and the job runner (queue, retry, deadlines)
+    model/     ModelClient: Ollama, llama.cpp (audio), fixture-backed fake; loopback and proxy guards
+    migrations/ numbered SQLite migrations
+  domain/      pure code: rule baseline, safety backstop, bands, points, savings, outcome labels, calibration
+  web/         the React app (Today, Slips, Score, Onboarding)
+  backtest/    sib snapshot, sib dataset, sib backtest
+  eval/        sib eval
+  demo/        sib demo (seeded sample data)
+  cli.ts       the sib command
+prompts/       versioned Gemma prompts, <job>.v<n>.md
+config/        models, flags and presets, rules, savings, server and household settings
+evals/         the 20-case sets for sib eval
+test/          Vitest tests; test/fixtures/gemma/ holds the synthetic fixtures of the fake model
+e2e/           the Playwright journey
+training/      the Python (uv) QLoRA fine-tune scripts, configs and tests; see training/README.md
+docs/          spec/ (product, requirements, design, tasks), adr/, gemma.md, architecture.md, images/, post/
+```
+
+## Status and roadmap
+
+Honest state at the time of writing (details in [docs/spec/tasks.md](docs/spec/tasks.md)):
+
+- **Built and tested on the fake model and fake weather:** capture, odds, the photo flow, bets,
+  settlement, points, savings, Score, the Gemma surfaces, the flagged features, the job runner, the
+  model clients, `sib eval`, `sib snapshot`, `sib dataset`, `sib backtest`, `sib flags` and
+  `sib demo`. CI runs without a GPU, a model or a network.
+- **Written, never run on the real stack, so UNVERIFIED** (these need the builder's laptop): the Ollama
+  wire format, the llama.cpp wire format for voice, the Open-Meteo query and host names, the training
+  scripts' dependency pins, base model id, chat template and llama.cpp GGUF conversion for Gemma 4
+  (each is listed in [training/README.md](training/README.md)), the real-model valid-JSON rate and
+  latency (`sib eval`), the photo-judgement time, the live week of bets, and the network capture.
+  `config/models.json` has no model tags pinned yet.
+- **The fine-tune:** the QLoRA scripts exist (`training/`: config, dataset loading, training, merge and
+  GGUF export, a hold-out smoke test) with dry runs and tests that need no GPU. The real snapshot,
+  dataset and training run are the builder's (T-031, T-012), followed by the base-vs-fine-tuned
+  evaluation (T-014). No adapter has been trained, so no fine-tune result exists.
+- **Not done yet:** the live backtest run (T-019), photo evaluation on real Gemma (T-030), release
+  readiness and the post assets (T-020, T-021).
+- **No real-model results are published in this repository yet.** Results will be written to
+  `docs/results/` and quoted with their N; losses are reported with wins. The sample-data demo is
+  never a result.
+- Feature freeze Saturday 24 October 2026, 14:00 Madrid; publish by 23:00 the same day.
+
+## Contributing
+
+This is a spec-driven project: [docs/spec/](docs/spec/) is the source of truth, and the code follows
+it. To propose a change that contradicts the spec, change the spec first.
+
+- Work on a branch, never on `main`; Conventional Commits (`type(scope): summary`) that reference the
+  requirement or task IDs; one concern per pull request.
+- Run the checks from [Testing](#testing) before you push; CI must stay green. Tests and CI use the
+  fake model and fake weather only.
+- Record significant decisions as ADRs in [docs/adr/](docs/adr/). A prompt change bumps the prompt
+  version and re-records its fixtures; the rule and safety thresholds are final for this version.
+- Never commit photos, the database, an export or `config/household.json`; gitleaks runs in pre-commit
+  and CI.
+
+<!-- TODO(builder): say whether outside issues and pull requests are welcome, and when (before or after
+the challenge judging). -->
+
 ## Licences
 
 - This app: MIT, see [LICENSE](LICENSE).
@@ -530,6 +785,21 @@ with no GPU and no model.
 - Icons: [Lucide](https://lucide.dev), ISC.
 - [THIRD-PARTY.md](THIRD-PARTY.md) lists the assets bundled in the web app; everything else is an
   npm dependency pinned in `package-lock.json` (Python: `training/uv.lock`).
+
+## Acknowledgements
+
+- **Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**; the free tier is for non-commercial use.
+  The attribution is also shown in the footer of Today. <!-- TODO(builder): check the exact wording
+  at https://open-meteo.com/en/licence. -->
+- **Gemma 4**, the open-weight model by Google DeepMind, runs the whole app; the weights are
+  downloaded from the Ollama registry, never shipped here, and are used under the Gemma licence
+  terms. TODO(builder): copy the exact licence name and link from the Gemma 4 model card (this README
+  says Apache 2.0 under [Licences](#licences); confirm before publishing).
+- [Ollama](https://ollama.com) and llama.cpp serve the model locally; Fastify, React, Vite, zod,
+  better-sqlite3, sharp and pino are the application stack.
+- Fonts and icons: see [Licences](#licences) and [THIRD-PARTY.md](THIRD-PARTY.md).
+- Built for the DEV Hacktoberfest Open-Source AI Challenge, Week 3 "Slow and Steady".
 
 ## Later commits
 

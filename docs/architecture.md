@@ -69,7 +69,7 @@ flowchart LR
 | Scheduler | In-process loop, every 60 s (below). | `src/server/scheduler.ts` |
 | CLI | `sib` commands. | `src/cli.ts` |
 | Backtest, eval, dataset | Offline pipelines: replay, `sib eval`, snapshot and fine-tune dataset. | `src/backtest/`, `src/eval/`, `evals/` |
-| Training | Python project for the QLoRA fine-tune (placeholder until T-012). | `training/` |
+| Training | Python project for the QLoRA fine-tune: config, dataset loading, training, merge and GGUF export scripts with dry runs; the real run is the builder's (T-012). | `training/` |
 
 ## The data folder
 
@@ -84,7 +84,7 @@ tightened, or the start fails) and the database file is 0600 (`src/server/data-d
 | `photos/` | Re-encoded photo files named by random UUID; a photo is written as `.tmp`, its row inserted, then renamed; an orphan sweep at start removes strays |
 | `data-snapshots/`, `datasets/`, `evals/` | Created on demand by `sib snapshot`, `sib dataset` and `sib eval`; the commands refuse a location inside a git working tree unless git ignores it |
 
-Copying the folder is a full backup. `sib export <dir>` writes everything to JSON plus the photos;
+The app refuses to start with a data folder that git could commit (inside a git working tree and not ignored), and `sib export` refuses such a target too. Copying the folder is a full backup. `sib export <dir>` writes everything to JSON plus the photos;
 `sib delete-photos [--all-data]` removes them. Both refuse to run while the app is running. The
 data model is in [design.md](spec/design.md#data-model).
 
@@ -98,7 +98,7 @@ to the schema without rewriting existing rows; triggers make the bet's locked co
 enforce the status arrows (`0003-bet-locks.ts`). Current set: 0001 pairing and sessions, 0002 core
 schema, 0003 bet locks, 0004 card notices, 0005 Gemma card state, 0006 card photos, 0007 settle
 progress, 0008 card sunset, 0010 laundry plan, 0011 rescue, 0012 appeals, 0013 household profile,
-0014 achievements, 0015 place label (0009 is intentionally unused; numbers were assigned per task so parallel branches
+0014 achievements, 0015 place label, 0016 decision tool result, 0017 bet decision (0009 is intentionally unused; numbers were assigned per task so parallel branches
 did not clash). Migration tests run on a seeded fixture database; the builder checks each migration
 on a copy of the live database before applying it (NFR-003).
 
@@ -200,7 +200,7 @@ only, and the build fails if any value from `config/household.json` appears in i
 | Environment | Model | Weather | Needs |
 |---|---|---|---|
 | Dev and CI | Fake (`SIB_FAKE_MODEL=1`, fixtures in `test/fixtures/gemma/`) | Fake (`SIB_FAKE_WEATHER=1`) or recorded fixtures | Any machine with Node 24; no GPU, no network |
-| Demo (`sib demo`, T-032/T-034, in progress) | Fake, on a temporary data folder seeded with synthetic bets (`model_version = 'fake-demo'`); a "Sample data" banner on every screen | Fake | Never touches the live data folder or `config/household.json` (AC-029.4) |
+| Demo (`sib demo`) | Fake, on a temporary data folder seeded with synthetic bets (`model_version = 'fake-demo'`); a "Sample data" banner on every screen | Fake | Never touches the live data folder or `config/household.json` (AC-029.4) |
 | Live | Gemma 4 E4B in Ollama | Open-Meteo | The builder's laptop |
 
 CI (`.github/workflows/ci-node.yml`) runs format check, lint, typecheck, tests with coverage and the

@@ -44,7 +44,7 @@ loop (T-001 spikes, T-010 live Gemma, T-012 training, T-014, T-019, T-030; see
 | llama.cpp wire format for voice (`src/server/model/llamacpp-wire.ts`) | **UNVERIFIED**: a guess at the llama.cpp server API and at Gemma 4 audio support, listed item by item in the file header. |
 | Open-Meteo query and variable names (`src/backtest/open-meteo.ts`, `src/server/weather/open-meteo.ts`) | **UNVERIFIED**: written without access to the live API. |
 | Model tags and digests (`config/models.json`) | Empty (`"models": {}`) until the builder pins them. `sib start` refuses to start without a primary tag, unless `SIB_FAKE_MODEL=1`. |
-| Fine-tune (`training/`) | The dataset builder is implemented (`sib snapshot`, `sib dataset`). The Python training project is a placeholder (`training/src/training/__init__.py` says "Placeholder until T-012"). No adapter exists yet. |
+| Fine-tune (`training/`) | The dataset builder is implemented (`sib snapshot`, `sib dataset`) and the QLoRA scripts exist (config, dataset loading, training, merge and GGUF export, a hold-out smoke test) with dry runs and tests that need no GPU or model (`training/README.md`). They have never been run on the real stack: the base model id, dependency pins, chat template and llama.cpp conversion for Gemma 4 are UNVERIFIED, and the real run is the builder's (T-012). No adapter exists yet. |
 | Fixtures in `test/fixtures/gemma/` | All hand-written and synthetic (`model: "fake-gemma"`). They are not recordings of Gemma. |
 
 Every flag in `config/flags.json` is off by default (REQ-029). The builder switches features on
@@ -334,7 +334,10 @@ and safety are computed by code.
 **Decision log.** Every job, valid or not, writes one row to `gemma_decisions`
 (`src/server/ledger/decisions.ts`): `job`, `card_id`, `bet_id`, `photo_id`, `model`, `model_digest`,
 `prompt_version`, `tool_mode` (`called`, `injected` or `missed`), `input_summary`, `output`, `valid`,
-`retries`, `latency_ms` (running time, queue wait excluded), `error` and `created_at`. The same
+`retries`, `latency_ms` (running time, queue wait excluded), `error`, `created_at` and, for the
+bookmaker, `tool_result` (the compact forecast hours `get_forecast` returned: public weather only, at
+most 24 rows; migration `0016`). `bets.decision_id` (migration `0017`) points a bet at the decision that
+priced its quote. The same
 facts go to the structured pino log without any content (`JobLogEntry`).
 
 Privacy rules for the log:
@@ -483,13 +486,17 @@ output  {"status":"ok","transcript":"Water the tomatoes tonight"}
   `odds_source = rule`.
 - **Stored.** `input_summary` like `plants card, rule band 2, 0 answers`; `tool_mode`; the model
   name, digest and prompt version; and on a bet, `model_version` and `prompt_version`.
-- **Where you see it.** The bet slip, which is still placed on the card itself (no modal; design.md
-  Round 3 item 12): the odds tile (for example "Toss-up · 50%"), the label "Gemma's odds", Gemma's
-  reason, the settle time and payouts (`src/web/TodayScreen.tsx`); a yes/no question as two buttons;
-  "Retry Gemma"; and the status line "Gemma is online" (`src/web/TodayParts.tsx`). Beside the payouts
-  the slip shows a code-computed savings estimate for a win; Gemma has no part in it. The rule band is
-  not shown on its own: it reaches the screen only inside "Differs from the rule: ..." when Gemma
-  disagrees.
+- **Where you see it.** The bet slip, which is placed on the card itself (no modal; design.md Round 3
+  item 12): the odds tile (for example "Toss-up · 50%"), the label **"Gemma's odds"** or **"Rule
+  odds"** from `odds_source`, Gemma's reason, the settle time and payouts (`src/web/TodayScreen.tsx`,
+  `src/web/GemmaParts.tsx`). When Gemma's band differs from the rule's, both are shown side by side
+  ("Gemma: likely 70% · Rule: toss-up 50%"). A **"How Gemma decided"** disclosure under the slip, a
+  waiting bet and the receipt shows the model tag and short digest, the prompt version, whether Gemma
+  called the forecast tool (`tool_mode`), the forecast hours it was given (`tool_result`), retries and
+  latency, read from `gemma_decisions`; a fake-model decision says it is recorded test output, not
+  Gemma. A yes/no question appears as two buttons, "Retry Gemma" when it did not answer, and Today's
+  status line reads "Gemma 4 E4B · on this laptop" (`src/web/TodayParts.tsx`). Beside the payouts the
+  slip shows a code-computed savings estimate for a win; Gemma has no part in it.
 
 Example (fixture `bookmaker/ok.json`, a two-step script: a tool call, then an answer). The input is
 what `bookmakerUserMessage` builds for a plants card at 18:30 on 14 July with the rule at toss-up:
@@ -719,13 +726,13 @@ interface ModelClient {
 |---|---|---|---|
 | `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` (**UNVERIFIED**) | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
 | `LlamaCppAudioClient` | `llamacpp.ts`, `llamacpp-wire.ts` | `listener-audio` only | OpenAI-style `POST /v1/chat/completions` with the WAV as an `input_audio` part and a `response_format` JSON schema. Takes no tools. Health is `GET /health`. **Wire format UNVERIFIED.** |
-| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev` (`SIB_FAKE_MODEL=1`), `sib backtest --fake-model`, and `sib demo` (AC-029.4, T-032/T-034, in progress) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
+| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev` (`SIB_FAKE_MODEL=1`), `sib backtest --fake-model`, and `sib demo` (AC-029.4) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
 
 **Choosing the client** (`src/server/model/select.ts`). The fake model is chosen **only** when
-`SIB_FAKE_MODEL=1` (the one planned exception is `sib demo`, which starts the same fake in a temporary
+`SIB_FAKE_MODEL=1` (the one exception is `sib demo`, which starts the same fake in a temporary
 data folder seeded with synthetic bets whose `model_version` is `fake-demo`; the app shows a fixed
 "Sample data" banner and Score marks those figures "SAMPLE" and never reports them as results, per
-AC-029.4 and design.md Round 3 item 16; the command is in progress on `feat/T-032-demo-flags`); the console says so loudly and Today shows "(fake model)". Otherwise `sib start`
+AC-029.4 and design.md Round 3 item 16); the console says so loudly and Today shows "(fake model)". Otherwise `sib start`
 needs `models.<primary>.tag` in `config/models.json` and refuses to start without it. With Ollama
 down the app still starts: Today shows "Gemma is offline, rule odds only", cards use rule odds,
 settlements wait, and everything recovers when Ollama appears. `jobModels` can override the client
@@ -764,7 +771,7 @@ pulled shows as a warning under "Gemma is online" while its cards use rule odds.
 
 1. `config/models.json` accepts only `http://127.0.0.1:<port>` or `http://[::1]:<port>`; a name such as
    `localhost` is rejected because it can be pointed elsewhere (`src/server/model/loopback.ts`,
-   `config.ts`). The llama.cpp client re-checks at construction.
+   `config.ts`). Both clients re-check it at construction.
 2. Both clients refuse HTTP redirects (`redirect: "error"`), and answer bodies are capped at 1 MiB.
 3. The **proxy guard** (`src/server/model/proxy-guard.ts`): Node 24 can route `fetch` through a proxy
    with `NODE_USE_ENV_PROXY=1`. If that is on, a proxy is set and `NO_PROXY` does not cover
@@ -840,9 +847,11 @@ The Score screen (`src/server/ledger/score.ts`, `src/web/ScoreScreen.tsx`, flag 
 - Rule-odds bets never count toward Gemma's calibration.
 
 Over the chart, Score prints one sentence from the band Gemma used most among those with at least
-5 bets, for example "When Gemma says 70%, doing nothing works 74% of the time (9 bets)." (illustrative format, not a result)
-(`calibrationHeadline` in `src/web/ScoreScreen.tsx`); with no such band there is no headline, so a
-shaky share never becomes one.
+5 bets, with the rule's own figure for the same band beside it, for example "When Gemma says likely,
+doing nothing worked 74% (9 bets); the rule's own likely calls: 61% (12 bets)." (illustrative format,
+not a result; `calibrationHeadline` in `src/web/ScoreScreen.tsx`). With no Gemma band that has 5 bets
+there is no headline, so a shaky share never becomes one. The rule is scored on all settled bets and
+Gemma only on the bets it priced, and the screen says so.
 
 The **judge overrule rate** (flag `appeals`) is the share of Gemma verdicts on settled do-nothing bets
 that an appeal changed, with N. N counts only first verdicts that are real Gemma decisions (a
@@ -914,7 +923,7 @@ result is reported whether or not it improves ([ADR-0006](adr/0006-python-traini
 ```bash
 npm run sib -- snapshot    # needs network: Open-Meteo -> <data folder>/data-snapshots/<place>_<start>_<end>/
 npm run sib -- dataset     # offline: snapshot -> <data folder>/datasets/<same name>/{train.jsonl,holdout.jsonl,manifest.json}
-# training/ (Python, uv)   # PLANNED (T-012): QLoRA on E4B, text only, then merge + GGUF + Ollama import; not written yet
+# training/ (Python, uv)   # T-012, the builder's run: QLoRA on E4B, text only, then merge + GGUF + Ollama import (scripts: training/README.md)
 npm run sib -- backtest --strategies e4b,e4b-ft --splits holdout     # T-014: base vs fine-tuned
 ```
 
@@ -947,12 +956,17 @@ npm run sib -- backtest --strategies e4b,e4b-ft --splits holdout     # T-014: ba
      result and carries `meta.outcome_delivered` for evaluation only. `manifest.json` records the prompt
      version and hash, the `config/rules.json` hash, the snapshot end date, the habit profile and rows
      per chore and band, and the skips.
-3. **Training** (T-012, `training/`) is **planned, not done**. Today `training/` holds only the uv
-   project, its lockfile, the synthetic habits file and a placeholder package with a placeholder test
-   (which is all CI's ruff and pytest run). The intended pipeline, being written separately: QLoRA on
-   Gemma 4 E4B, text only, with Unsloth or TRL + PEFT, seeds and versions pinned with uv, then merge,
-   GGUF conversion and import into Ollama with a Modelfile as a pinned local tag. Nothing from this
-   step exists yet, and no adapter has been trained. Stop Ollama (`ollama stop`) before training: one GPU user at a time.
+3. **Training** (T-012, `training/`). The scripts exist (T-036) and are described step by step in
+   [training/README.md](../training/README.md): a validated config, dataset loading that refuses any
+   hold-out row, QLoRA with TRL and PEFT on 4-bit bitsandbytes (`--dry-run` prints the plan), merge and
+   GGUF export with llama.cpp, a Modelfile for Ollama and a 20-prompt hold-out smoke test (at least 19
+   valid, AC-019.2). They were written without a GPU, a Hugging Face login or a Gemma 4 download and
+   CI tests them only on a tiny synthetic dataset. **The real run is the builder's (T-012) and no
+   adapter has been trained.** UNVERIFIED until then: the Hugging Face id of the base model, that the
+   pinned `transformers` and `trl` versions load Gemma 4 E4B with the bitsandbytes build for your CUDA
+   driver, the LoRA target modules and hyper-parameters, that llama.cpp converts Gemma 4, and the
+   chat template of the imported model (including tool calls). Stop Ollama (`ollama stop`) before
+   training: one GPU user at a time.
 4. **Serving.** Put the tag in `config/models.json` under `models.e4b-ft` and switch on the flag
    `finetunedBookmaker`. The flag routes **only the bookmaker** to the fine-tuned model
    (`jobModels.bookmaker` in `src/server/model/select.ts`); the listener, inspector, judge, safety
