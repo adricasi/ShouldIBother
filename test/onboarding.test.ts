@@ -332,7 +332,7 @@ describe("the stored profile", () => {
       flags: { onboarding: true },
       household: {
         ...EXAMPLE_HOUSEHOLD,
-        location: { latitude: 41.40123456, longitude: 2.15876543 },
+        location: { latitude: 41.40451234, longitude: 2.15551234 },
       },
     });
     expect((await view()).household.location).toEqual({ latitude: 41.4, longitude: 2.16 });

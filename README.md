@@ -482,8 +482,9 @@ Today:
 ## Privacy and your data
 
 - Photos, chore text, habits and audio stay on the laptop, in the data folder
-  `~/.should-i-bother/` (`SIB_DATA_DIR` to change it). It lives outside the repository, is kept
-  owner-only (folder 0700, database 0600) and is git-ignored if you point it inside the checkout.
+  `~/.should-i-bother/` (`SIB_DATA_DIR` to change it). It lives outside the repository and is kept
+  owner-only (folder 0700, database 0600). The app refuses to start with a data folder that git
+  could commit, and `sib export` refuses such a target too.
 - Photos are re-encoded without metadata (no EXIF or GPS) and resized to 1024 px at most.
 - Gemma runs in Ollama on 127.0.0.1 (and, with the `voice` flag, llama.cpp on 127.0.0.1 for voice
   notes, held in memory only). No cloud model, no analytics, no telemetry.

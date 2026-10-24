@@ -23,7 +23,7 @@ import { FakeClock } from "./helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
 import { seedBet, settlementOf, tap } from "./support/settle.js";
 
-const GRACIA = { latitude: 41.4012, longitude: 2.1587 };
+const GRACIA = { latitude: 41.4045, longitude: 2.1555 };
 const TODAY = "2026-10-22";
 const TOMORROW = "2026-10-23";
 const at = (date: string, time: string): number => madridWallTimeToEpochMs(date, time);
