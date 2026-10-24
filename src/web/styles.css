@@ -1614,11 +1614,27 @@ label.button.disabled {
   color: var(--color-leaf);
 }
 
+/* The rule's advice is the quieter voice: a smaller, softer headline. */
+.slip.advice h3.advice-quiet {
+  font-size: var(--text-body);
+  color: var(--color-ink-2);
+}
+
+.advice-note,
+.advice-status {
+  margin: 0;
+}
+
 .advice-rule {
   display: grid;
   gap: var(--space-1);
 }
 
-.advice-forecast[open] {
-  overflow-x: auto;
+.advice-rule .meta {
+  color: var(--color-ink-2);
+}
+
+.advice-forecast-scroll {
+  max-height: 16rem;
+  overflow: auto;
 }

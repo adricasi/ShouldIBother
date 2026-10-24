@@ -129,6 +129,8 @@ export const adviceSchema = z.object({
       sunshine_min: z.number().nullable(),
     }),
   ),
+  /** The window's length in hours: the table says when it shows fewer. */
+  forecast_total: z.number(),
   note: z.string().nullable(),
   can_retry: z.boolean(),
   decision: decisionSchema.nullable(),
@@ -219,6 +221,8 @@ export const cardSchema = z.object({
   laundry_plan: planSchema.nullish(),
   /** Set on an advice card (flag `adviceCards`). */
   advice: adviceSchema.nullish(),
+  /** True on an advice card the safety backstop or guard turned into an alert (AC-031.4). */
+  advice_alert: z.literal(true).optional(),
 });
 
 const nullableNumber = z.number().nullable();

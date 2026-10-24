@@ -37,7 +37,7 @@ const baseAdvice: Advice = {
   advice: "wait",
   headline: "Clean the windows after Friday 14:00",
   reason: "8 mm of rain until Thursday 18:00, then dry.",
-  window: { from: "2026-10-23T12:00:00.000Z", to: "2026-10-24T00:00:00.000Z" },
+  window: { from: "2026-10-23T12:00:00.000Z", to: "2026-10-23T18:00:00.000Z" },
   rule: null,
   forecast: [
     {
@@ -49,6 +49,7 @@ const baseAdvice: Advice = {
       sunshine_min: 30,
     },
   ],
+  forecast_total: 12,
   note: null,
   can_retry: false,
   decision,
@@ -110,10 +111,11 @@ describe("AC-031.1: the advice card shows Gemma's advice and window in Madrid ti
     const html = screen(today([adviceCard()]));
     expect(html).toContain("Clean the windows after Friday 14:00");
     expect(html).toContain("8 mm of rain until Thursday 18:00, then dry.");
-    expect(html).toContain("Window:");
-    expect(html).toContain("(Madrid time)");
+    // One style: the date once, then the clock span, in Madrid time.
+    expect(html).toContain("Fri 23 Oct, 14:00 to 20:00 (Madrid time)");
     expect(html).toContain("Gemma&#x27;s advice");
-    expect(html).toContain("This is advice, not a bet.");
+    expect(html).toContain("No bet");
+    expect(html).not.toContain("This is advice, not a bet.");
     // No odds, payouts or bet buttons on an advice card.
     expect(html).not.toContain("Bet on doing nothing");
     expect(html).not.toMatch(/Retry Gemma/);
@@ -122,6 +124,9 @@ describe("AC-031.1: the advice card shows Gemma's advice and window in Madrid ti
   it("AC-031.1: shows the forecast numbers of the window", () => {
     const html = screen(today([adviceCard()]));
     expect(html).toContain("Forecast for this window (1 h)");
+    expect(html).toContain("Rain chance %");
+    expect(html).toContain("Forecast shown: 1 of 12 hours");
+    expect(html).toContain('aria-label="Forecast for this window, scrollable"');
     expect(html).toContain("Fri 14:00");
   });
 
@@ -150,13 +155,15 @@ describe("AC-031.2: the rule advice is shown labelled, and beside Gemma's when t
         adviceCard({
           rule: {
             headline: "Clean the windows after Friday 20:00",
-            reason: "Rule: rain in the next 48 hours; wait until 6 hours after the last wet hour.",
+            reason: "Rain in the next 48 hours; wait until 6 hours after the last wet hour.",
           },
         }),
       ]),
     );
-    expect(html).toContain("Rule advice: Clean the windows after Friday 20:00");
-    expect(html).toContain("Rule: rain in the next 48 hours");
+    expect(html).toContain("Clean the windows after Friday 20:00");
+    expect(html).toContain("Rule advice");
+    expect(html).toContain("Rain in the next 48 hours");
+    expect(html).not.toContain("Rule: ");
   });
 
   it("AC-031.2: with Gemma away the card says Rule advice and offers Retry", () => {
@@ -165,7 +172,7 @@ describe("AC-031.2: the rule advice is shown labelled, and beside Gemma's when t
         adviceCard({
           source: "rule",
           label: "Rule advice",
-          reason: "Rule: no gusts of 40 km/h or more in the next 24 hours.",
+          reason: "No gusts of 40 km/h or more in the next 24 hours.",
           note: "Gemma is not running.",
           can_retry: true,
           decision: null,
@@ -183,13 +190,15 @@ describe("AC-031.2: the rule advice is shown labelled, and beside Gemma's when t
       today([
         adviceCard({
           source: "rule",
-          label: "Gemma is thinking · rule advice",
+          label: "Rule advice · Gemma is thinking",
           decision: null,
           forecast: [],
         }),
       ]),
     );
-    expect(html).toContain("Gemma is thinking · rule advice");
+    expect(html).toContain("Rule advice · Gemma is thinking");
+    expect(html).toContain("Gemma is thinking, showing rule advice.");
+    expect(html).toContain("advice-quiet");
   });
 
   it("AC-031.2: with no forecast the card says so and offers Retry", () => {
@@ -245,7 +254,7 @@ describe("NFR-009: the advice card has no axe violations and keeps 44 px targets
         adviceCard({
           rule: {
             headline: "Clean the windows now",
-            reason: "Rule: no rain in the next 48 hours.",
+            reason: "No rain in the next 48 hours.",
           },
         }),
       ]),
@@ -283,5 +292,147 @@ describe("NFR-009: the advice card has no axe violations and keeps 44 px targets
     // `.button` and `.how-gemma summary` take their minimum height from --tap-min (44 px).
     expect(html).toMatch(/class="button secondary compact"/);
     expect(html).toContain('class="how-gemma');
+  });
+});
+
+describe("AC-031.4, AC-031.2 and AC-031.1: the other states of an advice card", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  async function violationsOf(html: string): Promise<string[]> {
+    document.documentElement.lang = "en";
+    document.title = ROUTE_TITLES.today;
+    document.body.innerHTML = html;
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+  }
+
+  const alertCard: Card = {
+    id: 8,
+    chore_type: "balcony_sweep",
+    title: "Sweep the balcony",
+    created_at: "2026-10-22T07:00:00.000Z",
+    kind: "alert",
+    alert_reason: "Gusts up to 85 km/h are forecast this afternoon.",
+    notice: null,
+    quote: null,
+    gemma: null,
+    advice_alert: true,
+  };
+
+  const comingLater: Card = {
+    id: 9,
+    chore_type: "windows_clean",
+    title: "clean the windows",
+    created_at: "2026-10-22T07:00:00.000Z",
+    kind: "coming_later",
+    alert_reason: null,
+    notice: "Coming later",
+    quote: null,
+    gemma: null,
+  };
+
+  const unsure = adviceCard({
+    source: "rule",
+    label: "Rule advice",
+    note: "Gemma could not decide from the forecast.",
+    can_retry: true,
+    window: null,
+    advice: "do_now",
+    headline: "Clean the windows now",
+    reason: "No rain in the next 48 hours.",
+  });
+  const refused = adviceCard({
+    source: "rule",
+    label: "Rule advice",
+    note: "Gemma's window was contradicted by the forecast.",
+    can_retry: true,
+  });
+  const offline = adviceCard({
+    source: "rule",
+    label: "Rule advice",
+    note: "Gemma is not running.",
+    can_retry: true,
+    decision: null,
+  });
+
+  it("AC-031.4: an advice card the safety checks turned into an alert says Not safe today, not Do it now", async () => {
+    const html = screen(today([alertCard]));
+    expect(html).toContain("Not safe today: Sweep the balcony");
+    expect(html).toContain("Gusts up to 85 km/h");
+    expect(html).not.toContain("Do it now");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("AC-031.4: a plain alert still says Do it now", () => {
+    const html = screen(today([{ ...alertCard, advice_alert: undefined }]));
+    expect(html).toContain("Do it now: Sweep the balcony");
+  });
+
+  it("AC-031.2: unsure, refused and offline show the rule advice with the note under the label", async () => {
+    for (const card of [unsure, refused, offline]) {
+      const html = screen(today([card]));
+      expect(html).toMatch(/Rule advice<\/p><p class="meta advice-note">/);
+      expect(html).toContain("Retry Gemma");
+      expect(html).toContain("Showing the rule advice, because Gemma has none.");
+      expect(await violationsOf(html)).toEqual([]);
+    }
+  });
+
+  it("AC-031.1: with the flag off the chore reads Coming later and has no advice", async () => {
+    const html = screen({ ...today([comingLater]), flags: {} });
+    expect(html).toContain("Coming later");
+    expect(html).not.toContain("Lazy Bookie · Advice");
+    expect(await violationsOf(html)).toEqual([]);
+  });
+
+  it("Gemma is the protagonist: its label comes above the headline, the rule's headline is quieter", () => {
+    const gemma = screen(today([adviceCard()]));
+    expect(gemma.indexOf("Gemma&#x27;s advice")).toBeLessThan(gemma.indexOf("<h3"));
+    expect(gemma).not.toContain("advice-quiet");
+    expect(gemma).toContain("Gemma&#x27;s advice is in: Clean the windows after Friday 14:00");
+    const rule = screen(today([offline]));
+    expect(rule.indexOf("Rule advice")).toBeLessThan(rule.indexOf("<h3"));
+    expect(rule).toContain("advice-quiet");
+  });
+
+  it("names the card once when there is no headline yet, and says when the rule has no advice", () => {
+    const empty = screen(
+      today([
+        adviceCard({
+          stage: "thinking",
+          source: null,
+          label: null,
+          headline: null,
+          reason: null,
+          window: null,
+          forecast: [],
+          note: "Gemma is checking the forecast.",
+          decision: null,
+        }),
+      ]),
+    );
+    expect(empty).toContain('aria-label="Clean the windows"');
+    const none = screen(
+      today([adviceCard({ rule: { headline: null, reason: "No rain in the next 48 hours." } })]),
+    );
+    expect(none).toContain("No rule advice for this window");
+  });
+
+  it("shows no window line for a do it now", () => {
+    const html = screen(
+      today([
+        adviceCard({
+          advice: "do_now",
+          headline: "Clean the windows now",
+          window: null,
+          forecast: [],
+        }),
+      ]),
+    );
+    expect(html).not.toContain("(Madrid time)");
   });
 });

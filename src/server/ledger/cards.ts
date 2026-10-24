@@ -17,7 +17,7 @@ import { stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
 import { launchNewCardJobs } from "./gemma-cards.js";
-import { withAdvice } from "./advice.js";
+import { adviceExpiresAt, withAdvice } from "./advice.js";
 import { withPlan } from "./laundry-plan.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
@@ -36,8 +36,6 @@ const MAX_TODAY_CARDS = 20;
 const QUIET_CARD_REUSE_MS = 30 * 60 * 1000;
 
 /** Cards without odds (alerts, notices) leave Today after this long; they are not bets in waiting. */
-/** An advice card stays on Today for the 3 days its advice looks ahead (REQ-031). */
-const ADVICE_CARD_TTL_MS = 72 * 60 * 60 * 1000;
 const QUIET_CARD_TTL_MS = 12 * 60 * 60 * 1000;
 
 function insertCard(
@@ -343,8 +341,8 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
   const views: CardView[] = [];
   for (const card of cards) {
     if (card.kind === "weather" && card.advice !== null) {
-      // Advice stays useful for the 3 days it looks ahead.
-      if (card.created_at + ADVICE_CARD_TTL_MS > now) {
+      // Advice leaves Today when its window is over (72 hours after it was made for "no window").
+      if (adviceExpiresAt(card, deps.adviceRules) > now) {
         views.push(withAdvice(deps, card, cardView(card, undefined, table), now));
       }
     } else if (card.kind === "weather") {
@@ -364,7 +362,11 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
         );
       }
     } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
-      views.push(withPlan(card, cardView(card, undefined, table), table, now));
+      views.push(
+        card.advice === null
+          ? withPlan(card, cardView(card, undefined, table), table, now)
+          : withAdvice(deps, card, cardView(card, undefined, table), now),
+      );
     }
   }
   return views;

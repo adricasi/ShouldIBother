@@ -22,6 +22,7 @@ import { hoursInWindow, type ForecastHour } from "../../domain/weather.js";
 import {
   ADVISOR_CONTRADICTION_PREFIX,
   ADVISOR_PROMPT,
+  MAX_ADVISOR_REASON_CHARS,
   adviceOf,
   runAdvisor,
   type AdvisorOutput,
@@ -47,8 +48,8 @@ const answerSchema = z
     advice: z.enum(ADVICE_KINDS),
     window: z
       .object({
-        start_hours_ahead: z.number().int().min(0),
-        end_hours_ahead: z.number().int().min(1),
+        start_hours_ahead: z.number().int().min(0).max(ADVICE_HORIZON_HOURS),
+        end_hours_ahead: z.number().int().min(1).max(ADVICE_HORIZON_HOURS),
       })
       .strict()
       .nullable(),
@@ -70,8 +71,13 @@ const storedAdviceSchema = z
     attempt: z.number().int().min(0),
     first_hour_at: z.number().int().nullable(),
     forecast_at: z.number().int().nullable(),
+    /** How many forecast hours the advice was made on (72 at most): "no window in the next N h". */
+    hours_seen: z.number().int().min(0).max(ADVICE_HORIZON_HOURS).nullable(),
     rule: answerSchema.nullable(),
-    gemma: answerSchema.extend({ reason: z.string() }).strict().nullable(),
+    gemma: answerSchema
+      .extend({ reason: z.string().max(MAX_ADVISOR_REASON_CHARS) })
+      .strict()
+      .nullable(),
     decision_id: z.number().int().nullable(),
   })
   .strict();
@@ -86,6 +92,7 @@ function pendingAdvice(chore: AdviceChore): StoredAdvice {
     attempt: 1,
     first_hour_at: null,
     forecast_at: null,
+    hours_seen: null,
     rule: null,
     gemma: null,
     decision_id: null,
@@ -149,8 +156,20 @@ export function adviceCardId(deps: Pick<LedgerDeps, "db">, cardId: number): bool
   return card !== undefined && isAdviceCard(card);
 }
 
-function writeAdvice(deps: Pick<LedgerDeps, "db">, cardId: number, advice: StoredAdvice): void {
-  deps.db.prepare("UPDATE cards SET advice = ? WHERE id = ?").run(JSON.stringify(advice), cardId);
+/**
+ * Writes the card's advice, but only over the run it belongs to: a run that was overtaken (a
+ * Retry started meanwhile) cannot land over the newer one. `overAttempt` is the attempt stored now;
+ * it differs from the advice's own only when a Retry starts a new run.
+ */
+function writeAdvice(
+  deps: Pick<LedgerDeps, "db">,
+  cardId: number,
+  advice: StoredAdvice,
+  overAttempt: number = advice.attempt,
+): void {
+  deps.db
+    .prepare("UPDATE cards SET advice = ? WHERE id = ? AND json_extract(advice, '$.attempt') = ?")
+    .run(JSON.stringify(advice), cardId, overAttempt);
 }
 
 /** Said when the card shows the rule's advice because Gemma has none: why, in plain words. */
@@ -266,6 +285,7 @@ async function withRuleAdvice(
     gemma: null,
     first_hour_at: forecast.hours[0]!.startsAt,
     forecast_at: forecast.fetchedAt,
+    hours_seen: forecast.hours.length,
   };
   writeAdvice(deps, card.id, stored);
   return { stored, forecast, rule };
@@ -488,7 +508,7 @@ export function retryAdvice(deps: LedgerDeps, cardId: number): CardView {
         )
         .run(cardId).changes;
       if (changes === 1) {
-        writeAdvice(deps, cardId, { ...current, attempt, gemma: null });
+        writeAdvice(deps, cardId, { ...current, attempt, gemma: null }, current.attempt);
       }
       return changes;
     })
@@ -554,6 +574,7 @@ export function adviceView(
     return null;
   }
   const chore = stored.chore;
+  const hoursSeen = stored.hours_seen ?? ADVICE_HORIZON_HOURS;
   const state = card.gemma_state ?? "offline";
   const firstHourMs = stored.first_hour_at;
   const rule = stored.rule === null ? null : fromStored(stored.rule);
@@ -563,10 +584,14 @@ export function adviceView(
     gemma !== null && stored.gemma !== null
       ? { source: "gemma", advice: gemma, reason: stored.gemma.reason }
       : rule !== null
-        ? { source: "rule", advice: rule, reason: ruleReason(chore, rule, deps.adviceRules) }
+        ? {
+            source: "rule",
+            advice: rule,
+            reason: ruleReason(chore, rule, deps.adviceRules, hoursSeen),
+          }
         : null;
   const headline = (answer: Advice): string | null =>
-    firstHourMs === null ? null : adviceHeadline(chore, answer, firstHourMs, nowMs);
+    firstHourMs === null ? null : adviceHeadline(chore, answer, firstHourMs, nowMs, hoursSeen);
   const windowOf = (answer: Advice) =>
     answer.window === undefined || firstHourMs === null
       ? null
@@ -588,7 +613,7 @@ export function adviceView(
         : shown.source === "gemma"
           ? "Gemma's advice"
           : state === "thinking"
-            ? "Gemma is thinking · rule advice"
+            ? "Rule advice · Gemma is thinking"
             : "Rule advice",
     advice: shown?.advice.advice ?? null,
     headline: shown === null ? null : headline(shown.advice),
@@ -599,10 +624,15 @@ export function adviceView(
       shown === null || firstHourMs === null
         ? []
         : windowForecast(deps.db, stored.decision_id, firstHourMs, shown.advice, deps.adviceRules),
+    /** The window's length in hours, so the card can say when the numbers cover less of it. */
+    forecast_total: (() => {
+      const window = shown === null ? undefined : adviceWindowOf(shown.advice, deps.adviceRules);
+      return window === undefined ? 0 : window.endHoursAhead - window.startHoursAhead;
+    })(),
     /** The rule's advice beside Gemma's, only when they differ (AC-031.2). */
     rule:
       differs && rule !== null
-        ? { headline: headline(rule), reason: ruleReason(chore, rule, deps.adviceRules) }
+        ? { headline: headline(rule), reason: ruleReason(chore, rule, deps.adviceRules, hoursSeen) }
         : null,
     /** Why Gemma's advice is not shown, or what Gemma is doing. */
     note: offline
@@ -627,6 +657,7 @@ export type AdviceView = {
   readonly window: { readonly from: string; readonly to: string } | null;
   readonly rule: { readonly headline: string | null; readonly reason: string } | null;
   readonly forecast: ForecastRow[];
+  readonly forecast_total: number;
   readonly note: string | null;
   readonly can_retry: boolean;
   readonly decision: ReturnType<typeof decisionView>;
@@ -638,8 +669,13 @@ export function withAdvice<T extends CardView>(
   card: CardRow,
   view: T,
   nowMs: number,
-): T & { advice?: AdviceView } {
+): T & { advice?: AdviceView; advice_alert?: true } {
   const advice = adviceView(deps, card, nowMs);
+  if (advice !== null && card.kind === "alert") {
+    // The safety backstop or guard replaced the advice (AC-031.4): the card is an alert, and the
+    // client says "Not safe today" with the chore's name rather than the person's words.
+    return { ...view, title: ADVICE_CHORES[advice.chore].title, advice_alert: true };
+  }
   if (advice === null || card.kind !== "weather") {
     return view;
   }
@@ -658,4 +694,28 @@ export function adviceCardView(
 ): ReturnType<typeof withAdvice<CardView>> {
   const card = loadCard(deps, cardId);
   return withAdvice(deps, card, cardView(card, undefined, bandTable(deps.rules)), deps.now());
+}
+
+/**
+ * When an advice card leaves Today: at the end of the window it advises (a "do it now" is the first
+ * hours, a wait its window), and 72 hours after it was made for "no window" and for a card with no
+ * advice yet (REQ-031).
+ */
+export function adviceExpiresAt(card: CardRow, rules: LedgerDeps["adviceRules"]): number {
+  const stored = parseAdvice(card);
+  const fallback = card.created_at + ADVICE_HORIZON_HOURS * HOUR_MS;
+  if (stored === null || stored.first_hour_at === null) {
+    return fallback;
+  }
+  const shown =
+    stored.gemma !== null
+      ? fromStored(stored.gemma)
+      : stored.rule !== null
+        ? fromStored(stored.rule)
+        : null;
+  if (shown === null || shown.advice === "no_window") {
+    return fallback;
+  }
+  const window = adviceWindowOf(shown, rules);
+  return window === undefined ? fallback : stored.first_hour_at + window.endHoursAhead * HOUR_MS;
 }

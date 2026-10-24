@@ -294,7 +294,15 @@ export function createCore(deps: CoreDeps): Core {
       const { id } = parse(idParams, request.params);
       // An advice card (flag `adviceCards`) is retried by the advisor, a laundry planner card (flag
       // `laundryPlanner`) by the planner, not the bookmaker.
-      if (deps.flags.adviceCards && adviceCardId(ledger, id)) {
+      if (adviceCardId(ledger, id)) {
+        if (!deps.flags.adviceCards) {
+          // The flag is off: the advisor does not run, and the bookmaker has nothing to do here.
+          throw new HttpError(
+            409,
+            "Advice cards are off",
+            "Turn the adviceCards flag on to retry.",
+          );
+        }
         return retryAdvice(ledger, id);
       }
       return deps.flags.laundryPlanner && plannerCardId(ledger, id)

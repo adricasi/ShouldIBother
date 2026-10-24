@@ -88,8 +88,15 @@ function isWet(hour: ForecastHour, rules: AdviceRules): boolean {
   return rainOf(hour) >= rules.wetHourMm;
 }
 
+/** A wait window, cut at the end of the 72 hour horizon. */
 function waitFrom(start: number, length: number): Advice {
-  return { advice: "wait", window: { startHoursAhead: start, endHoursAhead: start + length } };
+  return {
+    advice: "wait",
+    window: {
+      startHoursAhead: start,
+      endHoursAhead: Math.min(start + length, ADVICE_HORIZON_HOURS),
+    },
+  };
 }
 
 /**
@@ -363,8 +370,8 @@ export interface AdviceChoreSpec {
   readonly action: string;
   /** The chore in the safety guard's words. */
   readonly judgeName: string;
-  /** The headline of "no good window in the next 72 h". */
-  readonly noWindow: string;
+  /** The headline of "no good window in the next N h", N being the forecast hours seen (72 at most). */
+  readonly noWindow: (hoursSeen: number) => string;
   /** "after" for a chore that waits for something to pass, "from" for paint that waits for a run. */
   readonly connector: "after" | "from";
 }
@@ -374,28 +381,28 @@ export const ADVICE_CHORES: Readonly<Record<AdviceChore, AdviceChoreSpec>> = {
     judgeName: "clean the windows",
     title: "Clean the windows",
     action: "Clean the windows",
-    noWindow: "No good time to clean the windows in the next 72 h",
+    noWindow: (hours) => `No good time to clean the windows in the next ${String(hours)} h`,
     connector: "after",
   },
   balcony_sweep: {
     judgeName: "sweep the balcony",
     title: "Sweep the balcony",
     action: "Sweep the balcony",
-    noWindow: "No good time to sweep the balcony in the next 72 h",
+    noWindow: (hours) => `No good time to sweep the balcony in the next ${String(hours)} h`,
     connector: "after",
   },
   outdoor_paint: {
     judgeName: "paint or varnish outdoors",
     title: "Paint or varnish outdoors",
     action: "Paint or varnish outdoors",
-    noWindow: "No good window to paint outdoors in the next 72 h",
+    noWindow: (hours) => `No good window to paint outdoors in the next ${String(hours)} h`,
     connector: "from",
   },
   lawn_feed: {
     judgeName: "feed the lawn",
     title: "Feed the lawn",
     action: "Feed the lawn",
-    noWindow: "No good time to feed the lawn in the next 72 h",
+    noWindow: (hours) => `No good time to feed the lawn in the next ${String(hours)} h`,
     connector: "after",
   },
 };
@@ -419,20 +426,22 @@ export function whenLabel(epochMs: number, nowMs: number): string {
 
 /**
  * The headline of an advice: "Clean the windows after Thursday 14:00". `firstHourMs` is the start
- * of forecast hour 0, which the window is counted from.
+ * of forecast hour 0, which the window is counted from. `hoursSeen` is how many forecast hours
+ * there were: "no good window in the next N h" says no more than that.
  */
 export function adviceHeadline(
   chore: AdviceChore,
   answer: Advice,
   firstHourMs: number,
   nowMs: number,
+  hoursSeen: number = ADVICE_HORIZON_HOURS,
 ): string {
   const spec = ADVICE_CHORES[chore];
   switch (answer.advice) {
     case "do_now":
       return `${spec.action} now`;
     case "no_window":
-      return spec.noWindow;
+      return spec.noWindow(Math.min(hoursSeen, ADVICE_HORIZON_HOURS));
     case "wait": {
       const start = answer.window?.startHoursAhead ?? 0;
       return `${spec.action} ${spec.connector} ${whenLabel(firstHourMs + start * HOUR_MS, nowMs)}`;
@@ -441,36 +450,41 @@ export function adviceHeadline(
 }
 
 /** One line that says why the rule gave this advice, with the rule's fixed numbers (AC-031.2). */
-export function ruleReason(chore: AdviceChore, answer: Advice, rules: AdviceRules): string {
+export function ruleReason(
+  chore: AdviceChore,
+  answer: Advice,
+  rules: AdviceRules,
+  hoursSeen: number = ADVICE_HORIZON_HOURS,
+): string {
   const waits = answer.advice === "wait";
   switch (chore) {
     case "windows_clean": {
       const spec = rules.windowsClean;
       return waits
-        ? `Rule: rain in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last wet hour.`
-        : `Rule: no rain in the next ${String(spec.lookaheadHours)} hours.`;
+        ? `Rain in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last wet hour.`
+        : `No rain in the next ${String(spec.lookaheadHours)} hours.`;
     }
     case "balcony_sweep": {
       const spec = rules.balconySweep;
       return waits
-        ? `Rule: gusts of ${String(spec.gustKmhAtLeast)} km/h or more in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last one.`
-        : `Rule: no gusts of ${String(spec.gustKmhAtLeast)} km/h or more in the next ${String(spec.lookaheadHours)} hours.`;
+        ? `Gusts of ${String(spec.gustKmhAtLeast)} km/h or more in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last one.`
+        : `No gusts of ${String(spec.gustKmhAtLeast)} km/h or more in the next ${String(spec.lookaheadHours)} hours.`;
     }
     case "outdoor_paint": {
       const spec = rules.outdoorPaint;
       const fit = `dry, under ${String(spec.humidityPctBelow)}% humidity and ${String(spec.tempCAtLeast)} °C or warmer`;
       return answer.advice === "no_window"
-        ? `Rule: no ${String(spec.runHours)} hours in a row that are ${fit} in the next ${String(ADVICE_HORIZON_HOURS)} hours.`
-        : `Rule: ${waits ? "the first" : "the next"} ${String(spec.runHours)} hours that are ${fit}${waits ? " start then" : ""}.`;
+        ? `No ${String(spec.runHours)} hours in a row that are ${fit} in the next ${String(Math.min(hoursSeen, ADVICE_HORIZON_HOURS))} hours.`
+        : `${waits ? "The first" : "The next"} ${String(spec.runHours)} hours that are ${fit}${waits ? " start then" : ""}.`;
     }
     case "lawn_feed": {
       const spec = rules.lawnFeed;
-      const spell = `a rain spell of ${String(spec.spellMmAtLeast)} mm or more`;
+      const spell = `rain spell of ${String(spec.spellMmAtLeast)} mm or more`;
       return answer.advice === "do_now"
-        ? `Rule: no ${spell} in the next ${String(spec.lookaheadHours)} hours.`
+        ? `No ${spell} in the next ${String(spec.lookaheadHours)} hours.`
         : answer.advice === "no_window"
-          ? `Rule: ${spell} runs past the ${String(ADVICE_HORIZON_HOURS)} hours.`
-          : `Rule: ${spell} in the next ${String(spec.lookaheadHours)} hours; wait until it has passed.`;
+          ? `A ${spell} runs past the forecast.`
+          : `A ${spell} in the next ${String(spec.lookaheadHours)} hours; wait until it has passed.`;
     }
   }
 }

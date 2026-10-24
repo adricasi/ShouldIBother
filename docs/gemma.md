@@ -741,11 +741,15 @@ The weather values in the input are illustrative; the answer is the fixture's.
   consecutive wet hours adding to 10 mm that starts in 0 to 48 h). `do_now` is checked as `[0, 3)`; a
   `no_window` is contradicted when the rule finds a window. The numbers are in
   `config/advice-rules.json`; a wet hour is 0.1 mm. A contradicted answer gets the single retry.
-- **Rule advice.** Code computes it for every card (`ruleAdvice`) and shows it at once as "Gemma is
-  thinking · rule advice". It sits beside Gemma's when the advice differs or the window starts differ
+- **Rule advice.** Code computes it for every card (`ruleAdvice`) and shows it at once as "Rule advice ·
+  Gemma is thinking". It sits beside Gemma's when the advice differs or the window starts differ
   by 3 h or more.
 - **Fallback.** Gemma offline, timed out, invalid, still refused after the retry, or `unsure`: the card
   keeps the rule advice labelled "Rule advice", with the reason, and offers Retry.
+- **On Today.** A card leaves Today at the end of the window it advises (a "do it now" after its 3
+  hours), and 72 hours after it was made for "no window". "No good window in the next N h" says the
+  forecast hours it saw (72 at most); a rule wait window is cut at hour 72. An alert that replaces the
+  advice reads "Not safe today".
 - **Safety.** The fixed backstop runs on the rule's window before the advisor and on Gemma's window
   after it; the safety guard (flag `safetyGuard`) runs before the advisor. An alert replaces the advice
   with a "Do it now" card (AC-031.4).

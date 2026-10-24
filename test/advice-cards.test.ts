@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { HOUR_MS, madridWallTimeToEpochMs } from "../src/domain/time.js";
@@ -12,7 +16,11 @@ import { JobToolArgumentError } from "../src/server/gemma/runner.js";
 import type { Forecast, RecordedWeather, WeatherClient } from "../src/server/weather/client.js";
 import { fakeForecastHours, fakeSunsets } from "../src/server/weather/fake.js";
 
+import { launchBookmaker } from "../src/server/ledger/gemma-cards.js";
+import { parseAdvice } from "../src/server/ledger/advice.js";
+
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
+import { makeSettler } from "./support/settle.js";
 import { FakeClock } from "./helpers.js";
 
 const THURSDAY_9 = madridWallTimeToEpochMs("2026-10-22", "09:00");
@@ -25,6 +33,8 @@ class ScriptedWeather implements WeatherClient {
   constructor(
     private readonly now: () => number,
     private readonly change: (index: number) => Partial<ForecastHour>,
+    /** The most hours the forecast covers, to test a short one. */
+    private readonly maxHours = 72,
   ) {}
 
   latestForecastFetchedAt(): number | undefined {
@@ -39,7 +49,7 @@ class ScriptedWeather implements WeatherClient {
     const hours: ForecastHour[] = fakeForecastHours(
       { temperatureC: 18, dryProbabilityPct: 5 },
       request.fromMs,
-      request.hours,
+      Math.min(request.hours, this.maxHours),
     ).map((hour, index) => ({ ...hour, ...this.change(index) }));
     return Promise.resolve({ fetchedAt: this.now(), hours, sunsetMsByDate: fakeSunsets(hours) });
   }
@@ -82,6 +92,7 @@ interface AdviceCard {
     can_retry: boolean;
     decision: {
       job: string;
+      model: string;
       prompt_version: string;
       tool_mode: string | null;
       forecast: unknown[] | null;
@@ -100,6 +111,7 @@ afterEach(async () => {
 async function setup(
   change: (index: number) => Partial<ForecastHour> = RAIN_UNTIL_19,
   flags: Parameters<typeof createCoreHarness>[0] = {},
+  maxHours = 72,
 ): Promise<CoreHarness> {
   const clock = new FakeClock();
   clock.current = THURSDAY_9;
@@ -107,7 +119,7 @@ async function setup(
     clock,
     flags: { adviceCards: true },
     liveWeather: (_db, now) => {
-      weather = new ScriptedWeather(now, change);
+      weather = new ScriptedWeather(now, change, maxHours);
       return weather;
     },
     ...flags,
@@ -158,7 +170,7 @@ describe("AC-031.1: the advisor gives do it now, wait for a window or no window,
     expect(created.advice).toMatchObject({
       stage: "advice",
       source: "rule",
-      label: "Gemma is thinking · rule advice",
+      label: "Rule advice · Gemma is thinking",
     });
     expect(card).toMatchObject({ kind: "weather", title: "Clean the windows", quote: null });
     expect(card.advice).toMatchObject({
@@ -299,9 +311,7 @@ describe("AC-031.2: the rule advice, and what happens when Gemma's window is con
     expect(card.advice?.source).toBe("gemma");
     expect(card.advice?.headline).toBe("Clean the windows after today 20:00");
     expect(card.advice?.rule).toMatchObject({ headline: "Clean the windows after tomorrow 01:00" });
-    expect(card.advice?.rule?.reason).toMatch(
-      /^Rule: rain in the next 48 hours; wait until 6 hours/,
-    );
+    expect(card.advice?.rule?.reason).toMatch(/^Rain in the next 48 hours; wait until 6 hours/);
   });
 
   it("AC-031.2: the rule advice is not shown beside Gemma's when they agree", async () => {
@@ -363,7 +373,8 @@ describe("AC-031.2: the rule advice, and what happens when Gemma's window is con
         advice: "wait",
         can_retry: true,
       });
-      expect(card.advice?.reason).toMatch(/^Rule:/);
+      expect(card.advice?.reason).not.toMatch(/^Rule:/);
+      expect(card.advice?.reason?.length).toBeGreaterThan(10);
       expect(card.advice?.note).not.toBeNull();
     },
   );
@@ -537,5 +548,134 @@ describe("AC-031.4: the backstop and the safety guard run on advice cards, and a
     h.model.setScenario("safety", "offline");
     const { card } = await capture(h, "advice-sweep", "sweep-do-now");
     expect(card.advice?.source).toBe("gemma");
+  });
+});
+
+describe("the review fixes of T-039", () => {
+  const inHours = (h: CoreHarness, hours: number): void => {
+    h.clock.current = THURSDAY_9 + hours * HOUR_MS;
+  };
+  const onToday = async (h: CoreHarness): Promise<number[]> =>
+    (await h.get("/api/today")).json<{ cards: AdviceCard[] }>().cards.map((card) => card.id);
+
+  it("AC-031.1: Retry on an advice card while the flag is off is refused and leaves the card alone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sib-advice-"));
+    const dbPath = join(dir, "sib.db");
+    try {
+      const on = await setup(RAIN_UNTIL_19, { dbPath });
+      const { card } = await capture(on, "advice-windows", "offline");
+      const cookie = on.cookie;
+      await on.close();
+      harness = undefined;
+      // The same database after a restart with the flag off.
+      const clock = new FakeClock();
+      clock.current = THURSDAY_9;
+      const off = await createCoreHarness({ dbPath, clock, flags: {} });
+      harness = off;
+      off.cookie = cookie;
+      const retried = await off.post(`/api/cards/${card.id}/retry`, {});
+      expect(retried.statusCode).toBe(409);
+      await off.idle();
+      expect(off.db.prepare("SELECT gemma_state FROM cards WHERE id = ?").get(card.id)).toEqual({
+        gemma_state: "offline",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-031.1: a bookmaker run that has nothing to price does not leave the card thinking", async () => {
+    const h = await setup();
+    const { card } = await capture(h, "advice-windows", "offline");
+    h.db.prepare("UPDATE cards SET gemma_state = 'thinking' WHERE id = ?").run(card.id);
+    const deps = makeSettler(h).deps;
+    launchBookmaker(deps, card.id);
+    await deps.background.idle();
+    expect(h.db.prepare("SELECT gemma_state FROM cards WHERE id = ?").get(card.id)).toEqual({
+      gemma_state: "offline",
+    });
+  });
+
+  it("AC-031.1: a do it now leaves Today after its 3 hours, a wait at the end of its window, no window after 72 hours", async () => {
+    const h = await setup(CALM);
+    const sweep = await capture(h, "advice-sweep", "sweep-do-now");
+    inHours(h, 2);
+    expect(await onToday(h)).toContain(sweep.card.id);
+    inHours(h, 4);
+    expect(await onToday(h)).not.toContain(sweep.card.id);
+    await h.close();
+    harness = undefined;
+
+    const w = await setup();
+    const wait = await capture(w, "advice-windows", "windows-wait-rain");
+    inHours(w, 27);
+    expect(await onToday(w)).toContain(wait.card.id);
+    inHours(w, 29);
+    expect(await onToday(w)).not.toContain(wait.card.id);
+    await w.close();
+    harness = undefined;
+
+    const p = await setup(SHOWERS);
+    const none = await capture(p, "advice-paint", "paint-no-window");
+    inHours(p, 71);
+    expect(await onToday(p)).toContain(none.card.id);
+    inHours(p, 73);
+    expect(await onToday(p)).not.toContain(none.card.id);
+  });
+
+  it("AC-031.1: on a short forecast 'no good window' says how many hours it looked at", async () => {
+    const h = await setup(SHOWERS, {}, 50);
+    const { card } = await capture(h, "advice-paint", "paint-no-window");
+    expect(card.advice?.headline).toBe("No good window to paint outdoors in the next 50 h");
+    const full = await setup(SHOWERS);
+    const again = await capture(full, "advice-paint", "paint-no-window");
+    expect(again.card.advice?.headline).toBe("No good window to paint outdoors in the next 72 h");
+  });
+
+  it("AC-031.2: a wait window never runs past the 72 hours", async () => {
+    // Rain until hour 65: the rule waits from hour 72, which is no window.
+    const h = await setup(rain(0, 66, 1));
+    const { card } = await capture(h, "advice-windows", "offline");
+    expect(card.advice).toMatchObject({ advice: "no_window", source: "rule" });
+    const late = await setup(rain(0, 58, 1));
+    const waited = await capture(late, "advice-windows", "offline");
+    expect(waited.card.advice?.window?.to).toBe(new Date(THURSDAY_9 + 72 * HOUR_MS).toISOString());
+  });
+
+  it("AC-031.3: the stored advice must stay inside the 72 hours and 140 characters", () => {
+    const valid = {
+      version: 1,
+      chore: "windows_clean",
+      attempt: 1,
+      first_hour_at: 1,
+      forecast_at: 1,
+      hours_seen: 72,
+      rule: { advice: "wait", window: { start_hours_ahead: 10, end_hours_ahead: 22 } },
+      gemma: null,
+      decision_id: null,
+    };
+    expect(parseAdvice({ advice: JSON.stringify(valid) })).not.toBeNull();
+    const wide = {
+      ...valid,
+      rule: { advice: "wait", window: { start_hours_ahead: 10, end_hours_ahead: 80 } },
+    };
+    expect(parseAdvice({ advice: JSON.stringify(wide) })).toBeNull();
+    const talkative = {
+      ...valid,
+      gemma: { advice: "do_now", window: null, reason: "x".repeat(141) },
+    };
+    expect(parseAdvice({ advice: JSON.stringify(talkative) })).toBeNull();
+  });
+
+  it("AC-031.1: with the fake model and fake weather alone, a typed advice chore gets a fake advisor answer", async () => {
+    harness = await createCoreHarness({ flags: { adviceCards: true } });
+    await pair(harness);
+    harness.model.setScenario("listener", "advice-windows");
+    const response = await harness.post("/api/cards", { text: "clean the windows" });
+    const [created] = response.json<{ cards: AdviceCard[] }>().cards;
+    await harness.idle();
+    const card = (await harness.get(`/api/cards/${created!.id}`)).json<AdviceCard>();
+    expect(card.advice).toMatchObject({ source: "gemma", can_retry: false });
+    expect(card.advice?.decision?.model).toBe("fake-gemma");
   });
 });

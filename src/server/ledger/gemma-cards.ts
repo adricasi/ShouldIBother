@@ -92,7 +92,13 @@ function markQuestion(deps: LedgerDeps, cardId: number, question: string): void 
  */
 async function bookmakeCard(deps: LedgerDeps, cardId: number): Promise<void> {
   const card = deps.db.prepare<[number], CardRow>("SELECT * FROM cards WHERE id = ?").get(cardId);
-  if (card === undefined || card.kind !== "weather" || !isChoreType(card.chore_type)) {
+  if (card === undefined) {
+    return;
+  }
+  if (card.kind !== "weather" || !isChoreType(card.chore_type)) {
+    // Not a card the bookmaker prices: it must not be left "thinking" (Retry on an advice card
+    // whose flag is off lands here).
+    markOffline(deps, cardId, "invalid");
     return;
   }
   const choreType: ChoreType = card.chore_type;

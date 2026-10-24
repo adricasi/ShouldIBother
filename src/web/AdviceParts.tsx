@@ -1,7 +1,8 @@
 import type { Advice, Card } from "./api.js";
 import { HowGemmaDecided } from "./GemmaParts.js";
-import { formatSettleTime } from "./format.js";
+import { formatWindow } from "./format.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
+import { Icon } from "./ui/Icon.js";
 
 function cell(value: number | null): string {
   return value === null ? "–" : String(value);
@@ -14,39 +15,69 @@ function WindowForecast({ advice }: { advice: Advice }) {
   }
   return (
     <details className="how-gemma advice-forecast">
-      <summary>Forecast for this window ({advice.forecast.length} h)</summary>
-      <table className="decision-forecast">
-        <caption className="meta">The forecast the tool returned to Gemma</caption>
-        <thead>
-          <tr>
-            <th scope="col">Hour</th>
-            <th scope="col">Rain mm</th>
-            <th scope="col">Rain %</th>
-            <th scope="col">°C</th>
-            <th scope="col">Wind km/h</th>
-          </tr>
-        </thead>
-        <tbody>
-          {advice.forecast.map((row) => (
-            <tr key={row.hour}>
-              <th scope="row">{row.hour}</th>
-              <td>{cell(row.rain_mm)}</td>
-              <td>{cell(row.rain_prob_pct)}</td>
-              <td>{cell(row.temp_c)}</td>
-              <td>{cell(row.wind_kmh)}</td>
+      <summary>
+        <Icon name="rain" /> Forecast for this window ({advice.forecast.length} h)
+      </summary>
+      <div
+        className="advice-forecast-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Forecast for this window, scrollable"
+      >
+        <table className="decision-forecast">
+          <caption className="meta">The forecast the tool returned to Gemma</caption>
+          <thead>
+            <tr>
+              <th scope="col">Hour</th>
+              <th scope="col">Rain mm</th>
+              <th scope="col">Rain chance %</th>
+              <th scope="col">°C</th>
+              <th scope="col">Wind km/h</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {advice.forecast.map((row) => (
+              <tr key={row.hour}>
+                <th scope="row">{row.hour}</th>
+                <td>{cell(row.rain_mm)}</td>
+                <td>{cell(row.rain_prob_pct)}</td>
+                <td>{cell(row.temp_c)}</td>
+                <td>{cell(row.wind_kmh)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {advice.forecast.length < advice.forecast_total ? (
+        <p className="meta">
+          Forecast shown: {advice.forecast.length} of {advice.forecast_total} hours
+        </p>
+      ) : null}
     </details>
   );
 }
 
+/** What the live region says: one sentence for the state the card is in. */
+function statusText(advice: Advice): string {
+  if (advice.stage === "unavailable") {
+    return advice.note ?? "No advice yet.";
+  }
+  if (advice.stage === "thinking") {
+    return advice.note ?? "Gemma is checking the forecast.";
+  }
+  if (advice.source === "rule") {
+    return advice.can_retry
+      ? "Showing the rule advice, because Gemma has none."
+      : "Gemma is thinking, showing rule advice.";
+  }
+  return `Gemma's advice is in: ${advice.headline ?? ""}`;
+}
+
 /**
- * An advice card (REQ-031): advice, not a bet. It shows Gemma's advice and window in Madrid time
- * with its reason, or the rule's advice labelled as such (AC-031.2); the rule's beside Gemma's when
- * they differ; the forecast numbers of the window; Retry when Gemma has no advice; and the "How
- * Gemma decided" disclosure (AC-031.3).
+ * An advice card (REQ-031): advice, not a bet. It shows whose advice it is, then the advice and its
+ * reason, with the window in Madrid time (AC-031.1); the rule's advice beside Gemma's when they
+ * differ and labelled "Rule advice" when Gemma has none (AC-031.2); the forecast numbers of the
+ * window; Retry; and the "How Gemma decided" disclosure (AC-031.3).
  */
 export function AdviceSlip({
   card,
@@ -60,8 +91,12 @@ export function AdviceSlip({
   onRetry: (cardId: number) => void;
 }) {
   const heading = advice.headline ?? card.title;
+  const asWindow = advice.advice === "wait" && advice.window !== null;
   return (
-    <article className="slip flat advice" aria-label={`${card.title}, ${heading}`}>
+    <article
+      className="slip flat advice"
+      aria-label={advice.headline === null ? card.title : `${card.title}, ${advice.headline}`}
+    >
       <div className="slip-top">
         <p className="eyebrow">Lazy Bookie · Advice</p>
         <p className="eyebrow advice-tag">No bet</p>
@@ -70,33 +105,29 @@ export function AdviceSlip({
       <div className="slip-head">
         <ChoreTile title={card.title} choreType={card.chore_type} />
         <div className="line-main">
-          <h3>{heading}</h3>
           {advice.label === null ? null : (
             <p className={`advice-label ${advice.source ?? ""}`}>{advice.label}</p>
           )}
+          {advice.note !== null && advice.stage === "advice" ? (
+            <p className="meta advice-note">{advice.note}</p>
+          ) : null}
+          <h3 className={advice.source === "rule" ? "advice-quiet" : undefined}>{heading}</h3>
         </div>
       </div>
-      {advice.stage === "thinking" || advice.stage === "unavailable" ? (
-        <p role="status">{advice.note ?? "Gemma is checking the forecast."}</p>
-      ) : null}
+      <p role="status" className="meta advice-status">
+        {statusText(advice)}
+      </p>
       {advice.reason === null ? null : <p>{advice.reason}</p>}
-      {advice.window === null ? null : (
-        <p className="meta">
-          Window: {formatSettleTime(advice.window.from)} to {formatSettleTime(advice.window.to)}{" "}
-          (Madrid time)
-        </p>
-      )}
+      {asWindow && advice.window !== null ? (
+        <p className="meta">{formatWindow(advice.window.from, advice.window.to)} (Madrid time)</p>
+      ) : null}
       {advice.rule === null ? null : (
         <div className="bands-compare advice-rule">
-          <strong>Rule advice: {advice.rule.headline ?? "none"}</strong>
-          <span className="meta"> {advice.rule.reason}</span>
+          <span className="advice-label rule">Rule advice</span>
+          <strong>{advice.rule.headline ?? "No rule advice for this window"}</strong>
+          <span className="meta">{advice.rule.reason}</span>
         </div>
       )}
-      {advice.note !== null && advice.stage === "advice" ? (
-        <p className="meta" role="status">
-          {advice.note}
-        </p>
-      ) : null}
       <WindowForecast advice={advice} />
       {advice.can_retry ? (
         <button
@@ -111,7 +142,6 @@ export function AdviceSlip({
         </button>
       ) : null}
       <HowGemmaDecided decisions={[{ decision: advice.decision }]} />
-      <p className="meta">This is advice, not a bet.</p>
     </article>
   );
 }
