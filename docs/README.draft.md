@@ -55,7 +55,7 @@ Contents: [Features](#features) · [How Gemma is used](#how-gemma-is-used) · [A
   reason with the numbers, a settle time, and the payout for each outcome. The rule baseline shows at
   once and is the fallback when Gemma is offline.
 - **A photo sharpens the odds.** Gemma's inspector lists what it sees ("What Gemma saw") and the odds
-  move, for example 35 % to 50 %.
+  move (for example 35 % to 50 %, as in the design mockup).
 - **Bet, do it, or undo.** Odds, band and payouts lock when you bet; Undo works for 5 minutes.
 - **Settlement on evidence.** Recorded weather plus an after photo (full points) or one tap (half).
   Gemma gives the verdict and its reason ("Gemma's read"); if Gemma is offline the bet waits, and the
@@ -695,7 +695,7 @@ the challenge judging). -->
 ## Licences
 
 - This app: MIT, see [LICENSE](LICENSE).
-- Gemma 4: Apache 2.0 (the model is downloaded from Ollama, not shipped in this repository).
+- Gemma 4: the licence named on the Gemma 4 model card, TODO(builder) confirm before publishing (the model is downloaded from Ollama, not shipped in this repository).
   TODO(builder): check the licence text on the Gemma 4 model card matches before publishing.
 - Weather data: [Open-Meteo](https://open-meteo.com/), CC BY 4.0, free tier for non-commercial use.
 - Fonts: Big Shoulders Display, IBM Plex Mono and Figtree, SIL Open Font License 1.1, served by the
@@ -713,7 +713,7 @@ the challenge judging). -->
 - **Gemma 4**, the open-weight model by Google DeepMind, runs the whole app; the weights are
   downloaded from the Ollama registry, never shipped here, and are used under the Gemma licence
   terms. TODO(builder): copy the exact licence name and link from the Gemma 4 model card (this README
-  says Apache 2.0 under [Licences](#licences); confirm before publishing).
+  under [Licences](#licences) carries the same TODO).
 - [Ollama](https://ollama.com) and llama.cpp serve the model locally; Fastify, React, Vite, zod,
   better-sqlite3, sharp and pino are the application stack.
 - Fonts and icons: see [Licences](#licences) and [THIRD-PARTY.md](THIRD-PARTY.md).

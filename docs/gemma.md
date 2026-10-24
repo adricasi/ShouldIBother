@@ -102,7 +102,7 @@ text.
 | Whether a chore touches safety (guard) | The fixed heat, frost and storm backstop (`src/domain/rules/safety.ts`) |
 | How a bet turned out (judge): win, small, normal or harmful loss | Points, multipliers, the 24 h cap, savings, lucky-win flag (`src/domain/points.ts`, `src/server/ledger/settle.ts`) |
 | Wash today, skip today or no good day, with a band per day (planner) | The consistency of that answer, the forecast numbers it reads (`src/server/gemma/laundry-planner.ts`) |
-| (nothing: Gemma never sees savings) | What a win would save, shown on the slip as an estimate ("saves ~5 min · ~5 L water if the sky does it", AC-011.7); computed by the same function that settlement uses and equal to the snapshot a bet would store (`src/server/ledger/savings.ts`, `savings_estimate`) |
+| (nothing: Gemma never sees savings) | What a win would save, shown on the slip as an estimate ("Could save ~5 min · ~5 L water if the sky does it", AC-011.7); computed by the same function that settlement uses and equal to the snapshot a bet would store (`src/server/ledger/savings.ts`, `savings_estimate`) |
 
 ### Bands, never raw percentages
 
@@ -253,7 +253,7 @@ Step by step, with the file that does it:
    The runner validates, checks and, on failure, retries once.
 5. **Quote.** If the card has no bet yet, the rule quote is replaced by a `source = gemma` quote, in a
    transaction that re-reads the card state. A bet placed meanwhile wins: Gemma's late answer is
-   dropped and the card reads `superseded` (AC-006.2).
+   dropped and the card is marked `gemma_state = 'offline'` with `gemma_failure = 'superseded'` (AC-006.2).
 6. **Bet.** `POST /api/bets` copies the quote the person saw onto the bet and locks it
    (`src/server/ledger/bets.ts`). The bet records `gemma_band`, `rule_band`, `odds_source`,
    `model_version` (`<tag>@<digest>`) and `prompt_version`.
@@ -288,7 +288,7 @@ A photo deleted or replaced while Gemma works makes the job stale and its result
 
 ## 6. The job runner every Gemma call goes through
 
-All eight jobs run through one class, `JobRunner` (`src/server/gemma/runner.ts`). A job is a prompt
+All eight prompts (seven jobs; the appeal reuses the `judge` job) run through one class, `JobRunner` (`src/server/gemma/runner.ts`). A job is a prompt
 file, an input builder, a zod output schema, optional checks and an optional tool; the runner gives
 all of them the same discipline.
 
@@ -510,7 +510,7 @@ A second fixture shows the disagreement rule (`bookmaker/disagreement-with-reaso
 is `very_likely` while the rule says `toss_up` (two bands), so the answer carries
 `"disagreement_reason":"The rule only counts rain; the forecast shows a long soaking spell."`, and
 the card reads "Heavy rain is forecast overnight, so the pots will be watered. Differs from the
-rule: The rule only counts rain; the forecast shows a lon…" (cut at 140 characters).
+rule: The rule only counts rain; the forecast shows a long …" (cut to 139 characters plus "…").
 
 ### 7.4 Inspector (photo)
 
@@ -535,7 +535,7 @@ rule: The rule only counts rain; the forecast shows a lon…" (cut at 140 charac
   read back from the log to draw "What Gemma saw" (`src/server/ledger/photo-view.ts`). Deleting the
   photo deletes this decision.
 - **Where you see it.** "What Gemma saw" with the labelled observations, and the odds before to after,
-  for example "35% → 50%" (`src/web/PhotoParts.tsx`).
+  for example "35% → 50%" (a mockup example, not a result; `src/web/PhotoParts.tsx`).
 
 Example (fixture `inspector/ok.json`):
 
@@ -651,7 +651,7 @@ code    win at 50 % odds, tap evidence: (100 - 50) x 0.5 = +25 points
 - **Fallback.** If the judge cannot answer, nothing changes, the new photo and its decision are
   deleted, and the person can try again; no appeal is queued.
 - **Where you see it.** The receipt after the appeal ("Appeal decided: Gemma stands by <verdict>. This
-  verdict is final.") and the overrule rate on Score (`src/web/AppealParts.tsx`).
+  verdict is final." when unchanged, "Appeal decided: <verdict>, <points> points. This verdict is final." when changed) and the overrule rate on Score (`src/web/AppealParts.tsx`).
 
 Example (fixture `judge/appeal-win.json` is the second verdict of an appeal; it follows the same
 shape as above, with `first_verdict`, `first_reason` and `first_evidence` added to the input).
@@ -719,7 +719,7 @@ interface ModelClient {
 |---|---|---|---|
 | `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` (**UNVERIFIED**) | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
 | `LlamaCppAudioClient` | `llamacpp.ts`, `llamacpp-wire.ts` | `listener-audio` only | OpenAI-style `POST /v1/chat/completions` with the WAV as an `input_audio` part and a `response_format` JSON schema. Takes no tools. Health is `GET /health`. **Wire format UNVERIFIED.** |
-| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev`, `--fake-model`, and `sib demo` (AC-029.4, T-032/T-034, in progress) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
+| `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev` (`SIB_FAKE_MODEL=1`), `sib backtest --fake-model`, and `sib demo` (AC-029.4, T-032/T-034, in progress) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
 
 **Choosing the client** (`src/server/model/select.ts`). The fake model is chosen **only** when
 `SIB_FAKE_MODEL=1` (the one planned exception is `sib demo`, which starts the same fake in a temporary
@@ -840,7 +840,7 @@ The Score screen (`src/server/ledger/score.ts`, `src/web/ScoreScreen.tsx`, flag 
 - Rule-odds bets never count toward Gemma's calibration.
 
 Over the chart, Score prints one sentence from the band Gemma used most among those with at least
-5 bets, for example "When Gemma says 70%, doing nothing works 74% of the time (9 bets)."
+5 bets, for example "When Gemma says 70%, doing nothing works 74% of the time (9 bets)." (illustrative format, not a result)
 (`calibrationHeadline` in `src/web/ScoreScreen.tsx`); with no such band there is no headline, so a
 shaky share never becomes one.
 

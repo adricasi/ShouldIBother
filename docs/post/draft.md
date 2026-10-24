@@ -410,5 +410,5 @@ Small N, one household, weather labels rather than observed plants:
 
 ---
 
-**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); non-commercial use. Code: MIT. Gemma 4: Apache 2.0. Fonts: Big Shoulders Display, IBM Plex Mono, Figtree (SIL OFL). Icons: Lucide (ISC). All photos here are staged or synthetic; none are of my home.
+**Credits and licences.** Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); non-commercial use. Code: MIT. Gemma 4: {{TODO(builder): licence from the Gemma 4 model card}}. Fonts: Big Shoulders Display, IBM Plex Mono, Figtree (SIL OFL). Icons: Lucide (ISC). All photos here are staged or synthetic; none are of my home.
 <!-- builder: check Open-Meteo's attribution wording at https://open-meteo.com/en/licence and use their exact text. The same attribution must be in the app and README (AC-014.6, T-020). -->
