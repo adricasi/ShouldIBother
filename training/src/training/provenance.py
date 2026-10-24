@@ -6,6 +6,7 @@ import hashlib
 import json
 import platform
 import sys
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -55,3 +56,29 @@ def write_json(path: Path, value: Any) -> None:
     """Sorted keys and a final newline: the same run gives the same bytes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    """Reads a JSON object written by `write_json`; raises `ValueError` if it is not one."""
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    return value
+
+
+def update_record(
+    path: Path, *, event: dict[str, Any] | None = None, fields: dict[str, Any] | None = None
+) -> None:
+    """Merges `fields` into a record and appends `event` to its `events` list, with the time.
+
+    Events are only ever appended, so a resumed run keeps the history of the run before it.
+    """
+    record = read_json(path)
+    record.update(fields or {})
+    if event is not None:
+        events = record.setdefault("events", [])
+        events.append({"at": datetime.now(UTC).isoformat(timespec="seconds"), **event})
+    write_json(path, record)

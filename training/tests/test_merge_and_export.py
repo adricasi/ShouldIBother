@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from helpers import write_config
+from fakes import install_fake_ml
+from helpers import REVISION, write_config
 
 from training import merge_and_export as export
 from training.config import TrainConfig, load_config
@@ -230,3 +231,74 @@ def test_a_bad_config_or_output_inside_the_repository_is_refused(tmp_path: Path)
     )
     assert code == 2
     assert "inside the repository" in lines[-1]
+
+
+def test_NFR_012_the_merge_loads_the_pinned_commit_without_remote_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install_fake_ml(monkeypatch, commit=REVISION)
+    config_path, output, llama = make_config(tmp_path)
+    prepare(output, llama)
+    config = load_config(config_path)
+    resolved = export.merge_adapter(config, export.export_paths(config))
+    assert resolved == REVISION
+    model_call = fake.kwargs_of("AutoModelForCausalLM")[0]
+    assert model_call["revision"] == REVISION
+    assert model_call["trust_remote_code"] is False
+    tokenizer_call = fake.kwargs_of("AutoTokenizer")[0]
+    assert tokenizer_call["trust_remote_code"] is False
+    info = json.loads((output / "merged" / "merge-info.json").read_text())
+    assert info == {
+        "base_model": "google/gemma-4-E4B-it",
+        "revision": REVISION,
+        "resolved_commit": REVISION,
+    }
+
+
+def test_a_merge_that_loaded_another_commit_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_ml(monkeypatch, commit="f" * 40)
+    config_path, output, llama = make_config(tmp_path)
+    prepare(output, llama)
+    config = load_config(config_path)
+    with pytest.raises(export.ExportError, match="is not the pinned"):
+        export.merge_adapter(config, export.export_paths(config))
+
+
+def test_a_real_merge_needs_a_pinned_base_model(tmp_path: Path) -> None:
+    config, output, llama = make_config(tmp_path)
+    config.write_text(config.read_text().replace(f'revision = "{REVISION}"', 'revision = ""'))
+    prepare(output, llama)
+    tools = FakeTools(output)
+    code, text = run(config, tools)
+    assert code == export.EXIT_BAD_INPUT
+    assert "model.revision is empty" in text
+    assert tools.merges == 0
+    # The later stages do not load the base model, so they do not need the pin.
+    assert run(config, tools, "--dry-run")[0] == 0
+
+
+def test_NFR_012_the_export_record_links_the_training_run_and_the_dataset(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    config_path, output, llama = make_config(tmp_path)
+    prepare(output, llama)
+    run_record = {
+        "dataset": {"manifest_sha256": "ab" * 32},
+        "training_config_sha256": "cd" * 32,
+        "model": {"resolved_commit": REVISION},
+    }
+    (output / "run-record.json").write_text(json.dumps(run_record), encoding="utf-8")
+    assert run(config_path, FakeTools(output))[0] == 0
+    record = json.loads((output / "export-record.json").read_text())
+    assert record["dataset_manifest_sha256"] == "ab" * 32
+    assert record["training_config_sha256"] == "cd" * 32
+    assert (
+        record["run_record_sha256"]
+        == hashlib.sha256((output / "run-record.json").read_bytes()).hexdigest()
+    )
+    assert record["base_model_revision"] == REVISION
+    assert record["base_model_resolved_commit"] == REVISION

@@ -8,6 +8,7 @@
 # Names of settings the builder must still confirm. The training plan prints this list.
 unverified = [
   "model.base_id",
+  "model.revision (empty: a real run refuses until it is pinned)",
   "model.max_seq_length",
   "lora.target_modules",
   "training (all hyper-parameters: sized for an 8 GB GPU, never run)",
@@ -18,6 +19,10 @@ unverified = [
 # UNVERIFIED TODO(builder): the Hugging Face id of Gemma 4 E4B instruct (text-only use). This is
 # a guess by analogy with the Gemma 3n ids; look it up on the model card and accept its licence.
 base_id = "google/gemma-4-E4B-it"
+# UNVERIFIED TODO(builder): pin the base model to a commit. Copy the full 40-character hash of
+# the revision you trained on from the model page (Files and versions). Training and merging pass
+# it to every from_pretrained with trust_remote_code=False, and the records log the resolved commit.
+revision = ""
 # UNVERIFIED TODO(builder): the longest example must fit, or the answer at its end is cut off.
 # The training plan estimates the longest prompt from the dataset and warns if it does not fit.
 max_seq_length = 4096

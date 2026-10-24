@@ -158,3 +158,26 @@ def test_optional_paths_are_resolved(tmp_path: Path) -> None:
     config = parse_config(data)
     assert config.paths.dataset_dir == tmp_path / "ds"
     assert config.export.template_file == tmp_path / "template.txt"
+
+
+def test_the_committed_config_leaves_the_revision_for_the_builder_to_pin() -> None:
+    config = load_config(DEFAULT_CONFIG_PATH)
+    assert config.model.revision == ""
+    with pytest.raises(ConfigError, match="model.revision is empty"):
+        config.model.require_pinned()
+
+
+@pytest.mark.parametrize("revision", ["main", "abc123", "A" * 40, "g" * 40, "a" * 41])
+def test_a_revision_must_be_a_full_lowercase_commit_hash(revision: str) -> None:
+    data = raw()
+    data["model"]["revision"] = revision
+    with pytest.raises(ConfigError, match="40-character commit"):
+        parse_config(data)
+
+
+def test_a_pinned_revision_is_passed_with_remote_code_off() -> None:
+    data = raw()
+    data["model"]["revision"] = "ab" * 20
+    model = parse_config(data).model
+    model.require_pinned()
+    assert model.hub_kwargs() == {"revision": "ab" * 20, "trust_remote_code": False}

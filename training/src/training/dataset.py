@@ -29,6 +29,12 @@ MANIFEST_FILE = "manifest.json"
 CHORES = ("plants", "laundry_line", "laundry_tonight", "ac", "heater")
 FORECAST_TOOL = "get_forecast"
 SYNTHETIC_HABITS_PATH = TRAINING_DIR / "habits.synthetic.json"
+# Pinned here, not read from the manifest: a dataset whose manifest moves the boundary must not
+# be able to pull hold-out days into training. They equal TRAINING_END_DATE and
+# HOLDOUT_START_DATE in src/backtest/target-band.ts (a test compares the two files).
+TRAINING_END = "2026-08-31"
+HOLDOUT_START = "2026-09-01"
+_UNTRUSTED = re.compile(r"\A<untrusted_data>\n(.*)\n</untrusted_data>\Z", re.DOTALL)
 
 ROW_KEYS = frozenset({"id", "split", "chore", "date", "messages", "tools", "meta"})
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -136,6 +142,15 @@ def _parse_manifest(data: bytes) -> dict[str, Any]:
         periods["train"]["to"] < periods["holdout"]["from"],
         "the training period must end before the hold-out period starts (AC-019.1)",
     )
+    _need(
+        periods["train"]["to"] <= TRAINING_END,
+        f"periods.train.to is {periods['train']['to']}, after {TRAINING_END}: the manifest "
+        "moves the training period into the hold-out (AC-019.1)",
+    )
+    _need(
+        periods["holdout"]["from"] == HOLDOUT_START,
+        f"periods.holdout.from is {periods['holdout']['from']}, not {HOLDOUT_START} (AC-019.1)",
+    )
     files = manifest.get("files")
     _need(isinstance(files, dict), f"{MANIFEST_FILE} lacks files")
     for split, expected_name in (("train", TRAIN_FILE), ("holdout", HOLDOUT_FILE)):
@@ -152,6 +167,15 @@ def _parse_manifest(data: bytes) -> dict[str, Any]:
     return manifest
 
 
+def synthetic_habits() -> dict[str, Any]:
+    try:
+        value = json.loads(SYNTHETIC_HABITS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise DatasetError(f"cannot read {SYNTHETIC_HABITS_PATH}: {error}") from error
+    _need(isinstance(value, dict), f"{SYNTHETIC_HABITS_PATH.name} must be a JSON object")
+    return value
+
+
 def _check_synthetic_habits(manifest: Mapping[str, Any]) -> None:
     """The habits in every row are the fixed synthetic profile, never household data (AC-019.6)."""
     habits = manifest.get("habits")
@@ -161,12 +185,8 @@ def _check_synthetic_habits(manifest: Mapping[str, Any]) -> None:
         '(habits.profile must be "synthetic"); refusing to train on them (AC-019.6)',
     )
     profile = manifest.get("habit_profile")
-    try:
-        expected = json.loads(SYNTHETIC_HABITS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise DatasetError(f"cannot read {SYNTHETIC_HABITS_PATH}: {error}") from error
     _need(
-        profile == expected,
+        profile == synthetic_habits(),
         f"manifest.habit_profile differs from {SYNTHETIC_HABITS_PATH.name}; "
         "the dataset was not built with the fixed synthetic profile (AC-019.6)",
     )
@@ -198,6 +218,50 @@ def _check_message(where: str, message: Any) -> None:
             )
     if role == "tool":
         _need(isinstance(message.get("name"), str), f"{where}: a tool result needs its name")
+
+
+def _untrusted_json(where: str, what: str, content: str) -> dict[str, Any]:
+    """The JSON object inside an `<untrusted_data>` block of a message."""
+    match = _UNTRUSTED.match(content)
+    _need(match is not None, f"{where}: the {what} is not an <untrusted_data> block")
+    assert match is not None
+    try:
+        value = json.loads(match.group(1))
+    except json.JSONDecodeError as error:
+        raise DatasetError(f"{where}: the {what} block is not valid JSON: {error.msg}") from error
+    _need(isinstance(value, dict), f"{where}: the {what} block must hold a JSON object")
+    return value
+
+
+def _check_row_habits(where: str, messages: list[Any]) -> None:
+    """The habits the bookmaker sees in this very row are the synthetic profile (AC-019.6)."""
+    data = _untrusted_json(where, "user message", messages[1]["content"])
+    _need(
+        data.get("habits") == synthetic_habits(),
+        f"{where}: the habits in the user message are not the synthetic profile in "
+        f"{SYNTHETIC_HABITS_PATH.name} (AC-019.6); household data must not enter a row",
+    )
+
+
+def _check_forecast_horizon(where: str, split: str, messages: list[Any]) -> None:
+    """A training prompt shows no forecast hour of 1 Sep or later (AC-019.1)."""
+    for message in messages:
+        if message["role"] != "tool" or message["name"] != FORECAST_TOOL:
+            continue
+        data = _untrusted_json(where, "forecast result", message["content"])
+        hours = data.get("hours")
+        _need(isinstance(hours, list) and hours, f"{where}: the forecast result has no hours")
+        for hour in hours:
+            stamp = hour.get("time") if isinstance(hour, dict) else None
+            _need(
+                isinstance(stamp, str) and _is_date(stamp[:10]),
+                f"{where}: a forecast hour has no valid time",
+            )
+            if split == "train":
+                _need(
+                    stamp[:10] < HOLDOUT_START,
+                    f"{where}: the forecast shows {stamp}, in the hold-out period (AC-019.1)",
+                )
 
 
 def _check_conversation(where: str, split: str, messages: list[Any]) -> None:
@@ -302,6 +366,8 @@ def _parse_row(line: str, number: int, split: str, manifest: Mapping[str, Any]) 
             f"{where}: a tool must be {{type: function, function: {{name, ...}}}}",
         )
     _check_conversation(where, split, raw["messages"])
+    _check_row_habits(where, raw["messages"])
+    _check_forecast_horizon(where, split, raw["messages"])
     _check_meta(where, split, raw, manifest["bookmaker_prompt"]["version"])
     return Row(
         id=raw["id"],
@@ -346,11 +412,11 @@ def assert_no_holdout_in_training(
     train: tuple[Row, ...], holdout: tuple[Row, ...], manifest: Mapping[str, Any]
 ) -> None:
     """Refuses a training set that touches the hold-out: by split, by period and by date."""
-    holdout_start = manifest["periods"]["holdout"]["from"]
+    del manifest  # the boundary is pinned in this module, not taken from the data
     for row in train:
         _need(row.split == "train", f"hold-out row {row.id} is in the training set (AC-019.1)")
         _need(
-            row.date < holdout_start,
+            row.date < HOLDOUT_START,
             f"training row {row.id} is dated {row.date}, in the hold-out period (AC-019.1)",
         )
     shared = {row.date for row in train} & {row.date for row in holdout}

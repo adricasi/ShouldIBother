@@ -40,6 +40,9 @@ Place the evening's bets first. From the repository root unless stated.
    `unverified`, then delete the entry:
    - `model.base_id`: the Hugging Face id of Gemma 4 E4B instruct (a guess by analogy with Gemma 3n;
      accept the licence on the model card and log in to Hugging Face first).
+   - `model.revision`: pin the base model to a full 40-character commit hash (model page, Files
+     and versions). A real run and a real merge refuse while it is empty; both pass it to every
+     `from_pretrained` with `trust_remote_code=False` and log the commit that was loaded.
    - `model.max_seq_length`: the plan prints the longest example's estimated tokens. If the
      estimate exceeds it, the answer at the end of that example would be cut off.
    - `lora.target_modules`: the usual projection names; confirm against `print(model)`.
@@ -57,12 +60,32 @@ Place the evening's bets first. From the repository root unless stated.
    PYTHONPATH=src uv run --group train python -m training.train \
      --dataset ~/.should-i-bother/datasets/<snapshot>
    ```
+   **Double BOS check (T-012 checklist).** Before leaving it running, look at the first example's
+   token ids: the rendered prompt already starts with the BOS token, and TRL tokenizes it without
+   adding special tokens, so BOS must appear exactly once at the start.
+   ```bash
+   PYTHONPATH=src uv run --group train python - <<'PY'
+   from transformers import AutoTokenizer
+   from training.config import load_config
+   m = load_config().model
+   tok = AutoTokenizer.from_pretrained(m.base_id, revision=m.revision, trust_remote_code=False)
+   text = open("<output_dir>/first-example.txt", encoding="utf-8").read().split("\n<<<<<< COMPLETION")[0]
+   ids = tok(text, add_special_tokens=False)["input_ids"]
+   print(ids[:6], "BOS id:", tok.bos_token_id, "count:", ids.count(tok.bos_token_id))
+   PY
+   ```
+   Two BOS ids in a row at the start means the template and the tokenizer both add one: fix it
+   (for example by stripping the BOS from the rendered prompt) before training.
+
    Look at `<output_dir>/first-example.txt` early: it is the first rendered example, the prompt and
    then the part the loss covers (it must be exactly the answer JSON and the end-of-turn marker).
    The run folder (default `~/.should-i-bother/training/bookmaker-qlora/`, outside the repo) gets
-   `run-record.json` (config, dataset manifest hash and file hashes, seeds, package versions,
-   Python and platform, written before step 1), a copy of the manifest, `checkpoints/`, `adapter/`
-   and `result.json`.
+   `run-record.json` (config and its training hash, dataset manifest hash and file hashes, seeds,
+   package versions, Python and platform, the pinned and the resolved base-model commit; written
+   before the first step, with an append-only `events` list), a copy of the manifest,
+   `checkpoints/`, `adapter/` and `result.json`. `--resume` continues only if the dataset manifest
+   hash and the model, LoRA and training settings equal the record's (exit 5 otherwise) and appends
+   a `resumed` event instead of rewriting the record.
 8. **Merge and export.**
    ```bash
    PYTHONPATH=src uv run --group train python -m training.merge_and_export --dry-run   # read it
@@ -74,7 +97,8 @@ Place the evening's bets first. From the repository root unless stated.
    converter complains). It runs, in order: merge on the CPU into `merged/`;
    `convert_hf_to_gguf.py <merged> --outfile <f16.gguf> --outtype f16`;
    `llama-quantize <f16.gguf> <q4_k_m.gguf> Q4_K_M`; then writes `Modelfile` from
-   `templates/Modelfile.tmpl` and `export-record.json` (with the GGUF's sha256). `--stage
+   `templates/Modelfile.tmpl` and `export-record.json` (the GGUF's sha256, the base-model commit, the dataset manifest hash and
+   the run record's sha256, so the model links back to its training run). `--stage
    merge|gguf|modelfile` runs one part. **UNVERIFIED:** that llama.cpp supports Gemma 4, the exact
    flags and binary path, the memory the CPU merge needs, and that an adapter trained on the 4-bit
    base merges cleanly into the bf16 base.
@@ -87,14 +111,15 @@ Place the evening's bets first. From the repository root unless stated.
    answers are poor, copy the `TEMPLATE` (and `RENDERER` / `PARSER`, if your Ollama has them)
    lines from `ollama show --modelfile <base tag>` into a file, set `export.template_file` to it,
    re-run `--stage modelfile`, and `ollama create` again.
-10. **Smoke test: 20 hold-out prompts, at least 19 valid** (AC-019.2, the T-012 Done-when).
+10. **Smoke test: 20 hold-out prompts, at least 19 valid** (AC-019.2, the T-012 Done-when). Every
+    prompt is asked twice, with the JSON schema as `format` (as the live app does) and without;
+    both rates are reported and the **unconstrained** one is the gate.
     ```bash
     PYTHONPATH=src uv run python -m training.eval_holdout \
       --dataset ~/.should-i-bother/datasets/<snapshot> --model sib-bookmaker-ft:v1 \
       --report ~/.should-i-bother/training/bookmaker-qlora/eval-holdout.json
     ```
-    Add `--unconstrained` to ask without the JSON schema as `format` (stricter). Exit code 1 means
-    fewer than 19 were valid. This is not the evaluation of the model: that is T-014.
+    Exit code 1 means fewer than 19 unconstrained answers were valid. This is not the evaluation of the model: that is T-014.
 11. **Register the model.** In `config/models.json` set `models["e4b-ft"]` to
     `{tag: "sib-bookmaker-ft:v1", quantization: "Q4_K_M", digest: <from ollama list>}`, then
     `npm run sib -- flags on finetunedBookmaker` (the flag stays off if training fails by Fri
@@ -105,14 +130,23 @@ Place the evening's bets first. From the repository root unless stated.
 ## Reproducibility (NFR-012)
 
 - One seed (`training.seed`, 42) feeds Python, NumPy, PyTorch (CPU and CUDA), the data order and
-  the trainer. GPU kernels (bitsandbytes, attention) are not bit-identical between runs, so expect
-  nearly equal, not byte-identical, adapters; the data, order, versions and settings are identical.
+  the trainer. The run also calls `set_seed(..., deterministic=True)` where the installed
+  transformers has that flag, `torch.use_deterministic_algorithms(True, warn_only=True)` and sets
+  `CUBLAS_WORKSPACE_CONFIG=:4096:8` before the GPU is touched.
+- What still varies on a GPU: `warn_only` means an operation without a deterministic kernel (some
+  bitsandbytes 4-bit and attention kernels, atomics in backward passes) runs anyway and only warns;
+  results also differ across GPU models, drivers and CUDA / library versions; `PYTHONHASHSEED` is
+  fixed only for child processes unless you export it before starting Python. Expect nearly equal,
+  not byte-identical, adapters. The data, the order, the versions, the base-model commit and the
+  settings are identical and recorded.
 - `run-record.json` holds what a re-run needs: config, dataset manifest hash, file hashes, seeds,
   package versions. The dataset itself is byte-identical for the same snapshot, rules, prompt and
   habits (`sib dataset`).
 - Training uses only `train.jsonl`. `training.dataset` refuses a folder whose files differ from the
-  manifest hashes, whose training file holds a hold-out row or a date after 31 Aug, whose habits are
-  not the synthetic profile in `habits.synthetic.json`, or whose rows break the format.
+  manifest hashes, whose training file holds a hold-out row or a date after 31 Aug (the boundary is
+  pinned in Python, not taken from the manifest), whose training prompts show a forecast hour of
+  1 Sep or later, whose habits (in the manifest and in every row's user message) are not the
+  synthetic profile in `habits.synthetic.json`, or whose rows break the format.
 - Weights, adapters, checkpoints and GGUF files stay outside the repository (`.gitignore` covers
   `*.gguf`, `*.safetensors`, `checkpoints/`, `adapters/`); the config refuses an output folder
   inside it. The adapter is published on Hugging Face by the builder (Q-11), not committed.

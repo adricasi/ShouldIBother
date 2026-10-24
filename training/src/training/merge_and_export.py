@@ -23,6 +23,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from training.config import (
     DEFAULT_CONFIG_PATH,
@@ -33,7 +34,13 @@ from training.config import (
     load_config,
     resolve_path,
 )
-from training.provenance import environment_info, package_versions, sha256_file, write_json
+from training.provenance import (
+    environment_info,
+    package_versions,
+    read_json,
+    sha256_file,
+    write_json,
+)
 
 EXIT_OK = 0
 EXIT_BAD_INPUT = 2
@@ -147,9 +154,14 @@ def ollama_create_command(config: TrainConfig, modelfile: Path) -> str:
     return shlex.join(["ollama", "create", config.export.ollama_tag, "-f", str(modelfile)])
 
 
-def merge_adapter(config: TrainConfig, paths: ExportPaths) -> None:
-    """Merges the adapter into the bf16 base model on the CPU and saves it.
+MERGE_INFO_FILE = "merge-info.json"
 
+
+def merge_adapter(config: TrainConfig, paths: ExportPaths) -> str | None:
+    """Merges the adapter into the bf16 base model on the CPU and saves it; returns the commit of
+    the base model that was loaded, if transformers reports one.
+
+    The base is loaded at the pinned revision with `trust_remote_code=False`, like in training.
     UNVERIFIED: the memory needed (the E4B weights in bf16 are several GB), whether
     AutoModelForCausalLM is the right class for Gemma 4, and that merging an adapter trained on
     the 4-bit base into the bf16 base gives the same answers (the usual practice).
@@ -158,13 +170,29 @@ def merge_adapter(config: TrainConfig, paths: ExportPaths) -> None:
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    hub = config.model.hub_kwargs()
     model = AutoModelForCausalLM.from_pretrained(
-        config.model.base_id, dtype=torch.bfloat16, device_map="cpu"
+        config.model.base_id, dtype=torch.bfloat16, device_map="cpu", **hub
     )
+    resolved = getattr(getattr(model, "config", None), "_commit_hash", None)
+    if resolved is not None and resolved != config.model.revision:
+        raise ExportError(f"loaded commit {resolved} is not the pinned {config.model.revision}")
     merged = PeftModel.from_pretrained(model, str(paths.adapter_dir)).merge_and_unload()
     paths.merged_dir.mkdir(parents=True, exist_ok=True)
     merged.save_pretrained(str(paths.merged_dir), safe_serialization=True)
-    AutoTokenizer.from_pretrained(str(paths.adapter_dir)).save_pretrained(str(paths.merged_dir))
+    # The tokenizer was saved next to the adapter by training: a local folder, no Hub code.
+    AutoTokenizer.from_pretrained(str(paths.adapter_dir), trust_remote_code=False).save_pretrained(
+        str(paths.merged_dir)
+    )
+    write_json(
+        paths.merged_dir / MERGE_INFO_FILE,
+        {
+            "base_model": config.model.base_id,
+            "revision": config.model.revision,
+            "resolved_commit": resolved,
+        },
+    )
+    return resolved
 
 
 def _require(path: Path, what: str) -> None:
@@ -184,7 +212,7 @@ def run_export(
     stage: str,
     *,
     template_text: str,
-    merger: Callable[[TrainConfig, ExportPaths], None] = merge_adapter,
+    merger: Callable[[TrainConfig, ExportPaths], str | None] = merge_adapter,
     runner: Callable[[Step], None] = _run_step,
     echo: Callable[[str], None] = print,
 ) -> None:
@@ -210,27 +238,54 @@ def run_export(
             template_text, config, paths.quantized_gguf, template_block(config)
         )
         paths.modelfile.write_text(modelfile, encoding="utf-8")
-        write_json(
-            paths.record,
-            {
-                "base_model": config.model.base_id,
-                "quantization": config.export.quantization,
-                "gguf": str(paths.quantized_gguf),
-                "gguf_sha256": sha256_file(paths.quantized_gguf),
-                "modelfile": str(paths.modelfile),
-                "ollama_tag": config.export.ollama_tag,
-                "seed": config.training.seed,
-                "packages": package_versions(),
-                "environment": environment_info(),
-            },
-        )
+        write_json(paths.record, _export_record(config, paths, echo))
+
+
+def _optional_json(path: Path) -> dict[str, Any]:
+    try:
+        return read_json(path)
+    except ValueError:
+        return {}
+
+
+def _export_record(
+    config: TrainConfig, paths: ExportPaths, echo: Callable[[str], None]
+) -> dict[str, Any]:
+    """What an exported model came from: base commit, training run, dataset manifest (NFR-012)."""
+    run_record_path = config.paths.run_record_path
+    run_record = _optional_json(run_record_path)
+    merge_info = _optional_json(paths.merged_dir / MERGE_INFO_FILE)
+    if not run_record:
+        echo(f"warning: no run record at {run_record_path}; the export record cannot link to it")
+    resolved = merge_info.get("resolved_commit") or run_record.get("model", {}).get(
+        "resolved_commit"
+    )
+    return {
+        "base_model": config.model.base_id,
+        "base_model_revision": config.model.revision,
+        "base_model_resolved_commit": resolved,
+        "quantization": config.export.quantization,
+        "gguf": str(paths.quantized_gguf),
+        "gguf_sha256": sha256_file(paths.quantized_gguf),
+        "modelfile": str(paths.modelfile),
+        "ollama_tag": config.export.ollama_tag,
+        "seed": config.training.seed,
+        "dataset_manifest_sha256": run_record.get("dataset", {}).get("manifest_sha256"),
+        "run_record": str(run_record_path),
+        "run_record_sha256": sha256_file(run_record_path) if run_record else None,
+        "training_config_sha256": run_record.get("training_config_sha256"),
+        "packages": package_versions(),
+        "environment": environment_info(),
+    }
 
 
 def describe_plan(config: TrainConfig, paths: ExportPaths, stage: str, template_text: str) -> str:
     lines = ["Export plan (dry run)", f"  stage          {stage}"]
     if stage in ("all", "merge"):
+        pin = config.model.revision or "NOT PINNED (a real merge refuses)"
         lines.append(
-            f"  1. merge       {paths.adapter_dir} + {config.model.base_id} -> {paths.merged_dir}"
+            f"  1. merge       {paths.adapter_dir} + {config.model.base_id} @ {pin} "
+            f"-> {paths.merged_dir}"
         )
     if stage in ("all", "gguf"):
         for number, step in enumerate(gguf_steps(config, paths), start=2):
@@ -273,7 +328,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(
     argv: Sequence[str] | None = None,
     *,
-    merger: Callable[[TrainConfig, ExportPaths], None] = merge_adapter,
+    merger: Callable[[TrainConfig, ExportPaths], str | None] = merge_adapter,
     runner: Callable[[Step], None] = _run_step,
     echo: Callable[[str], None] = print,
 ) -> int:
@@ -301,6 +356,8 @@ def main(
         echo("Dry run: nothing was written and no model was loaded.")
         return EXIT_OK
     try:
+        if args.stage in ("all", "merge"):
+            config.model.require_pinned()
         run_export(
             config,
             paths,
@@ -310,6 +367,9 @@ def main(
             runner=runner,
             echo=echo,
         )
+    except ConfigError as error:
+        echo(f"error: {error}")
+        return EXIT_BAD_INPUT
     except ExportError as error:
         echo(f"error: {error}")
         return EXIT_STEP_FAILED

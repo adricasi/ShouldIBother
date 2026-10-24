@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from helpers import FIXTURE_DATASET, copy_dataset, write_config
+from fakes import install_fake_ml
+from helpers import FIXTURE_DATASET, REVISION, copy_dataset, write_config
 
 from training import train
 from training.config import REPOSITORY_ROOT, load_config
@@ -173,9 +174,109 @@ def test_a_second_run_in_the_same_folder_needs_resume(tmp_path: Path) -> None:
     assert code == train.EXIT_RUN_EXISTS
     assert "--resume" in text
     assert len(recorder.calls) == 1
+
+
+def test_NFR_012_resume_appends_an_event_and_keeps_the_record(tmp_path: Path) -> None:
+    recorder = Recorder()
+    _, _, output = run(tmp_path, trainer=recorder)
+    first = json.loads((output / "run-record.json").read_text())
     code, _, _ = run(tmp_path, "--resume", trainer=recorder)
     assert code == 0
     assert recorder.calls[-1]["resume"] is True
+    record = json.loads((output / "run-record.json").read_text())
+    events = [event["event"] for event in record["events"]]
+    assert events == ["started", "finished", "resumed", "finished"]
+    assert record["events"][0] == first["events"][0]
+    assert record["dataset"] == first["dataset"]
+    assert record["config"] == first["config"]
+
+
+def test_NFR_012_resume_is_refused_when_the_dataset_manifest_changed(tmp_path: Path) -> None:
+    recorder = Recorder()
+    run(tmp_path, trainer=recorder)
+    other = copy_dataset(tmp_path / "other")
+    manifest = other / "manifest.json"
+    manifest.write_text(manifest.read_text() + "\n", encoding="utf-8")
+    code, text, _ = run(tmp_path, "--resume", dataset=other, trainer=recorder)
+    assert code == train.EXIT_RESUME_MISMATCH
+    assert "dataset manifest changed" in text
+    assert len(recorder.calls) == 1
+
+
+def test_NFR_012_resume_is_refused_when_the_training_settings_changed(tmp_path: Path) -> None:
+    recorder = Recorder()
+    _, _, output = run(tmp_path, trainer=recorder)
+    config = tmp_path / "config.toml"
+    config.write_text(config.read_text().replace("learning_rate = 2e-4", "learning_rate = 1e-4"))
+    lines: list[str] = []
+    code = train.main(
+        ["--config", str(config), "--dataset", str(FIXTURE_DATASET), "--resume"],
+        ollama_probe=lambda: IDLE,
+        trainer=recorder,
+        echo=lines.append,
+    )
+    assert code == train.EXIT_RESUME_MISMATCH
+    assert "settings changed" in lines[-1]
+    assert len(recorder.calls) == 1
+    assert [e["event"] for e in json.loads((output / "run-record.json").read_text())["events"]] == [
+        "started",
+        "finished",
+    ]
+
+
+def test_moving_the_output_folder_does_not_count_as_a_changed_config(tmp_path: Path) -> None:
+    config = load_config(write_config(tmp_path, output_dir=tmp_path / "a"))
+    moved = load_config(write_config(tmp_path, output_dir=tmp_path / "b"))
+    assert config.training_sha256() == moved.training_sha256()
+
+
+def test_resume_without_a_run_record_is_refused(tmp_path: Path) -> None:
+    code, text, _ = run(tmp_path, "--resume")
+    assert code == train.EXIT_RESUME_MISMATCH
+    assert "no run record" in text
+
+
+def test_a_damaged_run_record_blocks_resume(tmp_path: Path) -> None:
+    _, _, output = run(tmp_path)
+    (output / "run-record.json").write_text("{}", encoding="utf-8")
+    code, text, _ = run(tmp_path, "--resume")
+    assert code == train.EXIT_RESUME_MISMATCH
+    assert "incomplete" in text
+
+
+def test_NFR_012_a_real_run_needs_a_pinned_base_model(tmp_path: Path) -> None:
+    config = write_config(tmp_path, output_dir=tmp_path / "out", revision="")
+    recorder = Recorder()
+    lines: list[str] = []
+    code = train.main(
+        ["--config", str(config), "--dataset", str(FIXTURE_DATASET)],
+        ollama_probe=lambda: IDLE,
+        trainer=recorder,
+        echo=lines.append,
+    )
+    assert code == train.EXIT_BAD_INPUT
+    assert "model.revision is empty" in lines[0]
+    assert recorder.calls == []
+    # The dry run still works and says so.
+    lines.clear()
+    code = train.main(
+        ["--config", str(config), "--dataset", str(FIXTURE_DATASET), "--dry-run"],
+        ollama_probe=lambda: IDLE,
+        echo=lines.append,
+    )
+    assert code == 0
+    assert "NOT PINNED" in "\n".join(lines)
+
+
+def test_the_run_record_names_the_pinned_revision(tmp_path: Path) -> None:
+    _, _, output = run(tmp_path)
+    record = json.loads((output / "run-record.json").read_text())
+    assert record["model"] == {
+        "id": "google/gemma-4-E4B-it",
+        "revision": REVISION,
+        "resolved_commit": None,
+    }
+    assert len(record["training_config_sha256"]) == 64
 
 
 def test_a_tampered_dataset_stops_before_any_training(tmp_path: Path) -> None:
@@ -239,22 +340,67 @@ def test_an_output_folder_inside_the_repository_is_refused(tmp_path: Path) -> No
     assert "inside the repository" in lines[0]
 
 
-def test_NFR_012_one_seed_is_set_everywhere(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_NFR_012_one_seed_is_set_everywhere_and_kernels_are_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import os
     import random
-    import types
 
-    seen: list[int] = []
-    fake = types.ModuleType("transformers")
-    fake.set_seed = seen.append  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "transformers", fake)
+    fake = install_fake_ml(monkeypatch, commit=None)
     monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
     train.seed_everything(1234)
     first = random.random()
     train.seed_everything(1234)
     assert random.random() == first
-    assert seen == [1234, 1234]
+    assert fake.seeds == [(1234, {"deterministic": True})] * 2
+    assert fake.deterministic == [((True,), {"warn_only": True})] * 2
     assert os.environ["PYTHONHASHSEED"] == "1234"
+    assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":4096:8"
     monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+
+
+def test_an_older_transformers_without_the_deterministic_flag_still_gets_a_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = install_fake_ml(monkeypatch, commit=None, with_deterministic_flag=False)
+    monkeypatch.setenv("PYTHONHASHSEED", "0")
+    train.seed_everything(7)
+    assert fake.seeds == [(7, {})]
+    assert fake.deterministic == [((True,), {"warn_only": True})]
+
+
+def test_NFR_012_training_loads_the_pinned_commit_without_remote_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install_fake_ml(monkeypatch, commit=REVISION)
+    code, _, output = run(tmp_path, trainer=train.run_training)
+    assert code == 0
+    pinned = {"revision": REVISION, "trust_remote_code": False}
+    tokenizer_call = fake.kwargs_of("AutoTokenizer")[0]
+    model_call = fake.kwargs_of("AutoModelForCausalLM")[0]
+    assert {k: tokenizer_call[k] for k in pinned} == pinned
+    assert {k: model_call[k] for k in pinned} == pinned
+    assert fake.kwargs_of("SFTConfig")[0]["seed"] == 42
+    assert fake.kwargs_of("SFTConfig")[0]["data_seed"] == 42
+    assert fake.kwargs_of("train") == [{"resume_from_checkpoint": None}]
+    record = json.loads((output / "run-record.json").read_text())
+    assert record["model"]["resolved_commit"] == REVISION
+    assert [e["event"] for e in record["events"]] == ["started", "model_loaded", "finished"]
+    assert record["events"][1]["resolved_commit"] == REVISION
+    assert (output / "first-example.txt").exists()
+    assert (output / "adapter").exists() or (output / "result.json").exists()
+
+
+def test_a_loaded_commit_that_is_not_the_pin_stops_training(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_ml(monkeypatch, commit="f" * 40)
+    with pytest.raises(RuntimeError, match="is not the pinned"):
+        run(tmp_path, trainer=train.run_training)
+
+
+def test_model_settings_pass_the_pin_and_never_trust_remote_code() -> None:
+    config = load_config()
+    assert config.model.hub_kwargs() == {"revision": None, "trust_remote_code": False}

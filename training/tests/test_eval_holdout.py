@@ -12,16 +12,25 @@ VALID = json.dumps({"status": "ok", "band": "likely", "reason": "dry night", "se
 
 
 class FakeOllama:
-    """The HTTP boundary: records each request body and answers from a script."""
+    """The HTTP boundary: records each request body and answers from a script per mode.
 
-    def __init__(self, answers: list[Any] | None = None) -> None:
+    `constrained` answers requests that carry a `format`, `unconstrained` those that do not.
+    """
+
+    def __init__(
+        self, unconstrained: list[Any] | None = None, constrained: list[Any] | None = None
+    ) -> None:
         self.bodies: list[dict[str, Any]] = []
-        self.answers = answers or []
+        self.scripts = {True: constrained or [], False: unconstrained or []}
+        self.counts = {True: 0, False: 0}
 
     def __call__(self, body: dict[str, Any]) -> dict[str, Any]:
         self.bodies.append(body)
-        index = len(self.bodies) - 1
-        answer = self.answers[index] if index < len(self.answers) else VALID
+        mode = "format" in body
+        index = self.counts[mode]
+        self.counts[mode] += 1
+        script = self.scripts[mode]
+        answer = script[index] if index < len(script) else VALID
         if isinstance(answer, dict):
             return answer
         return {"message": {"role": "assistant", "content": answer}}
@@ -38,12 +47,14 @@ def run(*args: str, chat: FakeOllama | None = None) -> tuple[int, str, FakeOllam
     return code, "\n".join(lines), fake
 
 
-def test_AC_019_2_all_valid_answers_pass() -> None:
+def test_AC_019_2_all_valid_answers_pass_and_both_rates_are_reported() -> None:
     code, text, fake = run("--count", "5", "--min-valid", "5")
     assert code == 0
-    assert "5/5 valid bookmaker answers" in text
+    assert "5/5 valid bookmaker answers without the schema" in text
+    assert "schema-constrained: 5/5 valid" in text
+    assert "unconstrained (the gate): 5/5 valid" in text
     assert "PASS" in text
-    assert len(fake.bodies) == 5
+    assert len(fake.bodies) == 10
 
 
 def test_AC_019_2_the_default_is_twenty_prompts_and_nineteen_valid() -> None:
@@ -66,6 +77,20 @@ def test_one_invalid_answer_is_tolerated_two_are_not() -> None:
     assert code == eval_holdout.EXIT_BELOW_TARGET
     assert "FAIL" in text
     assert "needs band, reason" in text
+
+
+def test_AC_019_2_the_gate_is_the_unconstrained_rate_not_the_constrained_one() -> None:
+    # Constrained decoding hides a model that cannot write the format: it must not pass the gate.
+    broken = ["not json"] * 7
+    code, text, _ = run("--count", "7", "--min-valid", "7", chat=FakeOllama(unconstrained=broken))
+    assert code == eval_holdout.EXIT_BELOW_TARGET
+    assert "schema-constrained: 7/7 valid" in text
+    assert "unconstrained (the gate): 0/7 valid" in text
+    assert "FAIL" in text
+    # The reverse: a model that fails only when constrained still passes the gate.
+    code, text, _ = run("--count", "7", "--min-valid", "7", chat=FakeOllama(constrained=broken))
+    assert code == 0
+    assert "schema-constrained: 0/7 valid" in text
 
 
 def test_a_tool_call_instead_of_an_answer_is_invalid() -> None:
@@ -98,9 +123,12 @@ def test_the_request_mirrors_the_live_client() -> None:
     assert body["tools"][0]["function"]["name"] == "get_forecast"
 
 
-def test_unconstrained_leaves_the_schema_out() -> None:
-    _, _, fake = run("--count", "1", "--min-valid", "1", "--unconstrained")
-    assert "format" not in fake.bodies[0]
+def test_one_pass_sends_the_schema_and_the_other_leaves_it_out() -> None:
+    _, _, fake = run("--count", "1", "--min-valid", "1")
+    assert sorted("format" in body for body in fake.bodies) == [False, True]
+    constrained = next(body for body in fake.bodies if "format" in body)
+    plain = next(body for body in fake.bodies if "format" not in body)
+    assert {k: v for k, v in constrained.items() if k != "format"} == plain
 
 
 def test_no_prompt_carries_an_answer_or_a_target() -> None:
@@ -123,10 +151,11 @@ def test_a_report_file_is_written_as_json(tmp_path: Path) -> None:
     code, _, _ = run("--count", "3", "--min-valid", "3", "--report", str(path))
     assert code == 0
     report = json.loads(path.read_text())
-    assert report["valid"] == 3
     assert report["model"] == "sib-bookmaker-ft:v1"
     assert report["manifest_sha256"] == load_dataset(FIXTURE_DATASET).manifest_sha256
-    assert report["bands"] == {"likely": 3}
+    assert report["unconstrained"]["valid"] == 3
+    assert report["constrained"]["valid"] == 3
+    assert report["unconstrained"]["bands"] == {"likely": 3}
 
 
 def test_a_non_loopback_address_is_refused() -> None:

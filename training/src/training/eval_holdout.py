@@ -2,10 +2,12 @@
 
     PYTHONPATH=src uv run python -m training.eval_holdout --dataset <dir> --model <ollama tag>
 
-Sends 20 hold-out prompts (the conversation up to the `get_forecast` result) to the local Ollama
-and counts the answers that are valid JSON for the bookmaker schema. The goal is at least 19 of
-20. This is the smoke test of the import, not the evaluation of the model: calibration and Brier
-score on the whole hold-out are T-014 (`sib backtest`). Ollama is reached on 127.0.0.1 only.
+Sends 20 hold-out prompts (the conversation up to the `get_forecast` result) to the local Ollama,
+twice: with the bookmaker JSON schema as `format` (as the live app asks) and without it. Both rates
+of valid answers are reported; the gate is at least 19 of 20 WITHOUT the schema, because
+constrained decoding can hide a model that does not know the format. This is the smoke test of
+the import, not the evaluation of the model: calibration and Brier score on the whole hold-out
+are T-014 (`sib backtest`). Ollama is reached on 127.0.0.1 only.
 
 The request follows the live client (`src/server/model/ollama-wire.ts`), which is UNVERIFIED
 against a real Ollama until the builder runs this.
@@ -48,21 +50,31 @@ class CaseResult:
 
 
 @dataclass(frozen=True)
+class ModeResult:
+    """The same prompts asked one way: with the JSON schema as `format`, or without."""
+
+    constrained: bool
+    asked: int
+    valid: int
+    bands: dict[str, int]
+    failures: tuple[CaseResult, ...]
+
+
+@dataclass(frozen=True)
 class EvalReport:
     model: str
     prompt_version: str
     manifest_sha256: str
     seed: int
-    constrained: bool
-    asked: int
-    valid: int
     min_valid: int
-    bands: dict[str, int]
-    failures: tuple[CaseResult, ...]
+    constrained: ModeResult
+    unconstrained: ModeResult
 
     @property
     def passed(self) -> bool:
-        return self.valid >= self.min_valid
+        """The AC-019.2 gate is the unconstrained rate: schema-constrained decoding can hide a
+        model that does not know the format, so it is reported but never decides."""
+        return self.unconstrained.valid >= self.min_valid
 
 
 def select_prompts(rows: Sequence[Row], count: int, seed: int) -> list[Row]:
@@ -121,6 +133,23 @@ def evaluate_case(row: Row, response: dict[str, Any]) -> CaseResult:
     return CaseResult(row.id, not errors, tuple(errors), band, len(content))
 
 
+def _ask(
+    rows: Sequence[Row], chat: ChatCall, model: str, seed: int, *, constrained: bool
+) -> ModeResult:
+    results = [
+        evaluate_case(row, chat(chat_body(row, model, seed, constrained=constrained)))
+        for row in rows
+    ]
+    bands = Counter(result.band for result in results if result.valid and result.band)
+    return ModeResult(
+        constrained=constrained,
+        asked=len(results),
+        valid=sum(result.valid for result in results),
+        bands=dict(sorted(bands.items())),
+        failures=tuple(result for result in results if not result.valid),
+    )
+
+
 def run_eval(
     dataset: Dataset,
     chat: ChatCall,
@@ -129,40 +158,34 @@ def run_eval(
     count: int = DEFAULT_COUNT,
     min_valid: int = DEFAULT_MIN_VALID,
     seed: int = DEFAULT_SEED,
-    constrained: bool = True,
 ) -> EvalReport:
+    """Asks every selected prompt twice, constrained and unconstrained."""
     rows = select_prompts(dataset.holdout, count, seed)
     if len(rows) < count:
         raise DatasetError(f"the hold-out has {len(rows)} rows, {count} were asked for")
-    results = [
-        evaluate_case(row, chat(chat_body(row, model, seed, constrained=constrained)))
-        for row in rows
-    ]
-    bands = Counter(result.band for result in results if result.valid and result.band)
     return EvalReport(
         model=model,
         prompt_version=dataset.prompt_version,
         manifest_sha256=dataset.manifest_sha256,
         seed=seed,
-        constrained=constrained,
-        asked=len(results),
-        valid=sum(result.valid for result in results),
         min_valid=min_valid,
-        bands=dict(sorted(bands.items())),
-        failures=tuple(result for result in results if not result.valid),
+        constrained=_ask(rows, chat, model, seed, constrained=True),
+        unconstrained=_ask(rows, chat, model, seed, constrained=False),
     )
 
 
 def format_report(report: EvalReport) -> str:
+    gate = report.unconstrained
     lines = [
-        f"{report.model}: {report.valid}/{report.asked} valid bookmaker answers "
+        f"{report.model}: {gate.valid}/{gate.asked} valid bookmaker answers without the schema "
         f"(need {report.min_valid}) - {'PASS' if report.passed else 'FAIL'}",
-        f"  prompt {report.prompt_version}, seed {report.seed}, "
-        f"{'schema-constrained' if report.constrained else 'unconstrained'}",
-        f"  bands answered: {report.bands or 'none'}",
+        f"  prompt {report.prompt_version}, seed {report.seed}",
     ]
-    for failure in report.failures:
-        lines.append(f"  invalid {failure.id}: {'; '.join(failure.errors)}")
+    for mode in (report.unconstrained, report.constrained):
+        label = "schema-constrained" if mode.constrained else "unconstrained (the gate)"
+        lines.append(f"  {label}: {mode.valid}/{mode.asked} valid; bands {mode.bands or 'none'}")
+        for failure in mode.failures:
+            lines.append(f"    invalid {failure.id}: {'; '.join(failure.errors)}")
     return "\n".join(lines)
 
 
@@ -178,9 +201,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     parser.add_argument("--min-valid", type=int, default=DEFAULT_MIN_VALID)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument(
-        "--unconstrained", action="store_true", help="do not send the JSON schema as `format`"
-    )
     parser.add_argument("--report", type=Path, help="also write the report here as JSON")
     return parser
 
@@ -207,7 +227,6 @@ def main(
             count=args.count,
             min_valid=args.min_valid,
             seed=args.seed,
-            constrained=not args.unconstrained,
         )
     except (ConfigError, DatasetError, OllamaError) as error:
         echo(f"error: {error}")

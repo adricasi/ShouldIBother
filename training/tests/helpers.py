@@ -11,6 +11,7 @@ from typing import Any
 
 from training.config import DEFAULT_CONFIG_PATH
 
+REVISION = "0123456789abcdef0123456789abcdef01234567"
 FIXTURE_DATASET = Path(__file__).parent / "fixtures" / "dataset"
 
 
@@ -48,13 +49,19 @@ def rewrite_dataset(
 
 
 def write_config(
-    folder: Path, *, output_dir: Path, llama_cpp_dir: Path | None = None, extra: str = ""
+    folder: Path,
+    *,
+    output_dir: Path,
+    llama_cpp_dir: Path | None = None,
+    revision: str = REVISION,
+    extra: str = "",
 ) -> Path:
     """A copy of the committed config with outputs under `folder` (never the user's home)."""
     text = DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
     text = text.replace(
         'output_dir = "~/.should-i-bother/training/bookmaker-qlora"', f'output_dir = "{output_dir}"'
     )
+    text = text.replace('revision = ""', f'revision = "{revision}"')
     if llama_cpp_dir is not None:
         text = text.replace('llama_cpp_dir = "~/llama.cpp"', f'llama_cpp_dir = "{llama_cpp_dir}"')
     path = folder / "config.toml"

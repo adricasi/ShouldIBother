@@ -8,6 +8,9 @@ Only the standard library is used: this module is imported by the CI tests and b
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
+import re
 import tomllib
 import typing
 from dataclasses import dataclass, field
@@ -20,6 +23,7 @@ TRAINING_DIR = REPOSITORY_ROOT / "training"
 DEFAULT_CONFIG_PATH = TRAINING_DIR / "configs" / "bookmaker-qlora.toml"
 DEFAULT_TEMPLATE_PATH = TRAINING_DIR / "templates" / "Modelfile.tmpl"
 
+_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 COMPUTE_DTYPES = ("bfloat16", "float16")
 QUANT_TYPES = ("nf4", "fp4")
 LR_SCHEDULERS = ("linear", "cosine", "cosine_with_restarts", "polynomial", "constant")
@@ -37,6 +41,9 @@ def _positive(name: str, value: float) -> None:
 @dataclass(frozen=True)
 class ModelSettings:
     base_id: str
+    # The 40-character commit of the base model on the Hub. Empty is allowed for a dry run only:
+    # a real run refuses it (`require_pinned`), so the weights cannot change under NFR-012.
+    revision: str = ""
     max_seq_length: int = 4096
     load_in_4bit: bool = True
     bnb_4bit_quant_type: str = "nf4"
@@ -46,11 +53,27 @@ class ModelSettings:
     def __post_init__(self) -> None:
         if not self.base_id.strip():
             raise ConfigError("model.base_id must not be empty")
+        if self.revision and not _COMMIT.match(self.revision):
+            raise ConfigError(
+                "model.revision must be a full 40-character commit hash (lowercase hex)"
+            )
         _positive("model.max_seq_length", self.max_seq_length)
         if self.bnb_4bit_quant_type not in QUANT_TYPES:
             raise ConfigError(f"model.bnb_4bit_quant_type must be one of {QUANT_TYPES}")
         if self.bnb_4bit_compute_dtype not in COMPUTE_DTYPES:
             raise ConfigError(f"model.bnb_4bit_compute_dtype must be one of {COMPUTE_DTYPES}")
+
+    def require_pinned(self) -> None:
+        if not self.revision:
+            raise ConfigError(
+                "model.revision is empty: pin the base model to a commit hash from its Hugging "
+                "Face page (Files and versions) before a real run (NFR-012)"
+            )
+
+    def hub_kwargs(self) -> dict[str, object]:
+        """Keyword arguments for every `from_pretrained` of the base model: the pinned commit,
+        and never code from the Hub."""
+        return {"revision": self.revision or None, "trust_remote_code": False}
 
 
 @dataclass(frozen=True)
@@ -175,6 +198,14 @@ class TrainConfig:
     export: ExportSettings
     # Settings the builder still has to confirm on the laptop (printed in every plan).
     unverified: tuple[str, ...] = field(default_factory=tuple)
+
+    def training_sha256(self) -> str:
+        """Hash of what decides the trained weights (model, LoRA, training); paths and export
+        settings are left out, so moving the output folder does not count as a change."""
+        data = self.as_dict()
+        subset = {key: data[key] for key in ("model", "lora", "training")}
+        text = json.dumps(subset, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(text.encode()).hexdigest()
 
     def as_dict(self) -> dict[str, Any]:
         """A JSON-ready copy for the run record (paths become strings)."""

@@ -15,6 +15,7 @@ documentation without a GPU. The builder checks it in T-012 (see training/README
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import math
 import os
@@ -49,12 +50,19 @@ from training.ollama import (
     ensure_gpu_free,
     probe_ollama,
 )
-from training.provenance import environment_info, package_versions, write_json
+from training.provenance import (
+    environment_info,
+    package_versions,
+    read_json,
+    update_record,
+    write_json,
+)
 
 EXIT_OK = 0
 EXIT_BAD_INPUT = 2
 EXIT_GPU_BUSY = 3
 EXIT_RUN_EXISTS = 4
+EXIT_RESUME_MISMATCH = 5
 
 # JSON, ids and numbers tokenize at roughly three characters per token; a safe over-estimate.
 CHARS_PER_TOKEN = 3.0
@@ -127,6 +135,7 @@ def format_plan(
     lines = [
         "Training plan (dry run)" if dry_run else "Training plan",
         f"  base model     {config.model.base_id}  ({precision})",
+        f"  revision       {config.model.revision or 'NOT PINNED (a real run refuses)'}",
         f"  LoRA           r={config.lora.r} alpha={config.lora.alpha} "
         f"dropout={config.lora.dropout} on {', '.join(config.lora.target_modules)}",
         f"  dataset        {plan.dataset_dir}",
@@ -162,17 +171,29 @@ def format_plan(
     return "\n".join(lines)
 
 
+CUBLAS_WORKSPACE_CONFIG = ":4096:8"
+
+
 def seed_everything(seed: int) -> None:
-    """Seeds Python, NumPy and PyTorch (CPU and CUDA) with one value (NFR-012).
+    """Seeds Python, NumPy and PyTorch (CPU and CUDA) with one value and asks for deterministic
+    kernels (NFR-012). Call it before anything touches the GPU.
 
     `PYTHONHASHSEED` only affects processes started afterwards (set it in the shell for the run
-    itself); it is recorded in the environment so child processes inherit it.
+    itself); it is exported so child processes inherit it. Deterministic algorithms are requested
+    with `warn_only=True`: an operation that has no deterministic kernel (some bitsandbytes and
+    attention kernels) warns instead of stopping a night's run, so GPU results can still differ.
     """
     os.environ["PYTHONHASHSEED"] = str(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = CUBLAS_WORKSPACE_CONFIG
     random.seed(seed)
-    from transformers import set_seed  # heavy: only the real run gets here
+    import torch  # heavy: only the real run gets here
+    from transformers import set_seed
 
-    set_seed(seed)
+    if "deterministic" in inspect.signature(set_seed).parameters:
+        set_seed(seed, deterministic=True)
+    else:
+        set_seed(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def build_run_record(
@@ -183,6 +204,12 @@ def build_run_record(
         "kind": "bookmaker-qlora-training",
         "command": list(argv),
         "config": config.as_dict(),
+        "training_config_sha256": config.training_sha256(),
+        "model": {
+            "id": config.model.base_id,
+            "revision": config.model.revision,
+            "resolved_commit": None,
+        },
         "seeds": {"seed": config.training.seed, "data_seed": config.training.seed},
         "dataset": {
             "directory": str(dataset.directory),
@@ -198,6 +225,7 @@ def build_run_record(
         "packages": package_versions(),
         "environment": environment_info(),
         "unverified": list(config.unverified),
+        "events": [],
     }
 
 
@@ -212,7 +240,7 @@ def run_training(config: TrainConfig, dataset: Dataset, output_dir: Path, *, res
     model_cfg, lora_cfg, train_cfg = config.model, config.lora, config.training
     seed_everything(train_cfg.seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_cfg.base_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_cfg.base_id, **model_cfg.hub_kwargs())
     rendered = [render_example(example, tokenizer) for example in training_examples(dataset)]
     # Look at this file before trusting the run: the prompt, then the part the loss covers.
     (output_dir / "first-example.txt").write_text(
@@ -239,6 +267,21 @@ def run_training(config: TrainConfig, dataset: Dataset, output_dir: Path, *, res
         quantization_config=quantization,
         device_map={"": 0},
         dtype=compute_dtype,
+        **model_cfg.hub_kwargs(),
+    )
+    resolved = getattr(getattr(model, "config", None), "_commit_hash", None)
+    if resolved is not None and resolved != model_cfg.revision:
+        raise RuntimeError(f"loaded commit {resolved} is not the pinned {model_cfg.revision}")
+    update_record(
+        config.paths.run_record_path,
+        event={"event": "model_loaded", "resolved_commit": resolved},
+        fields={
+            "model": {
+                "id": model_cfg.base_id,
+                "revision": model_cfg.revision,
+                "resolved_commit": resolved,
+            }
+        },
     )
     peft_config = LoraConfig(
         r=lora_cfg.r,
@@ -355,6 +398,11 @@ def main(
         echo("Dry run: nothing was written and no model was loaded.")
         return EXIT_OK
 
+    try:
+        config.model.require_pinned()
+    except ConfigError as error:
+        echo(f"error: {error}")
+        return EXIT_BAD_INPUT
     if probe_error is not None:
         echo(f"error: cannot tell whether Ollama holds a model, so not starting: {probe_error}")
         return EXIT_GPU_BUSY
@@ -363,23 +411,65 @@ def main(
     except GpuBusyError as error:
         echo(f"error: {error}")
         return EXIT_GPU_BUSY
-    if config.paths.run_record_path.exists() and not args.resume:
+
+    record_path = config.paths.run_record_path
+    if record_path.exists() and not args.resume:
         echo(
-            f"error: {config.paths.run_record_path} exists; pass --resume to continue that run "
+            f"error: {record_path} exists; pass --resume to continue that run "
             "or choose another --output-dir"
         )
         return EXIT_RUN_EXISTS
+    if args.resume:
+        problem = resume_problem(config, dataset)
+        if problem is not None:
+            echo(f"error: cannot resume: {problem}")
+            return EXIT_RESUME_MISMATCH
 
     echo(format_plan(config, plan, status, output_dir, dry_run=False))
     output_dir.mkdir(parents=True, exist_ok=True)
-    # Written before the first step, so even a run that dies leaves what it was started with.
-    write_json(config.paths.run_record_path, build_run_record(config, dataset, plan, arguments))
-    shutil.copyfile(dataset.directory / MANIFEST_FILE, output_dir / "dataset-manifest.json")
+    started = {
+        "event": "resumed" if args.resume else "started",
+        "command": arguments,
+        "packages": package_versions(),
+        "environment": environment_info(),
+    }
+    if args.resume:
+        update_record(record_path, event=started)
+    else:
+        # Written before the first step, so even a run that dies leaves what it was started with.
+        record = build_run_record(config, dataset, plan, arguments)
+        write_json(record_path, record)
+        update_record(record_path, event=started)
+        shutil.copyfile(dataset.directory / MANIFEST_FILE, output_dir / "dataset-manifest.json")
     trainer(config, dataset, output_dir, resume=args.resume)
+    update_record(
+        record_path, event={"event": "finished", "adapter": str(config.paths.adapter_dir)}
+    )
     echo(
         f"Adapter saved to {config.paths.adapter_dir}. Next: merge_and_export (training/README.md)."
     )
     return EXIT_OK
+
+
+def resume_problem(config: TrainConfig, dataset: Dataset) -> str | None:
+    """Why this run may not continue the recorded one, or None if it may (NFR-012)."""
+    path = config.paths.run_record_path
+    if not path.exists():
+        return f"there is no run record at {path} to continue"
+    try:
+        record = read_json(path)
+        recorded_manifest = record["dataset"]["manifest_sha256"]
+        recorded_config = record["training_config_sha256"]
+    except (ValueError, KeyError, TypeError) as error:
+        return f"the run record is unreadable or incomplete ({error})"
+    if recorded_manifest != dataset.manifest_sha256:
+        return (
+            f"the dataset manifest changed (recorded {str(recorded_manifest)[:12]}..., "
+            f"now {dataset.manifest_sha256[:12]}...)"
+        )
+    if recorded_config != config.training_sha256():
+        return "the model, LoRA or training settings changed since the run started"
+    return None
 
 
 def _with_output_dir(config: TrainConfig, output_dir: Path) -> TrainConfig:
