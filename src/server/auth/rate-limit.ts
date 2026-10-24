@@ -84,3 +84,53 @@ export class FailureLimiter {
     }
   }
 }
+
+/**
+ * At most `limit` requests per `windowMs` for each key, kept in memory only (nothing is written
+ * anywhere, and a restart forgets it). A request that is refused is not counted, so waiting out
+ * the window always works. The place search uses it per session (AC-024.4).
+ */
+export class SlidingWindowLimiter {
+  private readonly hits = new Map<string, number[]>();
+
+  constructor(
+    private readonly now: () => number,
+    private readonly limit: number,
+    private readonly windowMs: number = 60_000,
+    /** Upper bound on remembered keys, so a flood of sessions cannot grow memory. */
+    private readonly maxTracked: number = 1000,
+  ) {}
+
+  /** Counts the request and returns 0, or returns the whole seconds to wait (at least 1) and counts nothing. */
+  take(key: string): number {
+    const now = this.now();
+    const recent = (this.hits.get(key) ?? []).filter((at) => at > now - this.windowMs);
+    if (recent.length >= this.limit) {
+      this.hits.set(key, recent);
+      return Math.max(1, Math.ceil(((recent[0] ?? now) + this.windowMs - now) / 1000));
+    }
+    recent.push(now);
+    // Re-insert so the least recently used key is the first one in the map.
+    this.hits.delete(key);
+    this.hits.set(key, recent);
+    this.evict(now);
+    return 0;
+  }
+
+  private evict(now: number): void {
+    for (const [key, times] of this.hits) {
+      if (this.hits.size <= this.maxTracked) {
+        return;
+      }
+      if (times.every((at) => at <= now - this.windowMs)) {
+        this.hits.delete(key);
+      }
+    }
+    for (const key of this.hits.keys()) {
+      if (this.hits.size <= this.maxTracked) {
+        return;
+      }
+      this.hits.delete(key);
+    }
+  }
+}

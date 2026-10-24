@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Allowlist } from "./allowlist.js";
 import { formatMadridTime } from "./banner.js";
 import type { FailureLimiter } from "./rate-limit.js";
+import { hashSecret } from "./secrets.js";
 import { SESSION_TTL_MS, type AuthStore } from "./store.js";
 
 declare module "fastify" {
@@ -34,6 +35,17 @@ export interface GuardDeps {
   readonly allowlist: Allowlist;
   /** Console output for pairing lines (never the logger: AC-001.7). */
   readonly print: (line: string) => void;
+}
+
+/** The session of each request that passed the guard, as a hash: never the cookie value itself. */
+const sessionKeys = new WeakMap<FastifyRequest, string>();
+
+/**
+ * A stable key for the session a guarded request came with (the hash of its cookie), for limits
+ * that count per session. Undefined on a request without a session, such as `/pair`.
+ */
+export function sessionKeyOf(request: FastifyRequest): string | undefined {
+  return sessionKeys.get(request);
 }
 
 /** Values of the cookies called `name` in a Cookie header, in order. */
@@ -113,13 +125,19 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
   const { store, limiter, allowlist, print } = deps;
   const now = store.now;
 
-  const hasValidSession = (request: FastifyRequest): boolean =>
-    [
+  const hasValidSession = (request: FastifyRequest): boolean => {
+    const valid = [
       ...readCookies(request.headers.cookie, SECURE_SESSION_COOKIE),
       ...readCookies(request.headers.cookie, SESSION_COOKIE),
     ]
       .slice(0, MAX_COOKIE_CANDIDATES)
-      .some((candidate) => store.isValidSession(candidate));
+      .find((candidate) => store.isValidSession(candidate));
+    if (valid === undefined) {
+      return false;
+    }
+    sessionKeys.set(request, hashSecret(valid));
+    return true;
+  };
 
   /** True when the request came in through an https public origin (AC-001.10). */
   const isSecureHost = (request: FastifyRequest): boolean =>

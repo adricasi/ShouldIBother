@@ -19,6 +19,7 @@ import { FakeModelClient } from "../src/server/model/fake.js";
 import { loadRules } from "../src/server/rules.js";
 import { loadSavings } from "../src/server/savings.js";
 import type { WeatherClient } from "../src/server/weather/client.js";
+import type { Geocoder } from "../src/server/weather/geocoding.js";
 import { FakeWeatherClient, type FakeWeatherProfile } from "../src/server/weather/fake.js";
 
 import { multipartBody } from "./support/photos.js";
@@ -54,6 +55,8 @@ export interface CoreHarnessOptions {
   household?: Household;
   /** A weather client to use instead of the fake one (the Open-Meteo client on a fake HTTP server). */
   liveWeather?: (db: Db, now: () => number) => WeatherClient;
+  /** The place search of onboarding; omitted: the search answers "offline". */
+  geocoder?: Geocoder;
   /** Collects the structured log lines (one JSON line each) of the app, for tests of log events. */
   logLines?: string[];
 }
@@ -108,6 +111,7 @@ export async function createCoreHarness(options: CoreHarnessOptions = {}): Promi
     savings: loadSavings(),
     flags,
     photos,
+    ...(options.geocoder === undefined ? {} : { geocoder: options.geocoder }),
     ...(options.runner === undefined ? {} : { runner: options.runner }),
   });
   const app = await buildApp({

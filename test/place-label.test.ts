@@ -49,6 +49,10 @@ describe("AC-026.3: the place label is trimmed, free of control characters and a
     ]) {
       expect(parsePlaceLabel(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
     }
+    // Line and paragraph separators, and lone surrogates (broken text), are refused as well.
+    for (const bad of ["Gr\u2028acia", "Gr\u2029acia", "Gr\ud800acia", "Gr\udc00acia"]) {
+      expect(parsePlaceLabel(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
+    }
     // Ordinary punctuation, accents and the middle dot are fine.
     expect(parsePlaceLabel("Gràcia · Barcelona")).toMatchObject({ ok: true });
   });

@@ -611,6 +611,28 @@ export const fetchOnboarding = (): Promise<Onboarding> =>
 export const saveOnboarding = (answers: OnboardingAnswers): Promise<Onboarding> =>
   request("/api/onboarding", onboardingSchema, { method: "PUT", body: answers });
 
+/** One place of the search in onboarding (AC-024.4): the laptop has rounded the coordinates. */
+export const placeSchema = z.object({
+  name: z.string(),
+  admin1: z.string().optional(),
+  country: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+});
+export type Place = z.infer<typeof placeSchema>;
+
+/**
+ * Asks the laptop to search for a place (AC-024.4). The text goes to the laptop only, which asks
+ * Open-Meteo's geocoding API; the page never calls Open-Meteo itself.
+ */
+export const searchPlaces = async (query: string): Promise<readonly Place[]> =>
+  (
+    await request(
+      `/api/geocode?q=${encodeURIComponent(query)}`,
+      z.object({ results: z.array(placeSchema) }),
+    )
+  ).results;
+
 export const skipOnboarding = (): Promise<Onboarding> =>
   request("/api/onboarding/skip", onboardingSchema, { method: "POST", body: {} });
 

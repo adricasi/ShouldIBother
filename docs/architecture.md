@@ -36,7 +36,7 @@ flowchart LR
     CLI["sib CLI\npair · export · eval · backtest · snapshot · dataset"]
     TRAIN["training/ (Python)\nQLoRA fine-tune, offline"]
   end
-  OM["Open-Meteo\n4 allowlisted hosts"]
+  OM["Open-Meteo\n5 allowlisted hosts"]
   SPA --> GUARD --> API --> LEDGER
   LEDGER --> DOMAIN
   LEDGER --> GEMMA
@@ -64,7 +64,7 @@ flowchart LR
 | Domain | Pure functions with no I/O: rule baseline, safety backstop, bands, points, savings, outcome labels, calibration, settle-time bounds. | `src/domain/` |
 | Gemma jobs | One module per job (prompt + input builder + zod schema + checks) on one `JobRunner` (FIFO queue of 8, 30 s per call, 45 s per job, one retry). | `src/server/gemma/`, `prompts/` |
 | Model clients | `ModelClient` interface; Ollama, llama.cpp (audio) and a fixture-backed fake. | `src/server/model/` |
-| Weather service | Open-Meteo client with a 1 h forecast cache, recorded-weather fetch for settlement, a 1,000 calls/day budget and a four-host allowlist. | `src/server/weather/` |
+| Weather service | Open-Meteo client with a 1 h forecast cache, recorded-weather fetch for settlement, a 1,000 calls/day budget and a five-host allowlist (the geocoding host is for the onboarding place search). | `src/server/weather/` |
 | Photo store | Accepts JPEG, PNG, WebP or HEIF by magic bytes (10 MB), decodes with sharp, re-encodes to JPEG at 1024 px at most with all metadata dropped, random file names. | `src/server/photos/` |
 | Scheduler | In-process loop, every 60 s (below). | `src/server/scheduler.ts` |
 | CLI | `sib` commands. | `src/cli.ts` |
@@ -174,16 +174,22 @@ voice audio and transcripts, the decision log, the database and exports.
 | Model prompts and answers | 127.0.0.1; `gemma_decisions` keeps short summaries without household text |
 | Pairing tokens, session ids | Stored as hashes; never logged |
 
-**What does leave: Open-Meteo, and nothing else at runtime.** The weather client calls only four
+**What does leave: Open-Meteo, and nothing else at runtime.** The weather client calls only five
 hosts, enforced in code by `assertAllowedUrl` (https, no credentials or port, host in the list;
 redirects are errors) and by a CI test (AC-014.7):
 
 - `api.open-meteo.com` (forecast, and recent hours for settlement)
 - `previous-runs-api.open-meteo.com`, `historical-forecast-api.open-meteo.com`,
   `archive-api.open-meteo.com` (the backtest and fine-tune snapshot, run by `sib snapshot`)
+- `geocoding-api.open-meteo.com` (the onboarding place search, `GET /api/geocode`, flag `onboarding`)
 
 Each request carries the household's coordinates **rounded to 2 decimals** (about 1 km) and the
-variables asked for, nothing else; Open-Meteo also necessarily sees the laptop's IP address. There is
+variables asked for, nothing else. The one exception is the place search: the text typed into it
+(2 to 60 characters, only when the person presses Search) is sent to the geocoding host by the
+laptop, never by the page (the CSP stays `default-src 'self'`). It is limited to 10 searches a
+minute per session and 50 a day (a budget of its own, one try each, so searching can never use up
+the forecast calls), dropped from request logs like the `/pair` token, not cached or stored, and
+never part of a Gemma prompt or decision; Open-Meteo also necessarily sees the laptop's IP address. There is
 a budget of 1,000 calls a day (the free tier allows 10,000). Setup-time downloads are the only other
 traffic and are not part of the app: the Ollama registry for the models, npm and PyPI for packages,
 and Hugging Face if the builder publishes an adapter by hand. No analytics, no telemetry, no cloud
