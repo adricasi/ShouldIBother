@@ -60,7 +60,7 @@ budget, the time zone), so no number is defined twice.
 ### Reviews before implementation
 
 The spec was reviewed before the first line of product code was merged. It went through the `spec-reviewer`
-subagent (the toolkit's spec lifecycle also calls for a Gemini second opinion), and the history shows it: *write* (`docs(spec): write product, requirements,
+subagent, and the history shows it: *write* (`docs(spec): write product, requirements,
 design and task plan`), *apply second review fixes*, then *mark product, requirements, design and tasks
 approved* on 21 October 2026. The `implement-task` skill warns and stops if the spec is not approved.
 
@@ -142,8 +142,7 @@ lines and running the targeted test, and puts the findings and their resolution 
 description so a human does not repeat the review. The history shows the loop: 28 commit subjects on `main`
 name a review round, for example `fix(chores): review round for the city rain bets (T-038)`,
 `fix(hosted): review round for T-040 (cap, trusted proxy, devices, copy)` and `fix(deploy): security review
-round for the DigitalOcean kit (T-041)`. The toolkit also provides a Gemini second opinion (`gemini-review`) for the spec and for
-high-risk changes.
+round for the DigitalOcean kit (T-041)`.
 
 The last pull requests (#41 to #55) were merged on local verification because GitHub Actions runners were
 unavailable at the time; their descriptions say so, with the commands that were run.

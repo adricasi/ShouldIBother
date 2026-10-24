@@ -310,7 +310,7 @@ An entry for the DEV Hacktoberfest Open-Source AI Challenge, Week 3 "Slow and St
   that was about to water the balcony in the rain, and gets points for trusting the weather and loses points
   when the weather was wrong.
 - **The demo.** `npm run sib -- demo` runs everything on sample data without a GPU (see
-  [Quick start](#quick-start)). Demo video: <!-- video --> link to be added.
+  [Quick start](#quick-start)). Demo video (41 s): [youtube.com/shorts/VLPyTvU6a-4](https://youtube.com/shorts/VLPyTvU6a-4).
 - **The code.** This repository, MIT licensed. [docs/how-it-was-built.md](docs/how-it-was-built.md) shows
   how it was built, spec first, with Claude Code.
 - **Built around open-weight Gemma 4, local with Ollama.** Gemma 4 E4B makes every judgement: function
@@ -334,8 +334,14 @@ An entry for the DEV Hacktoberfest Open-Source AI Challenge, Week 3 "Slow and St
 ## Later commits
 
 The challenge entry is the repository as it stood at the feature freeze on Saturday 24 October 2026 at
-14:00 (Madrid), <!-- builder: freeze commit SHA or tag -->. Work after the freeze is listed here, one
-line each, with its date. <!-- builder: list later commits, or write "None." -->
+14:00 (Madrid), commit `5577943` (PR #52). Work after the freeze, all deployment, documentation and
+dependency work (no new game features):
+
+- 24 Oct, 22:02: #53, the DigitalOcean deployment kit and guide (T-041).
+- 24 Oct, 23:34: #54, one-command release through the DigitalOcean registry (T-042).
+- 25 Oct, 00:29: #55, the Caddy address fix found on the first real deploy.
+- 25 Oct, 00:49: #32, Dependabot dependency updates.
+- 25 Oct: this documentation update (architecture, Gemma, diagrams, screenshots, README).
 
 ## Contributing
 
