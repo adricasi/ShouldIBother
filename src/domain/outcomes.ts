@@ -42,7 +42,7 @@ export type BacktestChore = (typeof BACKTEST_CHORES)[number];
 
 /**
  * The city rain bets (REQ-030): rain does the chore. Their label is recorded rain over the bet's
- * own window (placed to settle time); they have no fixed decision time and stay out of the backtest.
+ * own window (created_at to created_at + 24 h, or to next day 08:00 for the barrel); they have no fixed decision time and stay out of the backtest.
  */
 export const RAIN_CHORES = ["car_rinse", "bike_rinse", "terrace_rinse", "rain_fill"] as const;
 export type RainChore = (typeof RAIN_CHORES)[number];

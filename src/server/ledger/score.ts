@@ -75,9 +75,10 @@ const SETTLED_DO_NOTHING = "b.kind = 'do_nothing' AND b.status = 'settled'";
 /**
  * The calibration charts cover the chores of REQ-016 only (AC-030.3): a city rain bet counts for
  * points and savings but is not in any band's N, so the charts stay comparable with the backtest.
+ * One `?` per rain chore: bind `...RAIN_CHORES` first.
  */
 export const NOT_A_CITY_RAIN_BET = `b.card_id NOT IN (
-  SELECT id FROM cards WHERE chore_type IN (${RAIN_CHORES.map((chore) => `'${chore}'`).join(", ")})
+  SELECT id FROM cards WHERE chore_type IN (${RAIN_CHORES.map(() => "?").join(", ")})
 )`;
 
 /**
@@ -103,14 +104,14 @@ function gemmaPriced(demo: boolean | undefined): string {
 
 function countsBy(deps: Pick<LedgerDeps, "db">, bandColumn: string, extra: string): BandCount[] {
   return deps.db
-    .prepare<[], BandCount>(
+    .prepare<string[], BandCount>(
       `SELECT b.${bandColumn} AS band, COUNT(*) AS n,
               COALESCE(SUM(CASE WHEN s.verdict = 'win' THEN 1 ELSE 0 END), 0) AS wins
        FROM bets b ${FINAL_SETTLEMENT}
        WHERE ${SETTLED_DO_NOTHING} AND ${NOT_A_CITY_RAIN_BET} ${extra}
        GROUP BY b.${bandColumn}`,
     )
-    .all();
+    .all(...RAIN_CHORES);
 }
 
 /**
@@ -154,13 +155,13 @@ function overruleOf(deps: ScoreDeps): JudgeOverrule {
 
 function fakeModelBets(deps: Pick<LedgerDeps, "db" | "demo">): number {
   return deps.db
-    .prepare<[], { n: number }>(
+    .prepare<string[], { n: number }>(
       `SELECT COUNT(*) AS n FROM bets b
        WHERE ${SETTLED_DO_NOTHING} AND ${NOT_A_CITY_RAIN_BET}
          AND b.odds_source = 'gemma' AND b.gemma_band IS NOT NULL
          AND ${fixtureModel("b.model_version", deps.demo)}`,
     )
-    .get()!.n;
+    .get(...RAIN_CHORES)!.n;
 }
 
 /** The Score screen's numbers (REQ-020), read from the stored rows only. */

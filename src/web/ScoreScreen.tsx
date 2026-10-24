@@ -265,6 +265,9 @@ function Calibration({
             sample={sample}
           />
           <p className="meta">
+            Calibration covers plants and laundry; city rain bets count for points and savings.
+          </p>
+          <p className="meta">
             {lucky.share_pct === null
               ? "Lucky wins: no win has been labelled yet."
               : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above. The share counts all wins, not only Gemma's.`}

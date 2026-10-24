@@ -1,4 +1,5 @@
 import { LAUNDRY_PLAN, type ChoreType } from "../../domain/chores.js";
+import { isRainChore, rainWindow } from "../../domain/outcomes.js";
 import { planBetWindow } from "../../domain/laundry-plan.js";
 import {
   MissingSunsetError,
@@ -12,6 +13,13 @@ import { WeatherUnavailableError } from "../weather/client.js";
 import { cardLocationOf } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import type { BetRow, CardRow } from "./rows.js";
+
+function fullRainWindowEnd(
+  choreType: ChoreType,
+  times: { readonly createdAt: number; readonly placedAt: number },
+): number {
+  return isRainChore(choreType) ? rainWindow(choreType, times.createdAt).endMs : times.placedAt;
+}
 
 /**
  * The lucky flag of a won bet (AC-008.6): the chore's outcome label on its full fixed window,
@@ -47,6 +55,12 @@ export async function luckyFlagFor(
     }
     throw error;
   }
+  // A rinse bet can settle at +12 h, before the 24 h label window has closed: rain still to come
+  // could make the label true, so a "not delivered" reading of the partial window is unknown, not
+  // lucky. A reading that already delivered (so not lucky) stands.
+  const unfinished = isRainChore(choreType) && deps.now() < fullRainWindowEnd(choreType, times);
+  const unlessUnfinished = (lucky: boolean | null): boolean | null =>
+    unfinished && lucky === true ? null : lucky;
   if (window.endMs > window.startMs) {
     try {
       const recorded = await deps.weather.getRecorded({
@@ -55,7 +69,7 @@ export async function luckyFlagFor(
         ...cardLocationOf(card),
       });
       if (recorded.complete) {
-        return luckyWinOf(choreType, window, recorded.hours);
+        return unlessUnfinished(luckyWinOf(choreType, window, recorded.hours));
       }
     } catch (error) {
       if (!(error instanceof WeatherUnavailableError)) {
@@ -66,5 +80,5 @@ export async function luckyFlagFor(
   // The hours before the bet was placed could not be fetched: the label uses the hours the bet
   // was open, which can differ from the full window. Logged with the bet id only.
   deps.log({ event: "lucky_win_cut_window", bet_id: bet.id });
-  return luckyWinOf(choreType, cutWindowOf(choreType, times), snapshot.hours);
+  return unlessUnfinished(luckyWinOf(choreType, cutWindowOf(choreType, times), snapshot.hours));
 }

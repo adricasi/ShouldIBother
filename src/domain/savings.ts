@@ -34,7 +34,7 @@ export type SavingsCatalogue = Readonly<
 > & {
   readonly laundry_line: Readonly<Record<Dryer, SavingsFigure>>;
   /**
-   * The city rain bets' figures (REQ-030), attached when the app loads `config/savings-rain.json`;
+   * The city rain bets' figures (REQ-030), attached when the app loads the `rain` rows of `config/savings.json`;
    * the backtest loads `config/savings.json` alone, so its hashed catalogue never changes.
    */
   readonly rain?: Readonly<Record<RainChore, SavingsFigure>>;
@@ -57,7 +57,9 @@ function figureFor(
   if (isRainChore(choreType)) {
     const figure = catalogue.rain?.[choreType];
     if (figure === undefined) {
-      throw new Error("The city rain savings (config/savings-rain.json) are not loaded");
+      throw new Error(
+        "The city rain savings (the rain rows of config/savings.json) are not loaded",
+      );
     }
     return figure;
   }

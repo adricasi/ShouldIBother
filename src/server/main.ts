@@ -14,6 +14,7 @@ import { createFakeServices } from "./fakes.js";
 import { loadModelsConfig } from "./model/config.js";
 import { selectModel } from "./model/select.js";
 import { loadFlags, type Flags } from "./flags.js";
+import { assertRainConfig } from "./rain-config.js";
 import { listenLoopbackAndLan } from "./network.js";
 import { PHOTOS_DIR, PhotoStore } from "./photos/store.js";
 import { loadRules } from "./rules.js";
@@ -122,16 +123,19 @@ export async function startServer(
       : new OpenMeteoGeocoder(
           createGeocodeHttp(runtime.db, now, { log: (entry) => appRef?.log.info(entry) }),
         );
+    const rules = loadRules();
+    const savings = loadSavings();
+    assertRainConfig(flags, rules, savings);
     core = createCore({
       db: runtime.db,
       now,
       weather,
       geocoder,
       model: selection.model,
-      rules: loadRules(),
+      rules,
       household,
       ...(householdStore === undefined ? {} : { householdStore }),
-      savings: loadSavings(),
+      savings,
       flags,
       ...(demo === undefined ? {} : { demo: true }),
       photos: new PhotoStore(join(runtime.dataDir, PHOTOS_DIR)),

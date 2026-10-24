@@ -51,7 +51,7 @@ const OUTDOOR_CHOICES = [
   {
     id: "rain_barrel",
     title: "Rain barrel",
-    label: "A rain barrel or bird bath",
+    label: "A rain barrel, pond or bird bath",
     icon: "barrel",
   },
 ] as const satisfies readonly {
