@@ -471,9 +471,10 @@ one-line error names the URL's status and reason.
 
 Odds come from the Open-Meteo forecast for the coordinates in `config/household.json`. At the
 settle time the app fetches the recorded weather of the bet's window, labelled "modelled recent
-weather". The weather client calls only the four Open-Meteo hosts of its allowlist
+weather". The weather client calls only the five Open-Meteo hosts of its allowlist
 (`api.open-meteo.com`, `previous-runs-api.open-meteo.com`, `historical-forecast-api.open-meteo.com`,
-`archive-api.open-meteo.com`), counts its calls (budget 1,000 a day) and refuses any other host.
+`archive-api.open-meteo.com`, and `geocoding-api.open-meteo.com` for the onboarding place search),
+counts its calls (budget 1,000 a day) and refuses any other host.
 The free Open-Meteo tier is for non-commercial use. The app shows this attribution in the footer of
 Today:
 
@@ -488,6 +489,8 @@ Today:
 - Gemma runs in Ollama on 127.0.0.1 (and, with the `voice` flag, llama.cpp on 127.0.0.1 for voice
   notes, held in memory only). No cloud model, no analytics, no telemetry.
 - **The only outbound call at runtime is to Open-Meteo**, with coordinates rounded to 2 decimals.
+  The one piece of text that also goes there is the place you type into the onboarding search, only
+  when you press Search (the laptop sends it, never the page; it is not logged, cached or stored).
   Downloads during setup (the Ollama registry for the models, npm for packages) are the only other
   traffic. `docs/release-checklist.md` has the network-capture check.
 - Logs go to the terminal; no log file is kept. Tokens, cookies and photo bytes are redacted.
