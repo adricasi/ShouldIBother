@@ -8,7 +8,7 @@ export function formatMadridTime(epochMs: number): string {
 }
 
 export interface PairingTarget {
-  readonly kind: "laptop" | "phone" | "public";
+  readonly kind: "laptop" | "phone" | "public" | "hosted";
   readonly label: string;
   /** Origin without a trailing slash, e.g. `http://192.168.1.20:8787`. */
   readonly origin: string;
@@ -22,7 +22,12 @@ export function pairingTargets(options: {
   readonly port: number;
   readonly lanAddress?: string | undefined;
   readonly publicOrigins: readonly string[];
+  /** Hosted mode: the one place a device can pair, `SIB_PUBLIC_ORIGIN` (AC-032.3). */
+  readonly hostedOrigin?: string | undefined;
 }): PairingTarget[] {
+  if (options.hostedOrigin !== undefined) {
+    return [{ kind: "hosted", label: "Hosted", origin: options.hostedOrigin }];
+  }
   const targets: PairingTarget[] = [
     { kind: "laptop", label: "Laptop", origin: `http://127.0.0.1:${options.port}` },
   ];
@@ -51,7 +56,11 @@ export function formatPairingBanner(options: {
   const urls = options.targets.map((target) => ({
     kind: target.kind,
     label: target.label,
-    url: `${target.origin}/pair?token=${options.token}`,
+    // Hosted mode keeps the token in the fragment, which no server or log ever sees (AC-032.3).
+    url:
+      target.kind === "hosted"
+        ? `${target.origin}/pair#t=${options.token}`
+        : `${target.origin}/pair?token=${options.token}`,
   }));
   const scanTarget = urls.find((entry) => entry.kind !== "laptop") ?? urls[0];
   const lines = [

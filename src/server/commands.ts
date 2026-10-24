@@ -9,6 +9,8 @@ interface PairContext {
   readonly port: number;
   readonly lanAddress: string | undefined;
   readonly publicOrigins: readonly string[];
+  /** Hosted mode: print the link of `SIB_PUBLIC_ORIGIN` only. */
+  readonly hostedOrigin?: string | undefined;
 }
 
 /**
@@ -25,6 +27,7 @@ export function printNewPairingToken(context: PairContext, print: Print): void {
         port: context.port,
         lanAddress: context.lanAddress,
         publicOrigins: context.publicOrigins,
+        hostedOrigin: context.hostedOrigin,
       }),
     }),
   );
@@ -41,9 +44,17 @@ export function printNetworkSummary(
     readonly port: number;
     readonly lanAddress: string | undefined;
     readonly allowlist: Allowlist;
+    /** Hosted mode: the address the app binds and the origin it answers to. */
+    readonly hosted?: { readonly bindAddress: string; readonly publicOrigin: string } | undefined;
   },
   print: Print,
 ): void {
+  if (context.hosted !== undefined) {
+    print(`Listening on ${context.hosted.bindAddress}:${context.port} (behind the reverse proxy)`);
+    print(`Public origin: ${context.hosted.publicOrigin}`);
+    print(describeAllowlist(context.allowlist));
+    return;
+  }
   const listening = [`127.0.0.1:${context.port}`];
   if (context.lanAddress !== undefined) {
     listening.push(`${context.lanAddress}:${context.port}`);

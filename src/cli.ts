@@ -7,12 +7,13 @@ import { backtestCommand } from "./backtest/harness/command.js";
 import { snapshotCommand } from "./backtest/snapshot-command.js";
 import { evalCommand } from "./eval/command.js";
 import { flagsCommand } from "./server/flags-command.js";
+import { hostedCheckCommand } from "./server/model/hosted-check.js";
 import { deletePhotosCommand, exportCommand, type Confirm } from "./server/data-commands.js";
 import { forgetDevicesCommand, pairCommand, startServer } from "./server/main.js";
 import { loadRuntime } from "./server/runtime.js";
 
 const USAGE =
-  "Usage: sib start | pair | forget-devices | delete-photos [--all-data] | export <dir> | snapshot | dataset | backtest [options] | eval <job> [options] | flags [list|on|off|preset] | demo [--port N]";
+  "Usage: sib start | pair | forget-devices | delete-photos [--all-data] | export <dir> | snapshot | dataset | backtest [options] | eval <job> [options] | flags [list|on|off|preset] | demo [--port N] | hosted-check";
 
 /** Asks on the console and accepts only the exact word (AC-015.3). */
 const confirm: Confirm = async (question, expected) => {
@@ -85,6 +86,8 @@ async function main(args: readonly string[]): Promise<number> {
       return await demoCommand(args.slice(1), print);
     case "flags":
       return flagsCommand(args.slice(1), print);
+    case "hosted-check":
+      return await hostedCheckCommand(process.env, print);
     case "eval":
       return await evalCommand(args.slice(1), print);
     default:

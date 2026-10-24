@@ -116,7 +116,7 @@ export function buildLoadBody(settings: WireSettings): {
 }
 
 /** Tool arguments arrive as an object; some builds send them as a JSON string. */
-const argumentsSchema = z.union([
+export const argumentsSchema = z.union([
   z.record(z.string(), z.unknown()),
   z.string().transform((text, ctx): Record<string, unknown> => {
     try {

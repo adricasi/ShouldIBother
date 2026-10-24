@@ -3,6 +3,8 @@ import type { z } from "zod";
 import { logDecision } from "../ledger/decisions.js";
 import type { Db } from "../db.js";
 import {
+  ModelBusyError,
+  ModelDailyLimitError,
   ModelTimeoutError,
   ModelUnavailableError,
   type ChatMessage,
@@ -108,7 +110,17 @@ export interface JobRequest<T> {
 }
 
 export type JobFailure =
-  "internal" | "unavailable" | "timeout" | "deadline" | "invalid" | "tool_missed" | "tool_error";
+  | "internal"
+  | "unavailable"
+  | "timeout"
+  | "deadline"
+  | "invalid"
+  | "tool_missed"
+  | "tool_error"
+  /** Hosted mode: the daily call cap kept the call back (AC-032.5). */
+  | "daily_limit"
+  /** Hosted mode: the call waited for the verdicts that were waiting (AC-032.5). */
+  | "busy";
 
 interface JobFacts {
   /** Id of the `gemma_decisions` row written for this job. */
@@ -360,6 +372,12 @@ export class JobRunner {
       } catch (error) {
         if (error instanceof ModelTimeoutError) {
           throw new Stop(timeoutMs < this.callTimeoutMs ? "deadline" : "timeout", error.message);
+        }
+        if (error instanceof ModelDailyLimitError) {
+          throw new Stop("daily_limit", error.message);
+        }
+        if (error instanceof ModelBusyError) {
+          throw new Stop("busy", error.message);
         }
         if (error instanceof ModelUnavailableError) {
           throw new Stop("unavailable", error.message);

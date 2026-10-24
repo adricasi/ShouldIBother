@@ -11,7 +11,7 @@ export interface ReportMeta {
   /** ISO date and time of the run. */
   readonly date: string;
   /** `fake` runs on recorded fixtures, not on Gemma: the numbers only prove the pipeline. */
-  readonly mode: "ollama" | "fake";
+  readonly mode: "ollama" | "fake" | "digitalocean";
   readonly health: ModelHealth;
   /** The model name and digest as the runtime answered; null when no call was answered. */
   readonly model: string | null;

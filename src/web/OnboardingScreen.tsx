@@ -14,6 +14,8 @@ export interface OnboardingScreenProps {
   /** Undefined until the first answer. */
   readonly onboarding: Onboarding | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** Hosted mode: the privacy words say the answers are on this server, not on the computer. */
+  readonly hosted?: boolean;
   /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
   readonly fab?: ReactNode;
   readonly busy: boolean;
@@ -81,6 +83,10 @@ export function clampPlaceLabel(text: string): string {
 /** The privacy sentence for this screen: the answers stay home, only a rounded place goes out. */
 export const ONBOARDING_PRIVACY_TEXT =
   "Your answers stay on your computer. Only your location, rounded to 2 decimals (about 1 km), goes to Open-Meteo to ask for the forecast.";
+
+/** Hosted mode (AC-032.6): the answers are on the server, and Gemma at DigitalOcean reads them. */
+export const ONBOARDING_PRIVACY_TEXT_HOSTED =
+  "Your answers are stored on this server, and Gemma at DigitalOcean reads them with your chores. Only your location, rounded to 2 decimals (about 1 km), goes to Open-Meteo to ask for the forecast.";
 
 /** Plain decimals only: no hex, exponent, sign-plus or blanks inside (a comma counts as a point). */
 const DECIMAL = /^-?\d+(?:[.,]\d+)?$/;
@@ -202,10 +208,12 @@ function Form({
   state,
   busy,
   rainChores,
+  hosted,
   onSave,
   onSkip,
 }: {
   readonly rainChores: boolean;
+  readonly hosted: boolean;
   readonly initial: Onboarding["household"];
   /** The optional place label stored with the answers (AC-026.3). */
   readonly initialPlaceLabel: string;
@@ -413,8 +421,10 @@ function Form({
               }}
             />
             <p className="meta" id="place-help">
-              Shown on the weather board, for example Gràcia · Barcelona. It stays on your computer
-              and is never sent to the forecast service.
+              Shown on the weather board, for example Gràcia · Barcelona.{" "}
+              {hosted
+                ? "It is stored on this server and is never sent to the forecast service."
+                : "It stays on your computer and is never sent to the forecast service."}
             </p>
             <label htmlFor="onboarding-latitude">Latitude</label>
             <input
@@ -454,7 +464,7 @@ function Form({
 
       <p className="meta privacy">
         <Icon name="lock" />
-        {ONBOARDING_PRIVACY_TEXT}
+        {hosted ? ONBOARDING_PRIVACY_TEXT_HOSTED : ONBOARDING_PRIVACY_TEXT}
       </p>
       <p className="meta">
         New bets use these answers. A bet already placed keeps the figures it was placed with.
@@ -481,6 +491,7 @@ function Form({
 export function OnboardingScreen({
   onboarding,
   flags,
+  hosted = false,
   busy,
   notice,
   firstRun = false,
@@ -528,6 +539,7 @@ export function OnboardingScreen({
             state={onboarding.state}
             busy={busy}
             rainChores={flags["rainChores"] === true}
+            hosted={hosted}
             onSave={onSave}
             onSkip={onSkip}
           />

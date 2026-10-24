@@ -17,7 +17,7 @@ import { WeatherBoard } from "./WeatherBoard.js";
 import { ChoreTile } from "./ui/ChoreTile.js";
 import { Icon, type IconName } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
-import { PrivacyProvider } from "./ui/PrivacyNote.js";
+import { HostedPrivacyLine, PrivacyProvider } from "./ui/PrivacyNote.js";
 import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 
 const noCards = (): void => undefined;
@@ -380,11 +380,17 @@ export function TodayScreen(props: TodayScreenProps) {
     onSettle: props.onSettle,
     ...(props.onSettlePhoto === undefined ? {} : { onPhoto: props.onSettlePhoto }),
     ...(props.onSettleAnswer === undefined ? {} : { onAnswer: props.onSettleAnswer }),
+    ...(today?.photos === false ? { photosOff: true } : {}),
   };
   return (
-    <PrivacyProvider voice={today?.flags["voice"] === true}>
+    <PrivacyProvider
+      voice={today?.flags["voice"] === true}
+      mode={today?.mode}
+      photos={today?.photos}
+    >
       <main className="screen today-screen">
         <TodayHeader today={today} rankName={props.rankName} />
+        {today?.mode === "hosted" ? <HostedPrivacyLine photos={today.photos !== false} /> : null}
 
         <div className="today-columns">
           {today === undefined ? null : (

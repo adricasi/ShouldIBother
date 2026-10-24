@@ -2,9 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { Allowlist } from "./allowlist.js";
 import { formatMadridTime } from "./banner.js";
-import type { FailureLimiter } from "./rate-limit.js";
+import { PAIR_PAGE_HTML, PAIR_PAGE_PATHS, PAIR_PAGE_SCRIPT, PAIR_PAGE_STYLE } from "./pair-page.js";
+import type { FailureLimiter, SlidingWindowLimiter } from "./rate-limit.js";
 import { hashSecret } from "./secrets.js";
 import { SESSION_TTL_MS, type AuthStore } from "./store.js";
+import { z } from "zod";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -29,10 +31,22 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "x-frame-options": "DENY",
 };
 
+/**
+ * What hosted mode changes in the access control (AC-032.3, AC-032.7); absent in home mode, which
+ * is then exactly what it was: the `__Host-` cookie is `Secure`, the device is remembered (the
+ * session is renewed when used), pairing is a page that POSTs the token from the URL fragment,
+ * and the container's health check is answered from loopback.
+ */
+export interface HostedGuard {
+  /** Per client address; counts every pairing POST, whatever its outcome. */
+  readonly pairLimiter: SlidingWindowLimiter;
+}
+
 export interface GuardDeps {
   readonly store: AuthStore;
   readonly limiter: FailureLimiter;
   readonly allowlist: Allowlist;
+  readonly hosted?: HostedGuard;
   /** Console output for pairing lines (never the logger: AC-001.7). */
   readonly print: (line: string) => void;
 }
@@ -110,6 +124,25 @@ export function frameworkErrorHandler(
 }
 
 const PAIR_HINT = "Open the pairing link printed on the laptop, or run `sib pair` there.";
+const HOSTED_PAIR_HINT = "Run `sib pair` on the server and open the link it prints.";
+
+const pairBody = z.object({ token: z.string().max(200) }).strict();
+
+const LOOPBACK_ADDRESSES: ReadonlySet<string> = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+/**
+ * The container's own health check (AC-032.7): the connection itself comes from loopback and no
+ * proxy set a forwarding header. The peer address is the socket's, never `X-Forwarded-For`.
+ */
+function isLoopbackHealthCheck(request: FastifyRequest): boolean {
+  return (
+    (request.method === "GET" || request.method === "HEAD") &&
+    request.url === "/healthz" &&
+    LOOPBACK_ADDRESSES.has(request.socket.remoteAddress ?? "") &&
+    request.headers["x-forwarded-for"] === undefined &&
+    request.headers["forwarded"] === undefined
+  );
+}
 
 /**
  * Registers the access control on the root app so it covers every route, including routes
@@ -122,26 +155,31 @@ const PAIR_HINT = "Open the pairing link printed on the laptop, or run `sib pair
  * A request with a valid session skips the limiter entirely.
  */
 export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
-  const { store, limiter, allowlist, print } = deps;
+  const { store, limiter, allowlist, print, hosted } = deps;
   const now = store.now;
+  const pairHint = hosted === undefined ? PAIR_HINT : HOSTED_PAIR_HINT;
 
-  const hasValidSession = (request: FastifyRequest): boolean => {
-    const valid = [
-      ...readCookies(request.headers.cookie, SECURE_SESSION_COOKIE),
-      ...readCookies(request.headers.cookie, SESSION_COOKIE),
-    ]
+  /** The cookie value of a live session, or undefined. Hosted mode takes the `__Host-` cookie only. */
+  const liveSession = (request: FastifyRequest): string | undefined => {
+    const candidates =
+      hosted === undefined
+        ? [
+            ...readCookies(request.headers.cookie, SECURE_SESSION_COOKIE),
+            ...readCookies(request.headers.cookie, SESSION_COOKIE),
+          ]
+        : readCookies(request.headers.cookie, SECURE_SESSION_COOKIE);
+    const valid = candidates
       .slice(0, MAX_COOKIE_CANDIDATES)
       .find((candidate) => store.isValidSession(candidate));
-    if (valid === undefined) {
-      return false;
+    if (valid !== undefined) {
+      sessionKeys.set(request, hashSecret(valid));
     }
-    sessionKeys.set(request, hashSecret(valid));
-    return true;
+    return valid;
   };
 
   /** True when the request came in through an https public origin (AC-001.10). */
   const isSecureHost = (request: FastifyRequest): boolean =>
-    allowlist.secureHosts.has(request.headers.host?.toLowerCase() ?? "");
+    hosted !== undefined || allowlist.secureHosts.has(request.headers.host?.toLowerCase() ?? "");
 
   // The default 404 handler logs and echoes the requested URL, query string included.
   app.setNotFoundHandler((_request, reply) => problem(reply, 404, "Not Found"));
@@ -149,12 +187,18 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
   app.addHook("onRequest", async (request, reply) => {
     reply.headers(SECURITY_HEADERS);
 
+    // The container's health check, before the Host check: it connects to 127.0.0.1 by address.
+    if (hosted !== undefined && isLoopbackHealthCheck(request)) {
+      return reply.code(204).header("cache-control", "no-store").send();
+    }
+
     const host = request.headers.host?.toLowerCase();
     if (host === undefined || !allowlist.hosts.has(host)) {
       return problem(reply, 421, "Misdirected Request");
     }
 
-    if (!hasValidSession(request)) {
+    const session = liveSession(request);
+    if (session === undefined) {
       const client = request.ip;
       if (limiter.isBlocked(client)) {
         request.log.warn({ clientAddress: client }, "unauthenticated client is rate limited");
@@ -164,7 +208,14 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
       }
       if (request.routeOptions.config?.public !== true) {
         limiter.recordFailure(client);
-        return problem(reply, 401, "Unauthorized", PAIR_HINT);
+        return problem(reply, 401, "Unauthorized", pairHint);
+      }
+    } else if (hosted !== undefined) {
+      // A remembered device (AC-032.3): the session and its cookie are renewed when used, once a
+      // day at most, so a phone in use is never signed out.
+      const renewedUntil = store.renewSession(session);
+      if (renewedUntil !== undefined) {
+        reply.header("set-cookie", sessionCookie(session, SESSION_TTL_MS / 1000, true));
       }
     }
 
@@ -176,35 +227,86 @@ export function registerAuth(app: FastifyInstance, deps: GuardDeps): void {
     }
   });
 
-  // The pairing exchange (AC-001.2). Every failure looks the same: 401 and a counted failure.
-  // No HEAD twin: a HEAD request must not use up a device slot or set a cookie.
-  app.get("/pair", { config: { public: true }, exposeHeadRoute: false }, (request, reply) => {
-    const { token } = request.query as { token?: unknown };
-    const session = typeof token === "string" ? store.pair(token) : null;
-    if (session === null) {
-      limiter.recordFailure(request.ip);
-      return problem(
-        reply,
-        401,
-        "Unauthorized",
-        `This pairing link is invalid, expired or used up. ${PAIR_HINT}`,
+  if (hosted === undefined) {
+    // The pairing exchange (AC-001.2). Every failure looks the same: 401 and a counted failure.
+    // No HEAD twin: a HEAD request must not use up a device slot or set a cookie.
+    app.get("/pair", { config: { public: true }, exposeHeadRoute: false }, (request, reply) => {
+      const { token } = request.query as { token?: unknown };
+      const session = typeof token === "string" ? store.pair(token) : null;
+      if (session === null) {
+        limiter.recordFailure(request.ip);
+        return problem(
+          reply,
+          401,
+          "Unauthorized",
+          `This pairing link is invalid, expired or used up. ${PAIR_HINT}`,
+        );
+      }
+      const secure = isSecureHost(request);
+      print(
+        `Paired a device at ${formatMadridTime(now())} from ${forConsole(request.ip, 64)} (user agent: ${forConsole(request.headers["user-agent"])})`,
       );
-    }
-    const secure = isSecureHost(request);
-    print(
-      `Paired a device at ${formatMadridTime(now())} from ${forConsole(request.ip, 64)} (user agent: ${forConsole(request.headers["user-agent"])})`,
-    );
-    return reply
-      .header("set-cookie", sessionCookie(session.sessionId, SESSION_TTL_MS / 1000, secure))
-      .header("cache-control", "no-store")
-      .redirect("/", 303);
-  });
+      return reply
+        .header("set-cookie", sessionCookie(session.sessionId, SESSION_TTL_MS / 1000, secure))
+        .header("cache-control", "no-store")
+        .redirect("/", 303);
+    });
+  } else {
+    registerHostedPairing(app, deps, hosted);
+  }
 
   // "Forget devices" from the app (AC-001.6); the session guard and Origin check already ran.
   app.post("/api/devices/forget", (request, reply) => {
     store.forgetDevices();
     return reply
       .header("set-cookie", sessionCookie("", 0, isSecureHost(request)))
+      .code(204)
+      .send();
+  });
+}
+
+/**
+ * Hosted pairing (AC-032.3): `GET /pair` is a page with a button, never a token exchange, so a link
+ * preview that fetches the URL cannot spend the token. The button POSTs the token from the URL
+ * fragment to `POST /pair`, which the guard has already Origin-checked. Every failure looks the
+ * same (401, counted), and every POST counts against the client address, whatever its outcome.
+ */
+function registerHostedPairing(app: FastifyInstance, deps: GuardDeps, hosted: HostedGuard): void {
+  const { store, limiter, print } = deps;
+  const asset = (path: string, type: string, body: string): void => {
+    app.get(path, { config: { public: true }, exposeHeadRoute: false }, (_request, reply) =>
+      reply
+        .header("content-type", `${type}; charset=utf-8`)
+        .header("cache-control", "no-store")
+        .send(body),
+    );
+  };
+  asset(PAIR_PAGE_PATHS.page, "text/html", PAIR_PAGE_HTML);
+  asset(PAIR_PAGE_PATHS.script, "text/javascript", PAIR_PAGE_SCRIPT);
+  asset(PAIR_PAGE_PATHS.style, "text/css", PAIR_PAGE_STYLE);
+
+  app.post("/pair", { config: { public: true }, bodyLimit: 1024 }, (request, reply) => {
+    const wait = hosted.pairLimiter.take(request.ip);
+    if (wait > 0) {
+      return problem(reply, 429, "Too Many Requests", undefined, { "retry-after": String(wait) });
+    }
+    const body = pairBody.safeParse(request.body);
+    const session = body.success ? store.pair(body.data.token) : null;
+    if (session === null) {
+      limiter.recordFailure(request.ip);
+      return problem(
+        reply,
+        401,
+        "Unauthorized",
+        `This pairing link is invalid, expired or used up. ${HOSTED_PAIR_HINT}`,
+      );
+    }
+    print(
+      `Paired a device at ${formatMadridTime(store.now())} from ${forConsole(request.ip, 64)} (user agent: ${forConsole(request.headers["user-agent"])})`,
+    );
+    return reply
+      .header("set-cookie", sessionCookie(session.sessionId, SESSION_TTL_MS / 1000, true))
+      .header("cache-control", "no-store")
       .code(204)
       .send();
   });
