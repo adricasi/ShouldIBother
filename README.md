@@ -1,41 +1,103 @@
+<div align="center">
+
+<img src="docs/images/cover.png" alt="Should I Bother? The Lazy Bookie: three phone screens showing onboarding, a bet slip for watering the plants at 50 percent, and the Score screen" width="720">
+
 # Should I Bother?
 
-**A local Gemma 4 bookmaker that bets on doing nothing.**
+**The Lazy Bookie: a bookmaker that bets on doing nothing.**
+Tell it a weather chore, and Gemma 4, running on your own laptop, reads the forecast and quotes odds
+that the sky will do it for you. Bet on the weather or do it yourself; every bet settles on evidence.
 
-[![CI](https://github.com/adricasi/ShouldIBother/actions/workflows/ci-node.yml/badge.svg)](https://github.com/adricasi/ShouldIBother/actions/workflows/ci-node.yml)
-![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)
-![Node.js 24](https://img.shields.io/badge/node-24-339933.svg)
+[![Tests](https://img.shields.io/github/actions/workflow/status/adricasi/ShouldIBother/ci-node.yml?branch=main&label=tests&logo=vitest&logoColor=white)](https://github.com/adricasi/ShouldIBother/actions/workflows/ci-node.yml)
+[![Security](https://img.shields.io/github/actions/workflow/status/adricasi/ShouldIBother/security.yml?branch=main&label=security&logo=githubactions&logoColor=white)](https://github.com/adricasi/ShouldIBother/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-1e5b3a.svg)](LICENSE)
+[![Node.js 24](https://img.shields.io/badge/node-24-339933?logo=nodedotjs&logoColor=white)](.nvmrc)
+<br>
+[![Powered by Gemma](https://img.shields.io/badge/powered%20by-Gemma%204-4285F4?logo=google&logoColor=white)](docs/gemma.md)
+[![Runs locally with Ollama](https://img.shields.io/badge/runs%20locally-Ollama-1c1c1a?logo=ollama&logoColor=white)](https://ollama.com)
+[![Hacktoberfest 2026](https://img.shields.io/badge/Hacktoberfest-2026-1A1A2E?logo=hacktoberfest&logoColor=white)](https://dev.to/challenges/hf26)
+[![#hf26challenge](https://img.shields.io/badge/DEV-%23hf26challenge-0A0A0A?logo=devdotto&logoColor=white)](https://dev.to/t/hf26challenge)
+[![Slow and Steady](https://img.shields.io/badge/theme-Slow%20and%20Steady-ffc23a)](https://dev.to/challenges/hacktoberfest-week3-2026-10-19)
 
-<p align="center">
-  <img src="docs/images/screens/06-slip-plants-gemma-odds.png" alt="A bet slip: water the plants, toss-up at 50 percent, Gemma's reason and the payout for each outcome" width="260">
-  &nbsp;
-  <img src="docs/images/screens/07-slip-how-gemma-decided.png" alt="The same slip with How Gemma decided open: model, prompt version, forecast tool call and the forecast hours" width="260">
-</p>
+[**Try the demo →**](#quick-start) ·
+[How it works](#how-it-works) · [Gemma](docs/gemma.md) ·
+[Run it yourself](#run-it-on-your-laptop-step-by-step) · [Hosted mode](#hosted-mode-optional) ·
+[Contributing](#contributing)
 
-*The app on the fake model with sample data, not real results.*
+</div>
 
-"The Lazy Bookie" turns weather chores into bets on doing nothing. Balcony plants and line-drying are
-the core loop; laundry overnight, the AC, the heater, city rain bets and outdoor advice cards sit behind
-feature flags. **Gemma 4 E4B, running on your own laptop through Ollama, is the bookmaker and the
-judge**: it reads what you type or say, looks at your photo, fetches the forecast itself with a function
-call and quotes odds as one of five bands. You bet that the weather will do the job, or you do it
-yourself. When the bet comes due, the app fetches the recorded weather and asks for an after photo or one
-tap, Gemma gives the verdict, and the points, time, water and electricity you saved are counted with their
-assumptions shown.
+---
 
-**Gemma decides; code executes.** Gemma makes every judgement. Code fetches the weather, enforces limits,
-counts points and savings, applies a fixed safety backstop and stores everything. Your photos, chores and
-habits never leave the laptop.
+## Contents
+- [Why Should I Bother?](#why-should-i-bother)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Run it on your laptop, step by step](#run-it-on-your-laptop-step-by-step)
+- [Configuration](#configuration)
+- [Hosted mode](#hosted-mode-optional)
+- [Architecture](#architecture)
+- [Privacy and security](#privacy-and-security)
+- [Testing and quality](#testing-and-quality)
+- [Project structure](#project-structure)
+- [Status and roadmap](#status-and-roadmap)
+- [Hacktoberfest challenge](#hacktoberfest-open-source-ai-challenge)
+- [Later commits](#later-commits)
+- [Contributing](#contributing)
+- [Licences and acknowledgements](#licences-and-acknowledgements)
+- [Documentation](#documentation)
 
-**No GPU? See it in a minute:** `npm ci && npm run build && npm run sib -- demo` runs the whole app on sample
-data with the fake model ([Quick start](#quick-start)).
+## Why Should I Bother?
+On the right day, the weather does some chores for you: the rain waters the balcony, the sun and wind dry
+the washing, a cool night stands in for the AC. The hard part is trusting the forecast. Should I
+Bother? turns that doubt into a bet. You name the chore, Gemma reads the forecast and quotes the odds,
+and you bet that the sky will do the job, or do it yourself. When the bet comes due, the app fetches the
+recorded weather and asks for an after photo or one tap, Gemma gives the verdict, and the points, time,
+water and electricity you saved are counted with their assumptions shown.
 
-Contents: [How it works](#how-it-works) · [Features](#features) · [Quick start](#quick-start) ·
-[Configuration](#configuration) · [Hosted mode](#hosted-mode-optional) · [Architecture](#architecture) ·
-[Privacy and security](#privacy-and-security) · [Testing](#testing-and-quality) ·
-[Project structure](#project-structure) · [Status and roadmap](#status-and-roadmap) ·
-[Hacktoberfest challenge](#hacktoberfest-open-source-ai-challenge) · [Later commits](#later-commits) · [Contributing](#contributing) ·
-[Licences](#licences-and-acknowledgements) · [Documentation](#documentation)
+**Gemma decides; code executes.** Gemma 4 E4B, running on your laptop through Ollama, makes every
+judgement: it reads what you type or say, looks at your photo, fetches the forecast itself with a function
+call and settles the bet. Code fetches the weather, enforces limits, counts points and savings, applies a
+fixed safety backstop and stores everything. Your photos, chores and habits never leave the laptop.
+
+It was built for the DEV Hacktoberfest Open-Source AI Challenge, Week 3
+["Slow and Steady"](https://dev.to/challenges/hacktoberfest-week3-2026-10-19).
+
+**No GPU? See it in a minute:** `npm ci && npm run build && npm run sib -- demo` runs the whole app on
+sample data with the fake model ([Quick start](#quick-start)).
+
+## Features
+
+- ✍️ **Capture in a sentence.** Type, tap a chip, or (flag `voice`) say your chores; one card per chore, and
+  "Not a weather chore" or "Coming later" when that is true.
+- 🌦️ **Odds from the forecast, set by Gemma.** Five bands, a one-line reason with the numbers, a settle time and
+  the payout for each outcome; the rule baseline shows at once and is the fallback.
+- 📷 **A photo sharpens the odds.** The inspector lists what it sees and the odds move.
+- 🎟️ **Bet, do it, or undo.** Odds, band and payouts lock when you bet; Undo works for 5 minutes.
+- ⚖️ **Settlement on evidence.** Recorded weather plus an after photo (full points) or one tap (half). If nobody
+  answers within 24 hours, Gemma settles from the weather record at half points.
+- 💧 **Honest points and savings.** Win = (100 - odds) x multiplier, losses -25, -50 or -150, a PAID OUT
+  receipt, and time, water and electricity saved with the assumption shown, minus 30 s of app time per bet.
+- 🪟 **Advice, not a bet, for outdoor chores** (flag `adviceCards`): windows, balcony leaves, outdoor paint and
+  the lawn, with a rule advice beside Gemma's and a window the forecast contradicts refused.
+- 🛡️ **Safety is never a bet.** A fixed heat, frost and storm backstop turns risky weather into a "Do it now"
+  alert that no answer can override.
+- 🔒 **Private by design.** Everything runs on one laptop; the only outbound call is the weather lookup.
+- 🚩 **Behind flags, off by default:** laundry overnight, the AC and heater, the laundry planner, rescue alerts
+  and cash-out, appeals, onboarding, ranks and achievements, the split-flap weather board, city rain bets,
+  voice capture and the fine-tuned bookmaker ([Configuration](#configuration)).
+
+## Screenshots
+| Onboarding | Bet slip | How Gemma decided | Score |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/images/screens/01-onboarding-welcome.png" alt="Onboarding: what is outside your door" width="190"> | <img src="docs/images/screens/06-slip-plants-gemma-odds.png" alt="A bet slip: water the plants, toss-up at 50 percent, Gemma's reason and the payout for each outcome" width="190"> | <img src="docs/images/screens/07-slip-how-gemma-decided.png" alt="The same slip with How Gemma decided open: model, prompt version, forecast tool call and the forecast hours" width="190"> | <img src="docs/images/screens/26-demo-score.png" alt="Score: rank, points and what the sky saved" width="190"> |
+
+| City rain bet | Advice, not a bet | PAID OUT receipt | Gemma's calibration |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/images/screens/09-slip-city-rain-car.png" alt="A city rain bet: rinse the car, unlikely at 35 percent" width="190"> | <img src="docs/images/screens/10-advice-card-windows.png" alt="An advice card: clean the windows now, no bet" width="190"> | <img src="docs/images/screens/23-demo-receipt-stamp.png" alt="A PAID OUT receipt with the points and the weather evidence" width="190"> | <img src="docs/images/screens/27-demo-score-calibration.png" alt="Score: how honest is Gemma, calibration by band with N" width="190"> |
+
+<sub>Every screenshot is the app on the fake model with synthetic sample data (the <code>sib demo</code> banner is visible on some). The numbers are test output, not results from Gemma.</sub>
 
 ## How it works
 
@@ -82,42 +144,7 @@ Gemma is visible on every screen, not hidden behind the numbers: each card says 
 odds" or "Rule odds"); both bands show side by side when they differ; "How Gemma decided" opens the model,
 prompt version, tool call and forecast hours from the decision log; "What Gemma saw" lists what the
 inspector read in your photo; "Gemma's read" explains the verdict on the receipt; and Score asks "How honest
-is Gemma?" with N per band.
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/images/screens/01-onboarding-welcome.png" alt="Onboarding: what is outside your door" width="190"><br><sub>Onboarding</sub></td>
-    <td align="center"><img src="docs/images/screens/09-slip-city-rain-car.png" alt="A city rain bet: rinse the car, unlikely at 35 percent" width="190"><br><sub>City rain bet</sub></td>
-    <td align="center"><img src="docs/images/screens/10-advice-card-windows.png" alt="An advice card: clean the windows now, no bet" width="190"><br><sub>Advice, not a bet</sub></td>
-    <td align="center"><img src="docs/images/screens/23-demo-receipt-stamp.png" alt="A PAID OUT receipt with the points and the weather evidence" width="190"><br><sub>PAID OUT receipt</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/images/screens/26-demo-score.png" alt="Score: rank, points and what the sky saved" width="190"><br><sub>Score and rank</sub></td>
-    <td align="center"><img src="docs/images/screens/27-demo-score-calibration.png" alt="Score: how honest is Gemma, calibration by band with N" width="190"><br><sub>Gemma's calibration, with N</sub></td>
-    <td colspan="2"><sub>Every screenshot is the app on the fake model with synthetic sample data (the <code>sib demo</code> banner is visible on some). The numbers are test output, not results from Gemma.</sub></td>
-  </tr>
-</table>
-
-## Features
-
-- **Capture in a sentence.** Type, tap a chip, or (flag `voice`) say your chores; one card per chore, and
-  "Not a weather chore" or "Coming later" when that is true.
-- **Odds from the forecast, set by Gemma.** Five bands, a one-line reason with the numbers, a settle time and
-  the payout for each outcome; the rule baseline shows at once and is the fallback.
-- **A photo sharpens the odds.** The inspector lists what it sees and the odds move.
-- **Bet, do it, or undo.** Odds, band and payouts lock when you bet; Undo works for 5 minutes.
-- **Settlement on evidence.** Recorded weather plus an after photo (full points) or one tap (half). If nobody
-  answers within 24 hours, Gemma settles from the weather record at half points.
-- **Honest points and savings.** Win = (100 - odds) x multiplier, losses -25, -50 or -150, a PAID OUT
-  receipt, and time, water and electricity saved with the assumption shown, minus 30 s of app time per bet.
-- **Advice, not a bet, for outdoor chores** (flag `adviceCards`): windows, balcony leaves, outdoor paint and
-  the lawn, with a rule advice beside Gemma's and a window the forecast contradicts refused.
-- **Safety is never a bet.** A fixed heat, frost and storm backstop turns risky weather into a "Do it now"
-  alert that no answer can override.
-- **Private by design.** Everything runs on one laptop; the only outbound call is the weather lookup.
-- **Behind flags, off by default:** laundry overnight, the AC and heater, the laundry planner, rescue alerts
-  and cash-out, appeals, onboarding, ranks and achievements, the split-flap weather board, city rain bets,
-  voice capture and the fine-tuned bookmaker ([Configuration](#configuration)).
+is Gemma?" with N per band ([Screenshots](#screenshots)).
 
 ## Quick start
 
@@ -155,9 +182,147 @@ name its tag in `config/models.json`, open the app's port to your Wi-Fi, then:
 npm start          # serves the app, prints a pairing link and QR code, runs the 60 s scheduler
 ```
 
-The full step-by-step (Ollama, WSL networking, firewall, pairing, HTTPS with Tailscale Serve, voice) is in
-**[docs/setup.md](docs/setup.md)**. If Ollama is down the app still starts: Today shows "Gemma offline" with
-rule odds and a Retry button, and settlements wait until Gemma is back.
+Every step, with what you should see and how to fix what goes wrong, is in
+[Run it on your laptop, step by step](#run-it-on-your-laptop-step-by-step) below. WSL networking, the
+firewall, HTTPS with Tailscale Serve and voice are in **[docs/setup.md](docs/setup.md)**. If Ollama is down
+the app still starts: Today shows "Gemma offline" with rule odds and a Retry button, and settlements wait
+until Gemma is back.
+
+## Run it on your laptop, step by step
+
+This is the full path from nothing to placing a real bet with Gemma. Run every command in a terminal
+inside WSL2 (Ubuntu) on Windows, or in a terminal on Linux, from the `ShouldIBother` folder.
+
+### What you need
+
+| | Notes |
+|---|---|
+| Node.js 24 | `nvm install` reads `.nvmrc`. Node 22 runs the demo but is not supported |
+| Git | To get and update the code |
+| [Ollama](https://ollama.com) | Runs Gemma on your laptop. Leave `OLLAMA_HOST` unset so it listens on 127.0.0.1:11434 only |
+| An NVIDIA GPU with 8 GB or more | For Gemma 4 E4B. `nvidia-smi` must work inside WSL |
+| A browser | On the laptop, or a phone on the same Wi-Fi ([docs/setup.md](docs/setup.md#phone-access-over-wi-fi)) |
+
+No GPU? Steps 1, 2, 4 and 5 still work with the fake model: start with `SIB_FAKE_WEATHER=1 npm run dev`
+instead of `npm start` in step 5. Odds then come from recorded fixtures, not from Gemma.
+
+### 1. Get the code
+
+First time:
+
+```bash
+git clone https://github.com/adricasi/ShouldIBother.git
+cd ShouldIBother
+```
+
+Already have a copy? Bring it up to date. `config/models.json` and `config/flags.json` are committed
+files, so the tag and flags you set in steps 3 and 4 count as local changes and stop git from updating.
+Set them aside first, update, then redo steps 3 and 4:
+
+```bash
+grep -A3 '"models"' config/models.json   # note your Gemma tag before you stash it
+git stash                                # sets your local edits aside
+git switch main
+git pull
+git log --oneline -1                     # the newest commit on main
+```
+
+### 2. Install and build
+
+```bash
+nvm install            # Node 24 from .nvmrc
+npm ci                 # installs exactly what package-lock.json lists
+npm run build          # compiles the server to dist/ and the screens to dist/web
+```
+
+`npm start` serves what `npm run build` put in `dist/`. **Run `npm run build` again after every update**,
+or you keep seeing the old screens. If `npm ci` fails while building `better-sqlite3` or `sharp`, run
+`sudo apt install build-essential python3` and retry.
+
+### 3. Pull Gemma and tell the app its tag
+
+Start Ollama (with systemd it already runs as a service; without it, run `ollama serve` in a second
+terminal), then pull Gemma 4 E4B and look up its tag:
+
+```bash
+ollama pull <Gemma 4 E4B tag>   # the exact tag is not pinned yet (T-010)
+ollama list                     # the NAME column is the tag, for example gemma4:e4b
+```
+
+Open `config/models.json` and put that tag under `models`:
+
+```json
+"models": { "e4b": { "tag": "gemma4:e4b" } }
+```
+
+Use the tag `ollama list` shows on your laptop. Without a tag, `npm start` stops with "No Gemma model is
+configured".
+
+### 4. Turn the features on
+
+Every feature flag is off in the committed `config/flags.json`. Turn on everything that is merged and
+checked (all but `voice` and `finetunedBookmaker`):
+
+```bash
+npm run sib -- flags preset presentation
+npm run sib -- flags list                 # shows which flags are on
+```
+
+Without this you get the bare app: no weather board, no Score or Household tab, no safety cards, and
+chores like the car show "Coming later". The app reads the flags when it starts, so restart it after
+any change. Do not commit your local `config/flags.json`.
+
+### 5. Start the app and pair your browser
+
+```bash
+npm start
+```
+
+It should print:
+
+- `Gemma: <tag> on Ollama at http://127.0.0.1:11434, loading it now` and a `Gemma warm-up:` line. If it
+  says the model `is not usable yet`, go back to step 3; the app still runs, with "Gemma is offline, rule
+  odds only".
+- `The weather is Open-Meteo.`
+- `Listening on ...` and the allowed hosts.
+- A pairing link and a QR code: `Laptop  http://127.0.0.1:8787/pair?token=...`
+
+Open the **Laptop** link in a browser on the laptop, or scan the QR code with a phone on the same Wi-Fi
+(phone access needs the network set-up in [docs/setup.md](docs/setup.md#phone-access-over-wi-fi)). A
+link works for 10 minutes and for up to 3 devices; after that, print a new one in a second terminal with
+`npm run sib -- pair`. A paired browser stays signed in for 30 days.
+
+Leave the terminal open: Ctrl+C stops the app. Your bets, photos and points are kept in
+`~/.should-i-bother/` (`SIB_DATA_DIR` changes it), not in the code folder, so updating the code keeps them.
+
+### 6. Use it
+
+1. **First run:** a "Let the sky do your chores" screen asks what is outside your door, your dryer, AC and
+   heating, and where you live. Answer it and tap "Start lazing", or "Skip for now". Change it later under
+   Household.
+2. **Today** starts empty: 0 min, 0 L, 0 kWh, "No forecast yet" and "No chores yet". That is normal for
+   a new data folder; the sample-data demo looks fuller because it is seeded with two weeks of made-up
+   bets.
+3. Tap a chip such as **Water plants**, or type your chores in the box and tap the arrow. Gemma fetches the
+   forecast, the weather board appears and a bet slip shows the odds and "How Gemma decided".
+4. Tap **Bet: do nothing** to bet on the weather, or **I'll do it** to do the chore yourself.
+5. When the bet is due, it moves to **Settle now** (the app checks every 60 s). Answer with one tap or an
+   after photo, and Gemma gives the verdict. Savings, points, Score and your rank fill in as bets settle.
+
+### When something looks wrong
+
+| You see | Why | Fix |
+|---|---|---|
+| `Unknown command: flags` (or `demo`) | Your code is older than those commands | Step 1, then step 2 |
+| Old screens: a big "The Lazy Bookie" title, a large text box with a "Get odds" button, only the Today and Slips tabs | `dist/` was built from older code, or the update did not happen | `git log --oneline -1` must show the commit you expect; then `npm run build`, restart, reload the page |
+| `git switch` or `git pull` says your local changes would be overwritten | You edited `config/models.json` or `config/flags.json` | `git stash` first (step 1), then redo steps 3 and 4 |
+| `No Gemma model is configured` and the app stops | No tag in `config/models.json` | Step 3 |
+| "Gemma is offline, rule odds only" | Ollama is not running, or the tag does not match `ollama list` | Start Ollama, check the tag, tap Retry on Today |
+| A slip says "No forecast, can't set odds" | The weather could not be fetched | Check the internet connection; `SIB_FAKE_WEATHER=1` tries the app without it |
+| `address already in use` when starting | Another copy of the app is still running on port 8787, and the browser is still showing that one | Stop the other copy (Ctrl+C in its terminal), then `npm start` again; `SIB_PORT=8790 npm start` uses another port |
+| "This pairing link is invalid, expired or used up" | The link is over 10 minutes old, already used by 3 devices, or replaced by a newer one | `npm run sib -- pair` prints a new one |
+| No Score or Household tab, the car is "Coming later" | The feature flags are off | Step 4, then restart |
+| `npm ci` fails with `ERESOLVE` | Dependencies that do not fit together on your commit | Update to the newest `main` (step 1) |
 
 ## Configuration
 
