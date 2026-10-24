@@ -59,12 +59,9 @@ export function DemoBanner() {
 
 /**
  * A "SAMPLE" watermark over figures that look like results (the Score tiles and calibration
- * charts in demo mode). Decorative: the banner and the label carry the meaning for screen readers.
+ * charts in demo mode). The word is drawn by the stylesheet (`::before`), so it is decoration only:
+ * the banner and the label carry the meaning for screen readers, and axe has no text to measure.
  */
 export function SampleWatermark() {
-  return (
-    <span className="sample-watermark" aria-hidden="true">
-      SAMPLE
-    </span>
-  );
+  return <span className="sample-watermark" aria-hidden="true" />;
 }

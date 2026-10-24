@@ -16,6 +16,11 @@
   isolation: isolate;
 }
 
+.sample-watermark::before {
+  content: "SAMPLE";
+  transform: rotate(-10deg);
+}
+
 .sample-watermark {
   position: absolute;
   inset: 0;
@@ -30,6 +35,7 @@
   letter-spacing: 0.12em;
   color: var(--color-ink);
   opacity: 0.12;
-  transform: rotate(-10deg);
+  /* The tilted word never widens the page. */
+  overflow: hidden;
   user-select: none;
 }

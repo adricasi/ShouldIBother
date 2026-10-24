@@ -8,7 +8,7 @@ import type { Db } from "../server/db.js";
 import { markDemoDataDir } from "../server/demo.js";
 import type { Flags } from "../server/flags.js";
 import { JobRunner } from "../server/gemma/runner.js";
-import { HouseholdStore } from "../server/household-store.js";
+import { HouseholdStore, applyPlaceLabel } from "../server/household-store.js";
 import { Appealer } from "../server/ledger/appeal.js";
 import { placeBet } from "../server/ledger/bets.js";
 import { createChoreCard } from "../server/ledger/cards.js";
@@ -55,6 +55,9 @@ export const SAMPLE_HOUSEHOLD: Household = {
   location: { latitude: 41.4, longitude: 2.16 },
   outdoorItems: ["balcony_plants", "clothes_line"],
 };
+
+/** The made-up place name on the weather board (AC-026.3). */
+export const SAMPLE_PLACE_LABEL = "Sample flat";
 
 export interface SeedSummary {
   readonly cards: number;
@@ -124,6 +127,7 @@ export async function seedDemoData(options: {
 
   // The onboarding answers: the sample household, answered at the start of the two weeks.
   store.save(SAMPLE_HOUSEHOLD);
+  applyPlaceLabel(db, SAMPLE_PLACE_LABEL);
 
   const queue: Pending[] = [];
   let order = 0;

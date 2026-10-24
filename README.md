@@ -344,6 +344,26 @@ written. `sib demo` uses the same preset in memory. The file is replaced atomica
 committed defaults stay off: do not commit your local `config/flags.json`. A running app reads the
 flags at start, so **restart the app to apply** a change.
 
+### Sample-data demo (`sib demo`)
+
+For rehearsals and screenshots without touching your own data:
+
+```bash
+npm run build
+npm run sib -- demo [--port 8788]   # prints a pairing link; Ctrl+C stops it
+```
+
+It makes a temporary data folder, fills it through the app's own code with about two weeks of
+made-up bets (plants, line-dry, laundry tonight, AC and heater; photo, tap and automatic
+settlements, wins and losses, a cash-out, appeals, achievements and a rank above Hyperactive
+squirrel), and starts the app on it with the fake model, fake weather, a fixed date (Friday 23
+October 2026, 10:00) and the `presentation` preset applied in memory. Every screen shows a
+"Sample data — not real results" banner, Score is watermarked SAMPLE and labelled "Sample data ·
+fake model", the rows carry `model_version = fake-demo` (Score counts them only in demo mode) and
+`sib export` refuses its data folder. It never opens `~/.should-i-bother` or `SIB_DATA_DIR`,
+`config/household.json` or `config/server.json`, and never writes `config/flags.json`; the
+temporary folder is deleted on Ctrl+C or SIGTERM. Its numbers are never results.
+
 Laptop checks before you turn on the two excluded flags:
 
 - `voice` (T-028): a llama.cpp server with the Gemma 4 audio model and its projector runs on
@@ -369,6 +389,7 @@ development run the same commands through npm: `npm run sib -- <command>`.
 | `sib export <dir>` | Write `export.json` (bets, decisions, verdicts, totals, onboarding profile, achievements) and the photos to a new, empty folder |
 | `sib delete-photos [--all-data]` | Asks first; removes every photo and what Gemma read from it. With `--all-data` it also removes the database and its WAL files |
 | `sib flags [list\|on\|off\|preset]` | List the feature flags, or turn them on or off in `config/flags.json`; `flags preset presentation` is described under [Presentation](#presentation) |
+| `sib demo [--port N]` | Run the app on a temporary, seeded sample-data folder with the fake model and weather (see [Presentation](#presentation)); stops and deletes it on Ctrl+C |
 | `sib backtest [options]` | Replays the weather snapshot with the rule, a fixed routine, E2B and E4B (and the fine-tuned model) and writes a report; resumable, `--help` lists the options |
 | `sib snapshot [options]` | Downloads the Open-Meteo snapshot (Previous Runs, Historical Forecast, archive) for the backtest and the fine-tune into the data folder. Details below |
 | `sib dataset [options]` | Builds `train.jsonl`, `holdout.jsonl` and `manifest.json` for the fine-tune from the snapshot, offline. Details below |
