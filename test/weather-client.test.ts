@@ -25,7 +25,7 @@ import { FakeClock } from "./helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
 
 const HOUR = 3_600_000;
-const GRACIA = { latitude: 41.4012, longitude: 2.1587 };
+const GRACIA = { latitude: 41.4045, longitude: 2.1555 };
 
 let db: Db;
 let clock: FakeClock;
@@ -108,9 +108,9 @@ describe("AC-014.1: the forecast is requested for the configured coordinates, ro
   });
 
   it("rounds to 2 decimals, west and south too", () => {
-    expect(roundCoordinate(41.4012)).toBe(41.4);
-    expect(roundCoordinate(2.1587)).toBe(2.16);
-    expect(roundCoordinate(-2.1587)).toBe(-2.16);
+    expect(roundCoordinate(41.4045)).toBe(41.4);
+    expect(roundCoordinate(2.1555)).toBe(2.16);
+    expect(roundCoordinate(-2.1555)).toBe(-2.16);
   });
 
   it("returns the hours from the one containing the start, as many as asked", async () => {

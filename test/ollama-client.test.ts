@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ModelTimeoutError, ModelUnavailableError } from "../src/server/model/client.js";
 import { parseModelsConfig, primaryModelTag } from "../src/server/model/config.js";
+import { NonLoopbackRuntimeError } from "../src/server/model/loopback.js";
 import { MAX_RESPONSE_BYTES, OllamaClient } from "../src/server/model/ollama.js";
 import { selectModel } from "../src/server/model/select.js";
 import { FakeModelClient } from "../src/server/model/fake.js";
@@ -277,6 +278,16 @@ describe("OllamaClient (request format against a fake server)", () => {
 });
 
 describe("OllamaClient (failures become the errors the jobs understand)", () => {
+  it("NFR-001: refuses a non-loopback address when the client is built, not only at config load", () => {
+    for (const url of [
+      "http://192.168.1.10:11434",
+      "http://localhost:11434",
+      "https://127.0.0.1:11434",
+    ]) {
+      expect(() => ollama(url)).toThrow(NonLoopbackRuntimeError);
+    }
+  });
+
   it("AC-013.3: a runtime that is not running is ModelUnavailableError", async () => {
     // Port 9 (discard) on loopback is closed.
     await expect(ollama("http://127.0.0.1:9").chat(request)).rejects.toBeInstanceOf(

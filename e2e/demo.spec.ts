@@ -133,7 +133,8 @@ test("sample data: Today, Slips, a receipt and Score, each under the banner", as
 
   // A receipt: the first settled slip opened.
   const first = page.locator(".settled-line").first();
-  await first.locator("summary").click();
+  // The receipt holds a second disclosure now ("How Gemma decided"): open the receipt itself.
+  await first.locator("details.receipt-details > summary").click();
   await expect(first.locator("article")).toBeVisible();
   await first.scrollIntoViewIfNeeded();
   await expectSampleScreen(page, "receipt");

@@ -31,7 +31,7 @@ import { cardLocationOf, stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { FORECAST_PAST_HOURS, MAX_STORED_ANSWERS, parseAnswers } from "./forecast.js";
 import { FAILURE_NOTES, cardView, type CardView } from "./views.js";
-import { withSavingsEstimate } from "./savings.js";
+import { withCardFacts } from "./card-facts.js";
 import { MAX_QUESTIONS_PER_CARD, assertGemmaCapacity, turnIntoAlert } from "./gemma-cards.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 
@@ -758,10 +758,5 @@ export function plannerCardView(
           )
           .get(cardId)
       : undefined;
-  return withPlan(
-    card,
-    withSavingsEstimate(deps, card, cardView(card, quote, table)),
-    table,
-    deps.now(),
-  );
+  return withPlan(card, withCardFacts(deps, card, cardView(card, quote, table)), table, deps.now());
 }
