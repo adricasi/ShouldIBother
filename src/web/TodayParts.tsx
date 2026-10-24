@@ -14,14 +14,39 @@ const GEMMA_STATUS_TEXT = {
   offline: "Gemma is offline, rule odds only",
 } as const;
 
-/** Gemma's status on Today (AC-013.5): one quiet line with a dot, announced when it changes. */
+/**
+ * "Gemma 4 E4B" from the Ollama tag the app is configured with (`gemma4:e4b`); a tag that is not
+ * in that shape is shown as it is, so the line never claims a model it does not know.
+ */
+export function gemmaDisplayName(tag: string): string {
+  const found = /^gemma[-_]?(\d+)(?::(.+))?$/i.exec(tag.trim());
+  if (found?.[1] === undefined) {
+    return tag;
+  }
+  return found[2] === undefined
+    ? `Gemma ${found[1]}`
+    : `Gemma ${found[1]} ${found[2].toUpperCase()}`;
+}
+
+/** The words of the status line: the model and where it runs, or the fake and offline states. */
+export function gemmaStatusText(gemma: Today["gemma"]): string {
+  if (gemma.status === "online" && gemma.detail !== null && gemma.detail !== "fake model") {
+    return `${gemmaDisplayName(gemma.detail)} · on this laptop`;
+  }
+  return `${GEMMA_STATUS_TEXT[gemma.status]}${gemma.detail === "fake model" ? " (fake model)" : ""}`;
+}
+
+/**
+ * Gemma's status on Today (AC-013.5): one quiet line with a dot, announced when it changes. It
+ * names the model and says it runs on this laptop (design.md Round 3, item 17); the fake model
+ * and the offline state read as they did.
+ */
 export function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
   return (
     <>
       <p className={`gemma-status ${gemma.status}`} role="status">
         <span className="status-dot" aria-hidden="true" />
-        {GEMMA_STATUS_TEXT[gemma.status]}
-        {gemma.detail === "fake model" ? " (fake model)" : ""}
+        {gemmaStatusText(gemma)}
       </p>
       {gemma.warning === undefined ? null : (
         <p className="gemma-status offline" role="status">

@@ -1,5 +1,6 @@
 import type { Receipt, RecordedWeather, SavingsTotals } from "./api.js";
 import { AppealNote } from "./AppealParts.js";
+import { HowGemmaDecided, OddsWho } from "./GemmaParts.js";
 import { stampClassName } from "./stamp.js";
 import { Icon, type IconName } from "./ui/Icon.js";
 import { Sloth } from "./ui/Sloth.js";
@@ -103,7 +104,16 @@ export function ReceiptCard({
           </div>
           <div>
             <dt>Odds</dt>
-            <dd>{formatOdds(receipt.band_name, receipt.odds)}</dd>
+            <dd>
+              {formatOdds(receipt.band_name, receipt.odds)}
+              <br />
+              <OddsWho
+                source={receipt.odds_source}
+                gemma={receipt.gemma}
+                rule={receipt.rule}
+                fake={receipt.fake_model}
+              />
+            </dd>
           </div>
           <div>
             <dt>Proof</dt>
@@ -185,6 +195,12 @@ export function ReceiptCard({
             )}
           </div>
         )}
+        <HowGemmaDecided
+          decisions={[
+            { heading: "Set the odds", decision: receipt.decisions?.odds },
+            { heading: "Judged the result", decision: receipt.decisions?.verdict },
+          ]}
+        />
         {receipt.lucky_win === true ? (
           <p className="meta">
             Lucky win: the recorded weather did not call for it, but the bet paid like any other

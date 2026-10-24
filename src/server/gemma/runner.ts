@@ -53,6 +53,11 @@ export interface JobTool {
   readonly required: boolean;
   /** Arguments of the app-made call in injected mode. */
   readonly injectedArguments: Readonly<Record<string, unknown>>;
+  /**
+   * What to keep of a successful result with the decision, for "How Gemma decided" (AC-028.4):
+   * a short text (public data only), or undefined to keep nothing.
+   */
+  readonly summarize?: (resultText: string) => string | undefined;
 }
 
 /** The tool could not run (the forecast is unavailable); a retry would not help. */
@@ -308,6 +313,8 @@ export class JobRunner {
       toolMode: undefined as ToolMode | undefined,
       note: undefined as string | undefined,
       injectedResult: undefined as string | undefined,
+      /** What the tool returned to Gemma, summarised once (the first good result). */
+      toolResult: undefined as string | undefined,
     };
 
     const call = async (
@@ -382,7 +389,9 @@ export class JobRunner {
         throw new Stop("deadline", "The 45 s job deadline passed");
       }
       try {
-        return { text: await raceTimeout(tool.execute(toolCall.arguments), remaining), ok: true };
+        const text = await raceTimeout(tool.execute(toolCall.arguments), remaining);
+        state.toolResult ??= tool.summarize?.(text);
+        return { text, ok: true };
       } catch (error) {
         if (error instanceof ModelTimeoutError) {
           throw new Stop("deadline", "The 45 s job deadline passed during a tool call");
@@ -505,6 +514,7 @@ export class JobRunner {
       retries,
       latencyMs,
       error: outcome.ok ? state.note : `${outcome.failure}: ${outcome.error}`,
+      toolResult: state.toolResult,
       createdAt: finished,
     });
     const facts: JobFacts = {
