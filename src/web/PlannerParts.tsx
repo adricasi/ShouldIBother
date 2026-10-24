@@ -1,7 +1,6 @@
 import type { Card, Plan } from "./api.js";
 import { formatOdds, formatPoints } from "./format.js";
-import { ChoreTile } from "./ui/ChoreTile.js";
-import { Icon } from "./ui/Icon.js";
+import { Icon, type IconName } from "./ui/Icon.js";
 
 export interface PlannerActions {
   /** "Need anything washed before <day>?" (AC-021.2). */
@@ -17,24 +16,45 @@ export const ADVICE_REASON_TEXT = {
   daily_cap: "No points: advice followed earns points once a day, and today's are taken.",
 } as const;
 
-/** The four days with Gemma's drying score for each (AC-021.1). */
+/** The weather glyph of a drying day: sun when it dries well, wind when it is so-so, rain when it is wet. */
+function dayIcon(odds: number): IconName {
+  if (odds >= 70) {
+    return "sun";
+  }
+  return odds >= 50 ? "wind" : "rain";
+}
+
+/**
+ * The four days with Gemma's drying score for each (AC-021.1), as the tiles of the mockup: weekday,
+ * weather glyph, the percentage and its plain words; the best day is the inverted tile.
+ */
 export function PlanDays({ plan }: { plan: Plan }) {
   if (plan.days.length === 0) {
     return null;
   }
   return (
     <ul className="plan-days" aria-label="Drying weather for the next four days">
-      {plan.days.map((day) => (
-        <li key={day.date} className={day.date === plan.best_day?.date ? "best" : undefined}>
-          <span className="plan-day">{day.weekday}</span>
-          <span>{formatOdds(day.band_name, day.odds)}</span>
-          {day.date === plan.best_day?.date ? (
-            <span className="meta best-day">
-              <Icon name="check" /> best day
+      {plan.days.map((day) => {
+        const best = day.date === plan.best_day?.date;
+        return (
+          <li key={day.date} className={best ? "best" : undefined}>
+            <span className="plan-day">{day.weekday}</span>
+            <Icon name={dayIcon(day.odds)} />
+            <span className="plan-odds">
+              <span className="sr-only">{formatOdds(day.band_name, day.odds)}</span>
+              <span aria-hidden="true">{day.odds}%</span>
             </span>
-          ) : null}
-        </li>
-      ))}
+            <span className="plan-band" aria-hidden="true">
+              {day.band_name}
+            </span>
+            {best ? (
+              <span className="best-day">
+                <Icon name="check" /> best day
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -103,23 +123,29 @@ export function PlannerSlip({
       ? "These actions are not available on this screen."
       : null;
   return (
-    <article className="slip" aria-label={`${card.title}, ${plan.headline ?? plan.stage}`}>
-      <div className="slip-head">
-        <ChoreTile title={card.title} choreType={card.chore_type} />
-        <p className="eyebrow">
-          Lazy Bookie · Laundry planner
-          {advice ? " · No bet" : plan.stage === "ask_need" ? " · One question first" : ""}
-        </p>
+    <article className="slip flat" aria-label={`${card.title}, ${plan.headline ?? plan.stage}`}>
+      <div className="slip-top">
+        <p className="eyebrow">Lazy Bookie · Laundry planner</p>
+        {advice || plan.stage === "ask_need" ? (
+          <p className={`eyebrow plan-tag ${plan.stage}`}>
+            {plan.stage === "wash_today"
+              ? "Advice"
+              : plan.stage === "no_good_day"
+                ? "No bet"
+                : "One question first"}
+          </p>
+        ) : null}
       </div>
+      <hr className="rule" />
       {plan.stage === "thinking" ? (
         <>
-          <h3>{card.title}</h3>
+          <h3>Planning the wash</h3>
           <p role="status">{plan.note ?? "Gemma is planning your wash."}</p>
         </>
       ) : null}
       {plan.stage === "question" && plan.question !== null ? (
         <>
-          <h3>{card.title}</h3>
+          <h3>Wash plan</h3>
           <YesNo
             cardId={card.id}
             question={plan.question}
@@ -132,8 +158,10 @@ export function PlannerSlip({
       ) : null}
       {plan.stage === "offline" ? (
         <>
-          <h3>{card.title}</h3>
-          <p>{plan.note ?? "Gemma could not plan the wash."}</p>
+          <h3>No wash plan</h3>
+          <p role="status">
+            {plan.note ?? "Gemma couldn't plan this wash. Nothing was lost. Try again."}
+          </p>
           {plan.can_retry ? (
             <button
               type="button"

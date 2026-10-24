@@ -41,6 +41,8 @@ import { estimateServerNow, startPolling } from "./polling.js";
 import { ScoreScreen } from "./ScoreScreen.js";
 import { SlipsScreen } from "./SlipsScreen.js";
 import { TodayScreen } from "./TodayScreen.js";
+import { VoiceCapture } from "./VoiceCapture.js";
+import { browserEnvironment, micAvailable } from "./voice/support.js";
 
 /** Countdowns are re-rendered this often between the 30 s polls. */
 const CLOCK_TICK_MS = 15_000;
@@ -145,6 +147,37 @@ export function App() {
       void refreshScore(true);
     });
   }, [showScore, scoreOn, refreshScore]);
+
+  // The points chip on Today names the rank (flag `ranks`, which needs `score`). The rank comes
+  // with the score, so it is read quietly (no notice, and a failure just drops the name) when
+  // Today is open and again whenever the points total changes. The Score screen loads it itself.
+  const ranksOn = scoreOn && today?.flags["ranks"] === true;
+  const pointsTotal = today?.points.total;
+  const [rankName, setRankName] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!ranksOn) {
+      setRankName(undefined);
+      return undefined;
+    }
+    if (route === "score") {
+      return undefined;
+    }
+    let current = true;
+    fetchScore()
+      .then((next) => {
+        if (current) {
+          setRankName(next.rank?.name);
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setRankName(undefined);
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [ranksOn, pointsTotal, route]);
 
   // Onboarding (flag `onboarding`, REQ-024) is read once the server reports the flag on; the
   // first time the app is opened it asks, and a skip keeps the baseline in the config file.
@@ -265,6 +298,20 @@ export function App() {
     });
   };
 
+  // The raised mic of the tab bar (flag `voice`, only where the browser can record, AC-027.3).
+  // The same VoiceCapture as the capture bar's; the cards it makes show on Today.
+  const voiceOn = today?.flags["voice"] === true && micAvailable(browserEnvironment());
+  const voiceFab = voiceOn ? (
+    <VoiceCapture
+      enabled
+      disabled={busy}
+      onCards={() => {
+        window.location.hash = "#/today";
+        void act(() => Promise.resolve(undefined));
+      }}
+    />
+  ) : undefined;
+
   const reload = (): void => {
     void act(() => Promise.resolve(undefined));
   };
@@ -291,9 +338,34 @@ export function App() {
       "Skipped. Savings use the baseline in the config file.",
     );
   };
-  if (onboardingOn && route === "onboarding") {
+  // An empty app that has not been answered yet opens on the household questions (mockup 01,
+  // AC-024.1). An app with cards or bets keeps Today and asks in a card above the chips instead,
+  // so nothing in use is hidden behind the questions. While the answer is unknown the screen shows
+  // its loading state; a failed read falls back to Today.
+  const emptyApp =
+    today !== undefined &&
+    today.cards.length === 0 &&
+    today.open_bets.length === 0 &&
+    today.due_bets.length === 0;
+  const firstRun =
+    onboardingOn &&
+    route === "today" &&
+    emptyApp &&
+    (onboarding?.state === "pending" || (onboarding === undefined && notice === undefined));
+  // Leaving the first-run screen (Start lazing or Skip) keeps the route "today", so no route
+  // change announces Today: move the focus to its heading and set the title.
+  const wasFirstRun = useRef(false);
+  useEffect(() => {
+    if (wasFirstRun.current && !firstRun && route === "today") {
+      announceRoute("today", document);
+    }
+    wasFirstRun.current = firstRun;
+  }, [firstRun, route]);
+  if (onboardingOn && (route === "onboarding" || firstRun)) {
     return (
       <OnboardingScreen
+        fab={voiceFab}
+        firstRun={firstRun}
         onboarding={onboarding}
         flags={today?.flags ?? {}}
         busy={busy}
@@ -315,6 +387,7 @@ export function App() {
   if (showScore) {
     return (
       <ScoreScreen
+        fab={voiceFab}
         score={score}
         flags={today?.flags ?? {}}
         notice={notice}
@@ -327,6 +400,7 @@ export function App() {
   if (route === "slips") {
     return (
       <SlipsScreen
+        fab={voiceFab}
         slips={slips}
         flags={today?.flags ?? {}}
         nowMs={slipsNow}
@@ -345,6 +419,7 @@ export function App() {
   }
   return (
     <TodayScreen
+      voiceFab={voiceFab}
       today={today}
       // First open: Today asks in a card above the chips; everything below it keeps working.
       {...(onboardingOn && onboarding?.state === "pending"
@@ -354,6 +429,7 @@ export function App() {
       notice={notice}
       results={results}
       nowMs={todayNow}
+      {...(rankName === undefined ? {} : { rankName })}
       onQuickCard={(choreType) => {
         void act(async () => {
           await createQuickCard(choreType);

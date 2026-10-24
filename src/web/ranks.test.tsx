@@ -148,3 +148,36 @@ describe("AC-016.3: the heater chip on Today", () => {
     expect(html({})).not.toContain("Skip the heater");
   });
 });
+
+describe("Score look (mockup 08)", () => {
+  it("names the rank's place among the four and prints the points big, hidden from readers", () => {
+    const html = screen(withRank);
+    expect(html).toContain("Your rank · 2 of 4");
+    expect(html).toContain('<p class="rank-points" aria-hidden="true">450 <span>points</span></p>');
+    // An id the app does not know shows no number rather than a wrong one.
+    const unknown = screen({ ...withRank, rank: { ...koala, id: "mystery" } });
+    expect(unknown).toContain("Your rank<");
+    expect(unknown).not.toMatch(/Your rank · \d of 4/);
+  });
+
+  it("an unlocked achievement is a sun badge with its own glyph; a locked one shows a lock", () => {
+    const html = screen({
+      ...withRank,
+      achievements: lockedAchievements.map((item) =>
+        item.id === "first_nap" ? { ...item, unlocked_at: "2026-10-22T06:05:00.000Z" } : item,
+      ),
+    });
+    const items = [
+      ...new DOMParser().parseFromString(html, "text/html").querySelectorAll(".achievements li"),
+    ];
+    expect(items[0]?.querySelector(".badge svg")?.getAttribute("class")).toContain("lucide-sun");
+    expect(items[1]?.querySelector(".badge svg")?.getAttribute("class")).toContain("lucide-lock");
+  });
+
+  it("shows four icon tiles with the figure before the label in the layout and the label first in the markup", () => {
+    const html = screen(withRank);
+    expect(html).toMatch(/<dt>Chores skipped<\/dt><dd>0<\/dd>/);
+    expect(html.match(/class="stat-tiles score-tiles"/g)).toHaveLength(1);
+    expect(html).toContain("lucide-zap");
+  });
+});

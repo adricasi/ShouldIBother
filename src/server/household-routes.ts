@@ -1,5 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
 
+import { z } from "zod";
+
+import { parsePlaceLabel } from "../domain/place-label.js";
+
 import { householdSchema, type Household } from "./config.js";
 import type { HouseholdStore } from "./household-store.js";
 import { HttpError } from "./problem.js";
@@ -8,13 +12,36 @@ import { HttpError } from "./problem.js";
  * The answers of the form. Every question is required (an empty list of outdoor items is an
  * answer), and nothing else is accepted.
  */
-const answersSchema = householdSchema.required({ location: true, outdoorItems: true }).strict();
+const answersSchema = householdSchema
+  .required({ location: true, outdoorItems: true })
+  .extend({
+    /** The optional place label (AC-026.3): blank or absent means none; the rest is validated in code. */
+    place_label: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((text, context) => {
+        const parsed = parsePlaceLabel(text);
+        if (!parsed.ok) {
+          context.addIssue({ code: "custom", message: parsed.problem });
+          return z.NEVER;
+        }
+        return parsed.label;
+      }),
+  })
+  .strict();
 
 function view(store: HouseholdStore): {
   state: ReturnType<HouseholdStore["state"]>;
   household: Household;
+  place_label?: string;
 } {
-  return { state: store.state(), household: store.forForm() };
+  const label = store.placeLabel();
+  return {
+    state: store.state(),
+    household: store.forForm(),
+    ...(label === null ? {} : { place_label: label }),
+  };
 }
 
 /**
@@ -36,7 +63,8 @@ export function householdRoutes(store: HouseholdStore): FastifyPluginAsync {
             .join("; "),
         );
       }
-      store.save(result.data);
+      const { place_label: placeLabel, ...answers } = result.data;
+      store.save(answers, placeLabel);
       return view(store);
     });
 

@@ -122,13 +122,13 @@ describe("AC-016.2: the offer window is 1 h before to 2 h after sunset", () => {
   it("AC-016.2: the card text says when it can be offered", () => {
     const now = at(TODAY, "17:00");
     expect(laundryTonightNotice(now, SUNSET - HOUR_MS)).toBe(
-      "Leave it out tonight is offered from 1 h before to 2 h after sunset. Next chance: today at 19:00.",
+      "Offered from 1 h before to 2 h after sunset. Next chance: today at 19:00.",
     );
     expect(laundryTonightNotice(at(TODAY, "23:00"), at(TOMORROW, "18:58"))).toBe(
-      "Leave it out tonight is offered from 1 h before to 2 h after sunset. Next chance: tomorrow at 18:58.",
+      "Offered from 1 h before to 2 h after sunset. Next chance: tomorrow at 18:58.",
     );
     expect(laundryTonightNotice(at(TODAY, "23:00"), undefined)).toBe(
-      "Leave it out tonight is offered from 1 h before to 2 h after sunset. Next chance: tomorrow evening.",
+      "Offered from 1 h before to 2 h after sunset. Next chance: tomorrow evening.",
     );
   });
 
@@ -145,7 +145,7 @@ describe("AC-016.2: the offer window is 1 h before to 2 h after sunset", () => {
         kind: "coming_later",
         quote: null,
         alert_reason: null,
-        notice: `Leave it out tonight is offered from 1 h before to 2 h after sunset. ${next}`,
+        notice: `Offered from 1 h before to 2 h after sunset. ${next}`,
       });
       expect(
         (await h.post("/api/bets", { card_id: card.id, quote_id: 1, kind: "do_nothing" }))

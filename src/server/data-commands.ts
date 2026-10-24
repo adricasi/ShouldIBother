@@ -82,7 +82,7 @@ export async function deletePhotosCommand(
     photos.warn = io.print;
     const confirmed = options.allData
       ? await io.confirm(
-          `This deletes ALL app data in ${dataDir}: every bet, card, verdict and photo, the database and the weather cache. Your settings in config/household.json live outside this folder and are kept; answers given on the Household screen (onboarding) are in the database and are deleted with it. Logs go to the terminal and are not touched. It cannot be undone.\nType "${CONFIRM_ALL}" to continue: `,
+          `This deletes ALL app data in ${dataDir}: every bet, card, verdict and photo, the database and the weather cache. Your settings in config/household.json live outside this folder and are kept; answers given on the Household screen (onboarding), the place name included, are in the database and are deleted with it. Logs go to the terminal and are not touched. It cannot be undone.\nType "${CONFIRM_ALL}" to continue: `,
           CONFIRM_ALL,
         )
       : await io.confirm(

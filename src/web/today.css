@@ -1,0 +1,267 @@
+/* Today (mockup 02): the header, the week strip, the capture bar and the quick chips. */
+.today-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.today-hello {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.greeting {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-headline);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.today-header .eyebrow {
+  white-space: nowrap;
+}
+
+/* A long rank name wraps inside the chip instead of pushing the greeting around. */
+.today-header .points-text {
+  min-width: 0;
+}
+
+.today-header .points {
+  flex: 0 1 auto;
+  max-width: calc(var(--space-6) * 8);
+  white-space: normal;
+  font-size: var(--text-small);
+}
+
+.gemma-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
+}
+
+.status-dot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-leaf);
+}
+
+.gemma-status.waking .status-dot {
+  background: var(--color-amber);
+}
+
+.gemma-status.offline {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.gemma-status.offline .status-dot {
+  background: var(--color-coral);
+}
+
+/* This week the sky did: three big figures between dashed rules. */
+.week {
+  border-block: var(--border-hair) dashed var(--color-ink-3);
+  padding-block: var(--space-3) 0;
+}
+
+.week-title {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.week-figures {
+  margin: var(--space-2) 0 0;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.week-figures > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.week-figures dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-figure);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.week-figures dt {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.week-notes summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-leaf);
+}
+
+.week-notes summary::-webkit-details-marker {
+  display: none;
+}
+
+.week-notes summary::after {
+  content: "";
+  width: var(--space-2);
+  height: var(--space-2);
+  border-right: var(--border-strong) solid currentColor;
+  border-bottom: var(--border-strong) solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.week-notes[open] summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.week-notes[open] {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+/* The capture bar: one input row, then a row of chips that scrolls sideways. */
+.capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.capture-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-card);
+  border: var(--border-hair) solid var(--color-ink-3);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+}
+
+.capture-form {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.capture-bar input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap-min);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-ink);
+}
+
+.capture-bar input::placeholder {
+  color: var(--color-ink-3-text);
+  opacity: 1;
+}
+
+.capture-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  background: var(--color-ink);
+  color: var(--color-sun);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.capture-send:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.capture-send .icon {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+/* The voice mic (VoiceCapture's button) is one mic per screen: on a phone the raised button of the
+   tab bar is the mic, so the one in the bar is hidden there; on a wide screen the tab bar has no
+   raised button on Today and this one shows (desktop.css). Its words are an sr-only label. */
+.capture-bar .voice-mic {
+  display: none;
+  flex: none;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: var(--border-hair) solid var(--color-ink-3);
+  border-radius: var(--radius-md);
+}
+
+.capture-bar .voice-mic .icon {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+/* The words of an icon-only voice button: read out, not drawn. */
+.voice-mic-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The row bleeds to the screen edge like the mockup; the padding keeps the focus ring unclipped. */
+.chip-row {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  margin: calc(var(--space-1) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-1) var(--space-5);
+  scroll-padding-inline: var(--space-5);
+}
+
+.chip-row .chip {
+  flex: none;
+}

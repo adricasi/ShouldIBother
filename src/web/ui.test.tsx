@@ -342,11 +342,12 @@ describe("T-006: Gemma on Today (REQ-002, REQ-003, REQ-013)", () => {
     expect(html).toContain("Water plants, Likely · 70%");
   });
 
-  it("AC-002.1: offers a text box limited to 500 characters", () => {
+  it("AC-002.1: offers a labelled text box limited to 500 characters and a submit button", () => {
     const html = screen(emptyToday);
-    expect(html).toContain("<textarea");
+    expect(html).toContain('<input id="capture-text" type="text"');
     expect(html).toContain('maxLength="500"');
-    expect(html).toContain("Get odds");
+    expect(html).toContain("Or type your chores in one sentence");
+    expect(html).toMatch(/<button type="submit"[^>]*aria-label="Get odds"/);
   });
 
   it("AC-013.5: shows Gemma's status, with the fake model said out loud", () => {

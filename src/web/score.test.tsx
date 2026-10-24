@@ -7,7 +7,7 @@ import { scoreSchema, type CalibrationBand, type Score } from "./api.js";
 import { visibleEntries, FLAGGED_ENTRIES } from "./features.js";
 import { Nav } from "./Nav.js";
 import { ROUTE_TITLES, redirectFor, routeOf } from "./route.js";
-import { SCORE_EMPTY_TEXT, ScoreScreen, TOO_FEW_TEXT } from "./ScoreScreen.js";
+import { SCORE_EMPTY_TEXT, ScoreScreen, TOO_FEW_TEXT, calibrationHeadline } from "./ScoreScreen.js";
 import { emptyTotals } from "./test-data.js";
 
 const NAMES = ["very unlikely", "unlikely", "toss-up", "likely", "very likely"] as const;
@@ -298,5 +298,39 @@ describe("NFR-009: Score screen accessibility (axe)", () => {
 
   it("the loading screen has no violations", async () => {
     expect(await violationsOf(screen(undefined))).toEqual([]);
+  });
+});
+
+describe("The calibration headline (mockup 08, AC-020.3)", () => {
+  const band = (
+    name: string,
+    predicted: number,
+    n: number,
+    actual: number | null,
+  ): CalibrationBand => ({
+    band: 0,
+    name,
+    predicted_pct: predicted,
+    n,
+    wins: 0,
+    actual_pct: actual,
+    too_few: n < 5,
+  });
+
+  it("names the band with the most bets that has enough of them", () => {
+    expect(
+      calibrationHeadline([
+        band("unlikely", 35, 8, 50),
+        band("likely", 70, 9, 74),
+        band("x", 15, 3, null),
+      ]),
+    ).toBe("When Gemma says 70%, doing nothing works 74% of the time (9 bets).");
+  });
+
+  it("says nothing while no band has five bets, so a shaky share is never a headline", () => {
+    expect(
+      calibrationHeadline([band("likely", 70, 4, 75), band("x", 15, 0, null)]),
+    ).toBeUndefined();
+    expect(calibrationHeadline([])).toBeUndefined();
   });
 });

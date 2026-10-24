@@ -2,6 +2,7 @@ import type { Receipt, RecordedWeather, SavingsTotals } from "./api.js";
 import { AppealNote } from "./AppealParts.js";
 import { stampClassName } from "./stamp.js";
 import { Icon, type IconName } from "./ui/Icon.js";
+import { Sloth } from "./ui/Sloth.js";
 import {
   formatDuration,
   formatKwh,
@@ -78,128 +79,134 @@ export function ReceiptCard({
 }) {
   const paid = receipt.outcome === "paid_out";
   return (
-    <article
-      className={`receipt ${paid ? "paid" : "plain"}`}
-      aria-label={`${receipt.title}, ${receipt.verdict_title}, ${formatPoints(receipt.points)} points`}
-    >
-      <div className="slip-top">
-        <p className="eyebrow">Lazy Bookie · {paid ? "Payout receipt" : "Result"}</p>
-        <p className="eyebrow">Nº {String(receipt.bet_id).padStart(4, "0")}</p>
-      </div>
-      <hr className="rule" />
-      <div className="receipt-head">
-        <h3>{receipt.title}</h3>
-        {receipt.stamp === null ? null : (
-          <p className={stampClassName(animateStamp)}>{receipt.stamp}</p>
-        )}
-      </div>
-      <dl className="receipt-rows">
-        <div>
-          <dt>Bet</dt>
-          <dd>{receipt.kind === "do_it" ? "I'll do it" : "Do nothing"}</dd>
+    <>
+      {paid ? <Sloth className="receipt-sloth" /> : null}
+      <article
+        className={`receipt ${paid ? "paid" : "plain"}`}
+        aria-label={`${receipt.title}, ${receipt.verdict_title}, ${formatPoints(receipt.points)} points`}
+      >
+        <div className="slip-top">
+          <p className="eyebrow">Lazy Bookie · {paid ? "Payout receipt" : "Result"}</p>
+          <p className="eyebrow">Nº {String(receipt.bet_id).padStart(4, "0")}</p>
         </div>
-        <div>
-          <dt>Odds</dt>
-          <dd>{formatOdds(receipt.band_name, receipt.odds)}</dd>
-        </div>
-        <div>
-          <dt>Proof</dt>
-          <dd>
-            {receipt.evidence.text}
-            {receipt.answer === null ? "" : `: ${receipt.answer}`}
-          </dd>
-        </div>
-        {receipt.weather === null ? null : (
-          <div>
-            <dt>Weather</dt>
-            <dd>
-              {receipt.weather.label}
-              <ul className="chips-static" aria-label="Recorded weather">
-                {weatherChipItems(receipt.weather.digest).map((chip) => (
-                  <li key={chip.text}>
-                    <Icon name={chip.icon} />
-                    {chip.text}
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </div>
-        )}
-        <div>
-          <dt>Points</dt>
-          <dd>
-            {formatPoints(receipt.points)} (total {formatPoints(receipt.total_points)})
-          </dd>
-        </div>
-        {receipt.saved === null ? null : (
-          <>
-            <div>
-              <dt>Time saved</dt>
-              <dd>
-                {receipt.saved.time_min === 0
-                  ? "0 min"
-                  : formatDuration(receipt.saved.time_min * 60)}
-              </dd>
-            </div>
-            {receipt.saved.water_l > 0 ? (
-              <div>
-                <dt>Water saved</dt>
-                <dd>{formatLitres(receipt.saved.water_l)}</dd>
-              </div>
-            ) : null}
-            {receipt.saved.electricity_kwh > 0 ? (
-              <div>
-                <dt>Electricity saved</dt>
-                <dd>{formatKwh(receipt.saved.electricity_kwh)}</dd>
-              </div>
-            ) : null}
-          </>
-        )}
-      </dl>
-      <hr className="rule" />
-      <p className={`receipt-total ${receipt.points < 0 ? "minus" : "plus"}`}>
-        <span className="result-title">{receipt.verdict_title}</span>
-        <span className="receipt-figure">{formatPoints(receipt.points)}</span>
-      </p>
-      {paid ? <div className="barcode" aria-hidden="true" /> : null}
-      {receipt.saved === null ? null : (
-        <p className="meta">
-          {receipt.saved.assumption} ({receipt.saved.basis}).
-        </p>
-      )}
-      {receipt.gemma_read === null ? null : (
-        <div className="gemma-read">
-          <p className="eyebrow leaf">
-            <Icon name="sparkle" /> Gemma&apos;s read
-          </p>
-          <p>{receipt.gemma_read.reason}</p>
-          {receipt.gemma_read.evidence.length === 0 ? null : (
-            <ul>
-              {receipt.gemma_read.evidence.map((line, index) => (
-                <li key={`${index}-${line}`}>{line}</li>
-              ))}
-            </ul>
+        <hr className="rule" />
+        <div className="receipt-head">
+          <h3>{receipt.title}</h3>
+          {receipt.stamp === null ? null : (
+            <p className={stampClassName(animateStamp)}>{receipt.stamp}</p>
           )}
         </div>
-      )}
-      {receipt.lucky_win === true ? (
-        <p className="meta">
-          Lucky win: the recorded weather did not call for it, but the bet paid like any other win.
+        <dl className="receipt-rows">
+          <div>
+            <dt>Bet</dt>
+            <dd>{receipt.kind === "do_it" ? "I'll do it" : "Do nothing"}</dd>
+          </div>
+          <div>
+            <dt>Odds</dt>
+            <dd>{formatOdds(receipt.band_name, receipt.odds)}</dd>
+          </div>
+          <div>
+            <dt>Proof</dt>
+            <dd>
+              {receipt.evidence.text}
+              {receipt.answer === null ? "" : `: ${receipt.answer}`}
+            </dd>
+          </div>
+          {receipt.weather === null ? null : (
+            <div>
+              <dt>Weather</dt>
+              <dd>
+                {receipt.weather.label}
+                <ul className="chips-static" aria-label="Recorded weather">
+                  {weatherChipItems(receipt.weather.digest).map((chip) => (
+                    <li key={chip.text}>
+                      <Icon name={chip.icon} />
+                      {chip.text}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Points</dt>
+            <dd>
+              {formatPoints(receipt.points)} (total {formatPoints(receipt.total_points)})
+            </dd>
+          </div>
+          {receipt.saved === null ? null : (
+            <>
+              <div>
+                <dt>Time saved</dt>
+                <dd>
+                  {receipt.saved.time_min === 0
+                    ? "0 min"
+                    : formatDuration(receipt.saved.time_min * 60)}
+                </dd>
+              </div>
+              {receipt.saved.water_l > 0 ? (
+                <div>
+                  <dt>Water saved</dt>
+                  <dd>{formatLitres(receipt.saved.water_l)}</dd>
+                </div>
+              ) : null}
+              {receipt.saved.electricity_kwh > 0 ? (
+                <div>
+                  <dt>Electricity saved</dt>
+                  <dd>{formatKwh(receipt.saved.electricity_kwh)}</dd>
+                </div>
+              ) : null}
+            </>
+          )}
+        </dl>
+        <hr className="rule" />
+        <p className={`receipt-total ${receipt.points < 0 ? "minus" : "plus"}`}>
+          <span className="result-title">{receipt.verdict_title}</span>
+          <span className="receipt-figure">{formatPoints(receipt.points)}</span>
         </p>
-      ) : null}
-      {receipt.appeal === undefined ? null : <AppealNote appeal={receipt.appeal} />}
-      {receipt.message === null ? null : <p className="loss-copy">{receipt.message}</p>}
-      {receipt.multiplier < 1 && paid && !receipt.multiplier_capped ? (
-        <p className="meta">A photo would have paid in full; a tap or no answer pays half.</p>
-      ) : null}
-      <p className="meta">Settled {formatSettleTime(receipt.settled_at)}</p>
-    </article>
+        {paid ? <div className="barcode" aria-hidden="true" /> : null}
+        {receipt.saved === null ? null : (
+          <p className="meta">
+            {receipt.saved.assumption} ({receipt.saved.basis}).
+          </p>
+        )}
+        {receipt.gemma_read === null ? null : (
+          <div className="gemma-read">
+            <p className="eyebrow leaf">
+              <Icon name="sparkle" /> Gemma&apos;s read
+            </p>
+            <p>{receipt.gemma_read.reason}</p>
+            {receipt.gemma_read.evidence.length === 0 ? null : (
+              <ul>
+                {receipt.gemma_read.evidence.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {receipt.lucky_win === true ? (
+          <p className="meta">
+            Lucky win: the recorded weather did not call for it, but the bet paid like any other
+            win.
+          </p>
+        ) : null}
+        {receipt.appeal === undefined ? null : <AppealNote appeal={receipt.appeal} />}
+        {receipt.message === null ? null : <p className="loss-copy">{receipt.message}</p>}
+        {receipt.multiplier < 1 && paid && !receipt.multiplier_capped ? (
+          <p className="meta">A photo would have paid in full; a tap or no answer pays half.</p>
+        ) : null}
+        <p className="meta">Settled {formatSettleTime(receipt.settled_at)}</p>
+      </article>
+    </>
   );
 }
 
 /**
- * "This week the sky did": net time back with both parts, water and electricity for Monday to
- * Sunday, each with the assumption behind it (AC-011.3, AC-011.5, AC-011.6).
+ * "This week the sky did": net time back, water and electricity for Monday to Sunday as one
+ * compact strip (mockup 02). Each figure's assumption stays one tap away under "How we count"
+ * (AC-011.3, AC-011.5, AC-011.6): both parts of net time, the dates and the assumption behind
+ * every won bet.
  */
 export function WeekStrip({
   totals,
@@ -213,13 +220,10 @@ export function WeekStrip({
   const betsText = `${totals.bets} ${totals.bets === 1 ? "bet" : "bets"}`;
   return (
     <section className="week" aria-labelledby="week-title">
-      <h2 id="week-title" className="section-title">
+      <h2 id="week-title" className="week-title">
         This week the sky did
       </h2>
-      <p className="meta">
-        Monday {from} to Sunday {to}
-      </p>
-      <dl className="stat-tiles">
+      <dl className="week-figures">
         <div>
           <dt>Net time back</dt>
           <dd>{formatNetDuration(totals.net_time_s)}</dd>
@@ -233,21 +237,27 @@ export function WeekStrip({
           <dd>{formatKwh(totals.electricity_kwh)}</dd>
         </div>
       </dl>
-      <p className="meta">
-        {formatDuration(totals.time_saved_s)} saved, minus {formatDuration(totals.app_time_s)} spent
-        on {betsText}.
-      </p>
-      {totals.assumptions.length === 0 ? (
-        <p className="meta">Won bets add their savings here, with the assumption behind each.</p>
-      ) : (
-        <ul className="assumptions">
-          {totals.assumptions.map((item) => (
-            <li key={`${item.chore_type}-${item.assumption}`} className="meta">
-              {item.assumption} ({item.basis}), {item.wins} won
-            </li>
-          ))}
-        </ul>
-      )}
+      <details className="week-notes">
+        <summary>How we count (assumptions)</summary>
+        <p className="meta">
+          Monday {from} to Sunday {to}
+        </p>
+        <p className="meta">
+          {formatDuration(totals.time_saved_s)} saved, minus {formatDuration(totals.app_time_s)}{" "}
+          spent on {betsText}.
+        </p>
+        {totals.assumptions.length === 0 ? (
+          <p className="meta">Won bets add their savings here, with the assumption behind each.</p>
+        ) : (
+          <ul className="assumptions">
+            {totals.assumptions.map((item) => (
+              <li key={`${item.chore_type}-${item.assumption}`} className="meta">
+                {item.assumption} ({item.basis}), {item.wins} won
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
     </section>
   );
 }

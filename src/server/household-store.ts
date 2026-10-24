@@ -1,4 +1,5 @@
 import { roundCoordinate } from "../domain/open-meteo.js";
+import { parsePlaceLabel } from "../domain/place-label.js";
 
 import { DEFAULT_LOCATION, householdSchema, type Household } from "./config.js";
 import type { Db } from "./db.js";
@@ -9,6 +10,7 @@ export type OnboardingState = "pending" | "completed" | "skipped";
 interface Row {
   readonly status: "completed" | "skipped";
   readonly profile: string | null;
+  readonly place_label: string | null;
 }
 
 /**
@@ -33,7 +35,7 @@ export class HouseholdStore {
 
   private row(): Row | undefined {
     return this.db
-      .prepare<[], Row>("SELECT status, profile FROM household_profile WHERE id = 1")
+      .prepare<[], Row>("SELECT status, profile, place_label FROM household_profile WHERE id = 1")
       .get();
   }
 
@@ -64,6 +66,15 @@ export class HouseholdStore {
     return parsed.data;
   }
 
+  /**
+   * The optional place label (AC-026.3), or null. It is kept apart from `current()` on purpose:
+   * the household object feeds savings, the weather location and prompts, and the label must
+   * reach none of them. Only the board header and the form read it.
+   */
+  placeLabel(): string | null {
+    return this.row()?.place_label ?? null;
+  }
+
   /** What the form starts from: the answers or the baseline, location filled and rounded (2 decimals). */
   forForm(): Household {
     const household = this.current();
@@ -77,8 +88,11 @@ export class HouseholdStore {
     };
   }
 
-  /** Stores the answers; the location is kept at neighbourhood level (2 decimals, AC-014.1). */
-  save(profile: Household): void {
+  /**
+   * Stores the answers; the location is kept at neighbourhood level (2 decimals, AC-014.1). The
+   * place label is stored beside them; it must already be valid (`parsePlaceLabel`).
+   */
+  save(profile: Household, placeLabel: string | null = null): void {
     const stored: Household = {
       ...profile,
       ...(profile.location === undefined
@@ -90,21 +104,39 @@ export class HouseholdStore {
             },
           }),
     };
-    this.write("completed", JSON.stringify(stored));
+    this.write("completed", JSON.stringify(stored), placeLabel);
   }
 
   /** Records that the person skipped; the config baseline stays in force (AC-024.2). */
   skip(): void {
-    this.write("skipped", null);
+    this.write("skipped", null, null);
   }
 
-  private write(status: Row["status"], profile: string | null): void {
+  private write(status: Row["status"], profile: string | null, placeLabel: string | null): void {
     this.db
       .prepare(
-        `INSERT INTO household_profile (id, status, profile, updated_at) VALUES (1, ?, ?, ?)
+        `INSERT INTO household_profile (id, status, profile, place_label, updated_at)
+         VALUES (1, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET status = excluded.status, profile = excluded.profile,
-           updated_at = excluded.updated_at`,
+           place_label = excluded.place_label, updated_at = excluded.updated_at`,
       )
-      .run(status, profile, this.now());
+      .run(status, profile, placeLabel, this.now());
   }
+}
+
+/**
+ * Sets or clears the place label of the stored profile (AC-026.3), for the sample-data demo
+ * (`sib demo` seeds a synthetic household, then a synthetic label). It changes the row that
+ * exists: without a profile row there is nothing to attach it to, and it returns false. A label
+ * that is not valid is refused with the reason, and nothing is stored.
+ */
+export function applyPlaceLabel(db: Db, label: string | null): boolean {
+  const parsed = parsePlaceLabel(label);
+  if (!parsed.ok) {
+    throw new Error(parsed.problem);
+  }
+  return (
+    db.prepare("UPDATE household_profile SET place_label = ? WHERE id = 1").run(parsed.label)
+      .changes === 1
+  );
 }

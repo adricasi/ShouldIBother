@@ -1,4 +1,84 @@
-/* The household form (REQ-024): 44 px targets, one column at phone width. */
+/* Onboarding (mockup 01, REQ-024): the sample race board, outdoor tiles, place row, 44 px targets. */
+.onboarding-screen {
+  padding-top: 0;
+}
+
+/* Full width at the top, like the mockup: the screen's own gutter is cancelled out. */
+.race-board {
+  margin: 0 calc(var(--space-5) * -1);
+  padding: var(--space-6) var(--space-5) var(--space-5);
+  background: var(--color-ink);
+  color: var(--color-card);
+  border-radius: 0 0 var(--radius-sheet) var(--radius-sheet);
+}
+
+.race-title {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-sun);
+}
+
+.race-board ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.race-board li {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.race-name {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-display);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.race-leader {
+  flex: 1;
+  min-width: var(--space-4);
+  margin-bottom: var(--space-2);
+  border-bottom: 2px dotted var(--color-ink-3);
+}
+
+.race-odds {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-ink-2);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-body);
+  color: var(--color-sun);
+}
+
+.race-odds.none {
+  color: var(--color-line);
+}
+
+.onboarding-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.headline {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--text-display);
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
 .onboarding {
   display: grid;
   gap: var(--space-4);
@@ -6,37 +86,174 @@
 
 .onboarding fieldset {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border: var(--border-hair) solid var(--color-ink);
-  border-radius: var(--radius-sm);
-  background: var(--color-card);
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
 .onboarding legend {
+  padding: 0;
+  margin-bottom: var(--space-3);
   font-weight: 700;
-  padding: 0 var(--space-2);
 }
 
-.onboarding .choice {
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.choice-stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* A tile or a row you tick. The real checkbox or radio lies over the whole surface, so the target
+   is the surface and the focus ring is the input's own. */
+.choice {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  padding: var(--space-3);
+  background: var(--color-card);
+  border: var(--border-hair) solid var(--color-line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.choice input {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+.choice.tile {
+  flex-direction: column;
+  padding: var(--space-4);
+}
+
+.choice.row {
+  align-items: center;
+}
+
+.choice:has(input:checked) {
+  background: var(--color-leaf-soft);
+  border-color: var(--color-leaf);
+  box-shadow: inset 0 0 0 var(--border-hair) var(--color-leaf);
+}
+
+.choice-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  box-sizing: content-box;
+  padding: var(--space-2);
+  background: var(--color-paper);
+  border-radius: var(--radius-sm);
+}
+
+.choice:has(input:checked) .choice-icon {
+  background: var(--color-card);
+}
+
+.choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.choice-title {
+  font-weight: 700;
+}
+
+.choice-caption {
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
+}
+
+/* ink-3-text is 4.39:1 on leaf-soft; a ticked tile's caption uses ink-2. */
+.choice:has(input:checked) .choice-caption {
+  color: var(--color-ink-2);
+}
+
+.choice-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-left: auto;
+  border: var(--border-strong) solid var(--color-ink-3);
+  border-radius: var(--radius-pill);
+  color: transparent;
+}
+
+.choice.tile .choice-mark {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.choice:has(input:checked) .choice-mark {
+  background: var(--color-leaf);
+  border-color: var(--color-leaf);
+  color: var(--color-card);
+}
+
+.place-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: var(--tap-min);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-card);
+  border-radius: var(--radius-md);
 }
 
-.onboarding .choice input {
-  width: var(--tap-min);
-  height: var(--tap-min);
-  flex: none;
-  margin: 0;
-  accent-color: var(--color-leaf);
+.place-row .icon {
+  color: var(--color-leaf);
+}
+
+.place-text {
+  flex: 1;
+  font-weight: 700;
+}
+
+.place-coords {
+  display: block;
+  font-weight: 400;
+  font-size: var(--text-small);
+  color: var(--color-ink-3-text);
+}
+
+.place-change {
+  min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 0;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--text-body);
+  color: var(--color-leaf);
+  cursor: pointer;
 }
 
 .onboarding .coordinates {
   display: grid;
   gap: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .onboarding .coordinates input {
@@ -51,13 +268,13 @@
   padding: var(--space-2) var(--space-3);
 }
 
-/* The card on Today while the household question is open (REQ-024). */
+/* The card on Today while the household question is open and the app is already in use (REQ-024). */
 .onboarding-prompt {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: var(--border-strong) solid var(--color-ink);
-  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  border: var(--border-hair) solid var(--color-line);
+  border-radius: var(--radius-lg);
   background: var(--color-card);
 }
 
