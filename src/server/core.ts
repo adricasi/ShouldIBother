@@ -239,7 +239,8 @@ export function createCore(deps: CoreDeps): Core {
       // Hosted mode without `SIB_DO_VISION`: no upload is read, so no photo reaches the model and
       // no inspector runs (AC-032.4). The check comes before the body is read.
       app.addHook("onRequest", (request) => {
-        if (request.isMultipart()) {
+        // The multipart parser marks a request only after this hook, so read the header.
+        if ((request.headers["content-type"] ?? "").toLowerCase().startsWith("multipart/")) {
           throw new HttpError(
             409,
             "Photos are off on this server",

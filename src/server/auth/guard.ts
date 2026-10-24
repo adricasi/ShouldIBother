@@ -285,29 +285,41 @@ function registerHostedPairing(app: FastifyInstance, deps: GuardDeps, hosted: Ho
   asset(PAIR_PAGE_PATHS.script, "text/javascript", PAIR_PAGE_SCRIPT);
   asset(PAIR_PAGE_PATHS.style, "text/css", PAIR_PAGE_STYLE);
 
-  app.post("/pair", { config: { public: true }, bodyLimit: 1024 }, (request, reply) => {
-    const wait = hosted.pairLimiter.take(request.ip);
-    if (wait > 0) {
-      return problem(reply, 429, "Too Many Requests", undefined, { "retry-after": String(wait) });
-    }
-    const body = pairBody.safeParse(request.body);
-    const session = body.success ? store.pair(body.data.token) : null;
-    if (session === null) {
-      limiter.recordFailure(request.ip);
-      return problem(
-        reply,
-        401,
-        "Unauthorized",
-        `This pairing link is invalid, expired or used up. ${HOSTED_PAIR_HINT}`,
+  app.post(
+    "/pair",
+    {
+      config: { public: true },
+      bodyLimit: 1024,
+      // Before the body is parsed, so a flood of broken bodies counts as well.
+      onRequest: (request, reply) => {
+        const wait = hosted.pairLimiter.take(request.ip);
+        return Promise.resolve(
+          wait > 0
+            ? problem(reply, 429, "Too Many Requests", undefined, { "retry-after": String(wait) })
+            : undefined,
+        );
+      },
+    },
+    (request, reply) => {
+      const body = pairBody.safeParse(request.body);
+      const session = body.success ? store.pair(body.data.token) : null;
+      if (session === null) {
+        limiter.recordFailure(request.ip);
+        return problem(
+          reply,
+          401,
+          "Unauthorized",
+          `This pairing link is invalid, expired or used up. ${HOSTED_PAIR_HINT}`,
+        );
+      }
+      print(
+        `Paired a device at ${formatMadridTime(store.now())} from ${forConsole(request.ip, 64)} (user agent: ${forConsole(request.headers["user-agent"])})`,
       );
-    }
-    print(
-      `Paired a device at ${formatMadridTime(store.now())} from ${forConsole(request.ip, 64)} (user agent: ${forConsole(request.headers["user-agent"])})`,
-    );
-    return reply
-      .header("set-cookie", sessionCookie(session.sessionId, SESSION_TTL_MS / 1000, true))
-      .header("cache-control", "no-store")
-      .code(204)
-      .send();
-  });
+      return reply
+        .header("set-cookie", sessionCookie(session.sessionId, SESSION_TTL_MS / 1000, true))
+        .header("cache-control", "no-store")
+        .code(204)
+        .send();
+    },
+  );
 }

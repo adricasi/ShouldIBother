@@ -775,6 +775,7 @@ interface ModelClient {
 |---|---|---|---|
 | `OllamaClient` | `src/server/model/ollama.ts`, wire format in `ollama-wire.ts` (**UNVERIFIED**) | All jobs except voice | `POST /api/chat` with `stream: false`, `format` = the job's JSON schema, `tools`, `keep_alive`, `options.temperature` (0 by default). Health is `GET /api/tags` and also learns the model digest. |
 | `LlamaCppAudioClient` | `llamacpp.ts`, `llamacpp-wire.ts` | `listener-audio` only | OpenAI-style `POST /v1/chat/completions` with the WAV as an `input_audio` part and a `response_format` JSON schema. Takes no tools. Health is `GET /health`. **Wire format UNVERIFIED.** |
+| `DigitalOceanClient` | `digitalocean.ts`, wire format in `digitalocean-wire.ts` (**UNVERIFIED**) | All jobs in hosted mode (`SIB_MODE=hosted`, REQ-032) | OpenAI-compatible `POST /v1/chat/completions` at `https://inference.do-ai.run` (also **UNVERIFIED**; the only host it may call) with `Authorization: Bearer $SIB_DO_INFERENCE_KEY`, model `$SIB_DO_MODEL`, `response_format` = the job's JSON schema, `tools` in native tool use. Images go as `image_url` parts only with `SIB_DO_VISION=1`; audio never. Health is `GET /v1/models`. The key is redacted from every error, and upstream error text is dropped. Wrapped in `CappedModelClient` (`capped.ts`), the daily call cap. `sib hosted-check` verifies the assumptions against the real service. |
 | `FakeModelClient` | `fake.ts` | Tests, CI, `npm run dev` (`SIB_FAKE_MODEL=1`), `sib backtest --fake-model`, and `sib demo` (AC-029.4) | Returns `test/fixtures/gemma/<job>/<scenario>.json`. A fixture is one response or a script of `steps`, one per call (a tool call, then an answer; or an invalid answer, then a valid retry). Keyed by job and scenario, never by the input. |
 
 **Choosing the client** (`src/server/model/select.ts`). The fake model is chosen **only** when
@@ -788,6 +789,17 @@ settlements wait, and everything recovers when Ollama appears. `jobModels` can o
 per job: the llama.cpp client for `listener-audio` (flag `voice`) and the fine-tuned Ollama client for
 `bookmaker` (flag `finetunedBookmaker`). The queue, retry budget and deadline stay the runner's
 whichever client answers.
+
+**Hosted mode** (`SIB_MODE=hosted`): `selectModel` builds `DigitalOceanClient` behind the daily cap instead
+of Ollama and needs no model tag; `SIB_FAKE_MODEL=1` still wins. Tool use comes from `SIB_TOOL_USE`
+(default `injected`; the same values as `gemma.toolUse`, which it overrides), and in `injected` mode
+the tool turns of the history go to the service as plain text turns, so it is never asked for tool
+calling. Voice and `finetunedBookmaker` are forced off. The cap counts chat-completions requests per
+Madrid day in `model_calls` (migration 0019): from 80 % only `judge` verdicts call Gemma (the other
+jobs fail with `daily_limit`, which cards show as "Gemma's daily limit · rule odds"), at the cap the
+verdicts wait like Gemma offline, and after the reset waiting verdicts go first. The decision rows
+keep the model ID the service reports and no digest. Hosted-mode Gemma is not E4B and never the
+fine-tune, so compare its decisions apart from home mode's (filter by `model`).
 
 **One GPU, one queue.** Jobs run one at a time through a single FIFO queue that holds at most 8
 (queued or running). A ninth is refused with 503 "Gemma is busy" **before any state changes**: listener

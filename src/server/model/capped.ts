@@ -125,10 +125,10 @@ export class CappedModelClient implements ModelClient {
     }
     this.options.db
       .prepare(
-        `INSERT INTO model_calls (day, calls, judge_calls) VALUES (?1, 1, ?2)
-         ON CONFLICT (day) DO UPDATE SET calls = calls + 1, judge_calls = judge_calls + ?2`,
+        `INSERT INTO model_calls (day, calls, judge_calls) VALUES (@day, 1, @judge)
+         ON CONFLICT (day) DO UPDATE SET calls = calls + 1, judge_calls = judge_calls + @judge`,
       )
-      .run(day, verdict ? 1 : 0);
+      .run({ day, judge: verdict ? 1 : 0 });
     this.log({ event: "model-call", job: request.job, callsToday: row.calls + 1, cap });
     return this.inner.chat(request);
   }

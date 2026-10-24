@@ -68,6 +68,8 @@ export interface StartOptions {
    * repository's `config/` by default.
    */
   readonly configDir?: string;
+  /** The `fetch` of the model client; tests point it at a fake inference server. */
+  readonly fetch?: typeof fetch;
 }
 
 export interface RunningServer {
@@ -119,6 +121,7 @@ export async function startServer(
       voice: flags.voice,
       env,
       finetunedBookmaker: flags.finetunedBookmaker,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(hosted === undefined
         ? {}
         : {
