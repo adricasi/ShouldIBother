@@ -252,9 +252,9 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 - [x] T-032: Sample-data demo — AC-029.4 · Depends on: T-009, T-016, T-022–T-027 · Scope: `sib demo` with a temporary seeded data folder, the fake model and weather, an in-memory flag override and a "Sample data" banner · Done when: tests prove the live data folder is never opened, the seed covers every screen (Today, Slips groups, receipt, Score with calibration and achievements), the banner and the Score "SAMPLE" marks show on every screen, `sib export` refuses in demo mode, seeded rows carry `fake-demo`; e2e screenshot run in demo mode.
 - [x] T-033: Prototype extras — AC-011.7, AC-026.3; design.md Round 3 items 13–15 · Depends on: T-018, T-025, T-027 (and the Figma fidelity pass, design.md Round 3 item 12) · The place label shows only while `onboarding` and `splitFlap` are on · Scope: sloth mascot SVG on the receipt and Score; savings estimate line on slips; place label (migration 0015) in onboarding and on the board · Done when: tests for AC-011.7 and AC-026.3, migration 0015 tested on a seeded fixture database, axe clean, e2e green.
 - [x] T-034: Flags CLI and presentation preset — AC-029.3 · Depends on: T-002 · Scope: `sib flags` and `config/flags.presets.json`; e2e specs pin their own flags instead of reading the committed defaults · Done when: tests for AC-029.3; README "Presentation" section lists the preset and the laptop checks before `voice` and `finetunedBookmaker`.
-
 - [x] T-035: Gemma surfaces — AC-028.1–AC-028.4, AC-008.6 (lucky-win share on Score); design.md Round 3 item 17 · Depends on: T-016, T-033 · Scope: odds source labels, side-by-side bands on disagreement, "How Gemma decided" disclosure, Today Gemma status line, Score rule-vs-Gemma headline and lucky-win share; named tests for AC-013.6, AC-015.1 and AC-016.1 (covered but unnamed) · Done when: tests for AC-028.3, AC-028.4 and the named gap tests, axe clean, e2e green.
 - [x] T-036: Fine-tune scripts (agent part of T-012) — AC-019.2 code, NFR-012 · Depends on: T-031 · Scope: `training/` QLoRA script (TRL + PEFT, fixed seed, pinned), merge, GGUF conversion and Ollama Modelfile steps as scripts with a dry-run mode; ruff + pytest for config and dataset loading only (no model, no GPU in CI) · Done when: CI `training` job green; the builder runs it in T-012.
+- [x] T-037: Location picker — AC-024.3, AC-024.4, AC-014.7; design.md Round 3 item 18 · Depends on: T-025, T-033 · Scope: "Use my location" in a secure context and an Open-Meteo geocoding place search proxied by the laptop, behind `onboarding` · Done when: tests for AC-024.3 (rounding before send, hidden without a secure context) and AC-024.4 (allowlist, no logging or storage of the query, rate limit, result validation), axe clean, e2e green.
 
 ## Coverage check
 | Requirement | Tasks |
@@ -274,7 +274,7 @@ Taken in this order by agent W2 from Fri night; anything not merged by Sat 14:00
 | REQ-018 | T-011, T-015, T-019 |
 | REQ-019 | T-011, T-031, T-036, T-012, T-014 |
 | REQ-020 | T-016 |
-| REQ-021–REQ-027 | T-022–T-028 (AC-026.3: T-033) |
+| REQ-021–REQ-027 | T-022–T-028 (AC-026.3: T-033; AC-024.3, AC-024.4: T-037) |
 | REQ-028 | T-006, T-007, T-009, T-010, T-035 |
 | REQ-029 | T-002, T-032, T-034 |
 | NFR-001 | T-002, T-003, T-010, T-020 |

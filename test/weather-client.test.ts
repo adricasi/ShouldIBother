@@ -270,10 +270,11 @@ describe("AC-014.7: only the Open-Meteo hosts of the allowlist are called", () =
       sleep: () => Promise.resolve(),
     });
 
-  it("the allowlist is the four hosts of the design", () => {
+  it("the allowlist is the five hosts of the design, the geocoding host for the place search included", () => {
     expect([...OPEN_METEO_ALLOWED_HOSTS].sort()).toEqual([
       "api.open-meteo.com",
       "archive-api.open-meteo.com",
+      "geocoding-api.open-meteo.com",
       "historical-forecast-api.open-meteo.com",
       "previous-runs-api.open-meteo.com",
     ]);
@@ -293,7 +294,10 @@ describe("AC-014.7: only the Open-Meteo hosts of the allowlist are called", () =
     "https://u:p@api.open-meteo.com/v1/forecast",
     "https://api.open-meteo.com:8443/v1/forecast",
     "https://open-meteo.com/",
-    "https://geocoding-api.open-meteo.com/v1/search",
+    "http://geocoding-api.open-meteo.com/v1/search",
+    "https://geocoding-api.open-meteo.com.evil.example/v1/search",
+    "https://air-quality-api.open-meteo.com/v1/air-quality",
+    "https://nominatim.openstreetmap.org/search",
     "https://127.0.0.1:11434/api/chat",
     "file:///etc/passwd",
   ])("refuses %s before any request, and spends no budget", async (url) => {
@@ -519,5 +523,79 @@ describe("T-027: the weather board reads the cached forecast without a request (
     expect(weather.latestForecast()).toBeDefined();
     clock.advance(1);
     expect(weather.latestForecast()).toBeUndefined();
+  });
+});
+
+describe("NFR-006: an answer is read only up to 256 KB", () => {
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=1";
+  const http = (fetchImpl: typeof fetch, extra: { maxResponseBytes?: number } = {}) =>
+    new OpenMeteoHttp({
+      counter: new PersistentCallCounter(db, clock.now),
+      fetch: fetchImpl,
+      sleep: () => Promise.resolve(),
+      ...extra,
+    });
+  const json = (body: unknown, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), { headers });
+
+  it("accepts a normal answer, and one right at the limit", async () => {
+    await expect(http(() => Promise.resolve(json({ ok: true }))).getJson(url)).resolves.toEqual({
+      ok: true,
+    });
+    const padded = JSON.stringify({ pad: "x".repeat(1000) });
+    const exact = http(() => Promise.resolve(new Response(padded)), {
+      maxResponseBytes: padded.length,
+    });
+    await expect(exact.getJson(url)).resolves.toBeDefined();
+  });
+
+  it("refuses an answer that declares more than 256 KB before reading it, as a format error", async () => {
+    let read = false;
+    const big = new Response(
+      new ReadableStream(
+        {
+          pull(controller) {
+            read = true;
+            controller.enqueue(new TextEncoder().encode("{}"));
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+      { headers: { "content-length": String(300 * 1024) } },
+    );
+    await expect(http(() => Promise.resolve(big)).getJson(url)).rejects.toBeInstanceOf(
+      WeatherUnavailableError,
+    );
+    expect(read).toBe(false);
+  });
+
+  it("refuses an answer that grows past 256 KB without declaring it, and does not retry", async () => {
+    let calls = 0;
+    const chunk = new TextEncoder().encode(`"${"y".repeat(60 * 1024)}"`);
+    const streaming = (): Response =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.enqueue(chunk); // never ends
+          },
+        }),
+      );
+    const client = http(() => {
+      calls += 1;
+      return Promise.resolve(streaming());
+    });
+    await expect(client.getJson(url)).rejects.toThrow(/more than 256 KB/);
+    expect(calls).toBe(1);
+  });
+
+  it("a smaller limit applies to the place search and the forecast alike", async () => {
+    const small = http(() => Promise.resolve(json({ pad: "z".repeat(500) })), {
+      maxResponseBytes: 100,
+    });
+    await expect(small.getJson(url)).rejects.toBeInstanceOf(WeatherUnavailableError);
+    await expect(
+      small.getJson("https://geocoding-api.open-meteo.com/v1/search?name=x"),
+    ).rejects.toBeInstanceOf(WeatherUnavailableError);
   });
 });

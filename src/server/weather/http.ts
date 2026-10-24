@@ -13,6 +13,8 @@ export const DAILY_CALL_BUDGET = 1000;
 export const ATTEMPT_TIMEOUT_MS = 2000;
 export const REQUEST_DEADLINE_MS = 5000;
 export const MAX_ATTEMPTS = 3;
+/** No answer of Open-Meteo is read past this size: a forecast is about 10 KB, a place list less. */
+export const MAX_RESPONSE_BYTES = 256 * 1024;
 const BACKOFF_BASE_MS = 200;
 const BACKOFF_JITTER_MS = 100;
 
@@ -46,6 +48,10 @@ export interface OpenMeteoHttpOptions {
   readonly allowedHosts?: readonly string[];
   readonly attemptTimeoutMs?: number;
   readonly deadlineMs?: number;
+  /** Tries per request (3 by default); the place search makes one, so a search costs one call. */
+  readonly maxAttempts?: number;
+  /** Largest answer read, in bytes (256 KB by default); a larger one is refused. */
+  readonly maxResponseBytes?: number;
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -56,6 +62,38 @@ function isRetryableStatus(status: number): boolean {
 function retryAfterMs(response: Response): number | undefined {
   const seconds = Number(response.headers.get("retry-after"));
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+}
+
+/**
+ * The body as text, or undefined when it is longer than `limit` bytes: refused by its declared
+ * length before a byte is read, and by the count while reading, so a server that lies or sends no
+ * length still cannot fill the memory.
+ */
+async function readCapped(response: Response, limit: number): Promise<string | undefined> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel();
+    return undefined;
+  }
+  if (response.body === null) {
+    return "";
+  }
+  const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      return text + decoder.decode();
+    }
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return undefined;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
 }
 
 function causeMessage(error: unknown): string {
@@ -80,6 +118,8 @@ export class OpenMeteoHttp {
   private readonly allowedHosts: readonly string[];
   private readonly attemptTimeoutMs: number;
   private readonly deadlineMs: number;
+  private readonly maxAttempts: number;
+  private readonly maxResponseBytes: number;
 
   constructor(options: OpenMeteoHttpOptions) {
     this.doFetch = options.fetch ?? fetch;
@@ -91,6 +131,8 @@ export class OpenMeteoHttp {
     this.allowedHosts = options.allowedHosts ?? OPEN_METEO_ALLOWED_HOSTS;
     this.attemptTimeoutMs = options.attemptTimeoutMs ?? ATTEMPT_TIMEOUT_MS;
     this.deadlineMs = options.deadlineMs ?? REQUEST_DEADLINE_MS;
+    this.maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS;
+    this.maxResponseBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
   }
 
   async getJson(url: string): Promise<unknown> {
@@ -102,7 +144,7 @@ export class OpenMeteoHttp {
     const remainingMs = (): number => Math.max(0, deadlineAt - performance.now());
     let failure = "no attempt was made";
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.aborted; attempt += 1) {
+    for (let attempt = 1; attempt <= this.maxAttempts && !deadline.aborted; attempt += 1) {
       let waitMs = BACKOFF_BASE_MS * 2 ** (attempt - 1) + this.random() * BACKOFF_JITTER_MS;
       const callsToday = this.counter.take();
       const startedAt = this.clock();
@@ -140,7 +182,14 @@ export class OpenMeteoHttp {
             waitMs = Math.max(waitMs, asked);
           }
         } else {
-          const body: unknown = await response.json();
+          const text = await readCapped(response, this.maxResponseBytes);
+          if (text === undefined) {
+            this.log(entry("http-error", response.status));
+            throw new WeatherUnavailableError(
+              `Open-Meteo answered more than ${this.maxResponseBytes / 1024} KB`,
+            );
+          }
+          const body = JSON.parse(text) as unknown;
           this.log(entry("ok", response.status));
           return body;
         }
@@ -161,7 +210,7 @@ export class OpenMeteoHttp {
           throw new WeatherUnavailableError(failure);
         }
       }
-      if (attempt < MAX_ATTEMPTS && !deadline.aborted) {
+      if (attempt < this.maxAttempts && !deadline.aborted) {
         await this.sleep(Math.min(waitMs, remainingMs()));
       }
     }

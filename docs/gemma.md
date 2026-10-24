@@ -62,9 +62,11 @@ WSL2 and an NVIDIA GPU of 8 GB or more); the phone is only a screen over home Wi
 What that means in the code:
 
 - **Gemma is the only model.** There is no cloud model, no analytics and no telemetry. The one call
-  that leaves the laptop at runtime is the weather lookup to Open-Meteo, restricted to four
+  that leaves the laptop at runtime is the weather lookup to Open-Meteo, restricted to five
   allowlisted hosts and rounded coordinates (`src/domain/open-meteo.ts`,
-  `src/server/weather/http.ts`; see [architecture.md](architecture.md)).
+  `src/server/weather/http.ts`; see [architecture.md](architecture.md)). The only text a person
+  types that goes there is the onboarding place search, when they press Search; it never reaches a
+  prompt or a decision.
 - **Ollama serves Gemma on 127.0.0.1 only.** `config/models.json` accepts nothing but a literal
   loopback address (`src/server/model/loopback.ts`, `src/server/model/config.ts`). Photos reach the
   model as base64 inside a request to `http://127.0.0.1:11434`.
@@ -186,7 +188,7 @@ flowchart LR
     LCPP["llama.cpp 127.0.0.1:8080\nGemma 4 audio (flag voice)"]
     FAKE["FakeModelClient\nSIB_FAKE_MODEL=1"]
   end
-  OM["Open-Meteo\n4 allowlisted hosts"]
+  OM["Open-Meteo\n5 allowlisted hosts"]
   SPA -- "HTTP + session cookie" --> AUTH --> LEDGER
   LEDGER --> CODE
   LEDGER -- "enqueue job" --> RUNNER --> CLIENT

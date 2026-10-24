@@ -11,6 +11,7 @@ import { forecastAgeLabel } from "../domain/weather.js";
 import type { Household } from "./config.js";
 import type { Db } from "./db.js";
 import { FLAG_NAMES, type Flags } from "./flags.js";
+import { geocodeRoutes } from "./geocode-routes.js";
 import { householdRoutes } from "./household-routes.js";
 import { HouseholdStore } from "./household-store.js";
 import { GemmaStatusMonitor } from "./gemma/status.js";
@@ -46,7 +47,8 @@ import type { PhotoStore } from "./photos/store.js";
 import { HttpError } from "./problem.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
 import type { ModelClient } from "./model/client.js";
-import { FORECAST_TTL_MS, type WeatherClient } from "./weather/client.js";
+import { FORECAST_TTL_MS, WeatherUnavailableError, type WeatherClient } from "./weather/client.js";
+import type { Geocoder } from "./weather/geocoding.js";
 
 export interface CoreDeps {
   readonly db: Db;
@@ -65,6 +67,11 @@ export interface CoreDeps {
    * makes its own over the same database.
    */
   readonly householdStore?: HouseholdStore;
+  /**
+   * The place search of onboarding (AC-024.4), only used while the `onboarding` flag is on.
+   * Omitted, the search answers "offline" and the typed coordinates remain.
+   */
+  readonly geocoder?: Geocoder;
   /** What one won bet saves per chore (REQ-011). */
   readonly savings: SavingsCatalogue;
   /** The photo files in the data folder (REQ-005, REQ-015). */
@@ -84,6 +91,11 @@ export interface Core {
   /** Resolves when no Gemma job is queued or running and no card is waiting on one. */
   idle(): Promise<void>;
 }
+
+/** The place search of a core built without one: always offline (the coordinates are typed). */
+const NO_GEOCODER: Geocoder = {
+  search: () => Promise.reject(new WeatherUnavailableError("no place search is configured")),
+};
 
 const quickCardBody = z.object({ chore_type: z.enum(CHORE_TYPES) }).strict();
 const captureBody = z.object({ text: z.string().trim().min(1).max(MAX_CAPTURE_CHARS) }).strict();
@@ -375,6 +387,12 @@ export function createCore(deps: CoreDeps): Core {
     // Flagged: onboarding (REQ-024) has no routes while `onboarding` is off.
     if (householdStore !== undefined) {
       await app.register(householdRoutes(householdStore));
+      await app.register(
+        geocodeRoutes({
+          geocoder: deps.geocoder ?? NO_GEOCODER,
+          now: deps.now,
+        }),
+      );
     }
     // Flagged: appeals (REQ-023) have no route while `appeals` is off.
     if (deps.flags.appeals) {

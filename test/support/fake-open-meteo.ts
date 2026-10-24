@@ -34,6 +34,21 @@ export class FakeOpenMeteo {
   nullVariables: string[] = [];
   /** True: the answer has no `daily` block even when asked (the client falls back to `is_day`). */
   omitDaily = false;
+  /**
+   * The answer of the geocoding path (`/v1/search`, UNVERIFIED name from
+   * `src/server/weather/geocoding.ts`): one synthetic place unless a test sets its own.
+   */
+  geocodeAnswer: unknown = {
+    results: [
+      {
+        name: "Gràcia",
+        admin1: "Barcelona",
+        country: "Spain",
+        latitude: 41.4012,
+        longitude: 2.1587,
+      },
+    ],
+  };
   private server: Server | undefined;
   private port = 0;
   /** The URL the client would have called, as the server saw it, per request. */
@@ -62,6 +77,10 @@ export class FakeOpenMeteo {
     this.hostsSeen.push(url.hostname);
     return fetch(`http://127.0.0.1:${this.port}${url.pathname}${url.search}`, init);
   };
+
+  get geocodeRequests(): URL[] {
+    return this.requests.filter((url) => url.pathname === "/v1/search");
+  }
 
   get forecastRequests(): URL[] {
     return this.requests.filter((url) => url.searchParams.has("forecast_days"));
@@ -105,7 +124,7 @@ export class FakeOpenMeteo {
       case "ok":
         response
           .writeHead(200, { "content-type": "application/json" })
-          .end(JSON.stringify(this.body(url)));
+          .end(JSON.stringify(url.pathname === "/v1/search" ? this.geocodeAnswer : this.body(url)));
     }
   }
 
