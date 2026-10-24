@@ -58,6 +58,8 @@ export interface JobTool {
    * a short text (public data only), or undefined to keep nothing.
    */
   readonly summarize?: (resultText: string) => string | undefined;
+  /** How many rows of the summary the decision keeps; 24 when absent (the advisor looks 72 h ahead). */
+  readonly keptRows?: number;
 }
 
 /** The tool could not run (the forecast is unavailable); a retry would not help. */
@@ -515,6 +517,7 @@ export class JobRunner {
       latencyMs,
       error: outcome.ok ? state.note : `${outcome.failure}: ${outcome.error}`,
       toolResult: state.toolResult,
+      toolResultRows: request.tool?.keptRows,
       createdAt: finished,
     });
     const facts: JobFacts = {

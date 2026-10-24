@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ADVICE_CHORES, isAdviceChore, type AdviceChore } from "../../domain/advice.js";
 import { CHORES, type ChoreType } from "../../domain/chores.js";
 import { madridParts } from "../../domain/time.js";
 import type { ForecastHour } from "../../domain/weather.js";
@@ -40,7 +41,7 @@ export const safetyOutputSchema = z
 export type SafetyOutput = z.infer<typeof safetyOutputSchema>;
 
 export interface SafetyInput {
-  readonly chore: ChoreType;
+  readonly chore: ChoreType | AdviceChore;
   /** What the person wrote about the chore; untrusted. */
   readonly label: string;
   readonly nowMs: number;
@@ -60,7 +61,9 @@ function localTime(epochMs: number): string {
 /** The data block of the safety prompt: the chore, the person's words and the window's forecast. */
 export function safetyUserMessage(input: SafetyInput): string {
   return untrustedBlock({
-    chore: CHORES[input.chore].judgeName,
+    chore: isAdviceChore(input.chore)
+      ? ADVICE_CHORES[input.chore].judgeName
+      : CHORES[input.chore].judgeName,
     chore_type: input.chore,
     person_wrote: input.label,
     now_europe_madrid: localTime(input.nowMs),

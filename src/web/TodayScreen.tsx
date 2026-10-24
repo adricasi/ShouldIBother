@@ -4,6 +4,7 @@ import { PLANNER_CHIP, type Card, type Receipt, type Today } from "./api.js";
 import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
 import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
+import { AdviceSlip } from "./AdviceParts.js";
 import { PlanDays, PlannerSlip, type PlannerActions } from "./PlannerParts.js";
 import { BandsSideBySide, HowGemmaDecided } from "./GemmaParts.js";
 import { formatOdds, formatPoints, formatSettleTime } from "./format.js";
@@ -220,16 +221,27 @@ function CardSlip({
   const plan = card.laundry_plan ?? null;
   if (card.kind === "alert") {
     // AC-012.1: a "Do it now" alert has a reason and no bet action.
+    // An advice card the safety checks turned into an alert is not "do it now": it is not safe.
+    const notSafe = card.advice_alert === true;
     return (
-      <article className="slip alert" aria-label={`${card.title}, do it now`}>
+      <article
+        className="slip alert"
+        aria-label={`${card.title}, ${notSafe ? "not safe today" : "do it now"}`}
+      >
         <p className="eyebrow">
           <Icon name="alert" /> Lazy Bookie · Safety
         </p>
-        <h3>Do it now: {card.title}</h3>
+        <h3>
+          {notSafe ? "Not safe today" : "Do it now"}: {card.title}
+        </h3>
         <p role="alert">{card.alert_reason}</p>
         <p className="meta">The weather is too risky to bet on this one.</p>
       </article>
     );
+  }
+  if (card.advice != null) {
+    // An advice card (REQ-031): Gemma's advice or the rule's, no bet.
+    return <AdviceSlip card={card} advice={card.advice} busy={busy} onRetry={onRetry} />;
   }
   if (plan !== null && quote === null) {
     // Laundry planner advice (AC-021.1 to AC-021.3): Wash today, No good day, or a question.

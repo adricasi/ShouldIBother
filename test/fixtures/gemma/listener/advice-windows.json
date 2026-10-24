@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: one advice chore (windows_clean).",
+  "content": {
+    "chores": [
+      {
+        "label": "clean the windows",
+        "chore_type": "windows_clean"
+      }
+    ]
+  }
+}

@@ -54,6 +54,9 @@ function assertCardTakesPhoto(db: Db, cardId: number): CardRow {
   if (card.chore_type === LAUNDRY_PLAN) {
     throw new HttpError(409, "No photo on this card", "The laundry planner does not take a photo.");
   }
+  if (card.advice !== null) {
+    throw new HttpError(409, "No photo on this card", "An advice card does not take a photo.");
+  }
   if (isRainChore(card.chore_type)) {
     // The inspector's observations (soil, leaves, laundry) do not fit these chores (REQ-030).
     throw new HttpError(

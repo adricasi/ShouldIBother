@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: one advice chore (lawn_feed).",
+  "content": {
+    "chores": [
+      {
+        "label": "feed the lawn",
+        "chore_type": "lawn_feed"
+      }
+    ]
+  }
+}

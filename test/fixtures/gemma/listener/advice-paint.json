@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: one advice chore (outdoor_paint).",
+  "content": {
+    "chores": [
+      {
+        "label": "varnish the garden bench",
+        "chore_type": "outdoor_paint"
+      }
+    ]
+  }
+}

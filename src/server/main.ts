@@ -110,8 +110,11 @@ export async function startServer(
           location: () => (householdStore?.current() ?? household).location ?? DEFAULT_LOCATION,
           log: (entry) => appRef?.log.info(entry),
           requestSunset: flags.laundryTonight,
-          // The planner scores four days (REQ-021); with it off the request is what it was.
-          ...(flags.laundryPlanner ? { forecastDays: PLANNER_FORECAST_DAYS } : {}),
+          // The planner scores four days (REQ-021) and the advisor looks 72 hours ahead (REQ-031);
+          // with both off the request is what it was.
+          ...(flags.laundryPlanner || flags.adviceCards
+            ? { forecastDays: PLANNER_FORECAST_DAYS }
+            : {}),
         });
     // The onboarding place search (AC-024.4): synthetic places with fake weather, so the demo and
     // the e2e run need no network; otherwise Open-Meteo geocoding, counted like every other call.

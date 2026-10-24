@@ -1,0 +1,23 @@
+{
+  "description": "Synthetic: calm weather, sweep now.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "do_now",
+        "reason": "Gusts stay under 25 km/h for the next 24 hours, so the leaves will stay put."
+      }
+    }
+  ]
+}

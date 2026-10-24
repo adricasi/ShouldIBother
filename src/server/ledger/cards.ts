@@ -17,6 +17,7 @@ import { stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { cardPhotoView } from "./photo-view.js";
 import { launchNewCardJobs } from "./gemma-cards.js";
+import { adviceExpiresAt, withAdvice } from "./advice.js";
 import { withPlan } from "./laundry-plan.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
@@ -296,11 +297,15 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
     throw new HttpError(404, "Card not found");
   }
   const quote = latestQuote(deps, cardId);
-  if (card.kind === "weather" && quote === undefined) {
+  if (card.kind === "weather" && quote === undefined && card.advice === null) {
     throw new HttpError(404, "Card not found");
   }
   // An alert has no odds, even if it began as a weather card (its old rule quote stays stored).
   const table = bandTable(deps.rules);
+  if (card.advice !== null) {
+    // An advice card (REQ-031) has no quote and no bet: only the advice part.
+    return withAdvice(deps, card, cardView(card, undefined, table), deps.now());
+  }
   return withPlan(
     card,
     withCardFacts(
@@ -335,7 +340,12 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
   const now = deps.now();
   const views: CardView[] = [];
   for (const card of cards) {
-    if (card.kind === "weather") {
+    if (card.kind === "weather" && card.advice !== null) {
+      // Advice leaves Today when its window is over (72 hours after it was made for "no window").
+      if (adviceExpiresAt(card, deps.adviceRules) > now) {
+        views.push(withAdvice(deps, card, cardView(card, undefined, table), now));
+      }
+    } else if (card.kind === "weather") {
       const quote = latestQuote(deps, card.id);
       if (quote !== undefined && quote.settle_at > now) {
         views.push(
@@ -352,7 +362,11 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
         );
       }
     } else if (card.created_at + QUIET_CARD_TTL_MS > now) {
-      views.push(withPlan(card, cardView(card, undefined, table), table, now));
+      views.push(
+        card.advice === null
+          ? withPlan(card, cardView(card, undefined, table), table, now)
+          : withAdvice(deps, card, cardView(card, undefined, table), now),
+      );
     }
   }
   return views;

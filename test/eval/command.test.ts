@@ -40,7 +40,7 @@ async function photosFor(job: (typeof EVAL_JOBS)[number], path?: string): Promis
 }
 
 describe("T-010: sib eval on a model that answers correctly (exit 0)", () => {
-  it.each(["listener", "bookmaker", "safety", "laundry-planner", "judge"] as const)(
+  it.each(["listener", "bookmaker", "safety", "laundry-planner", "judge", "advisor"] as const)(
     "%s: all 20 committed cases are valid, the report is written and the exit code is 0",
     async (job) => {
       const model = new EchoModel();
@@ -698,7 +698,7 @@ describe("sib eval: bad input is named before the model is asked", () => {
       const { code, output } = await runEvalCli(args, depsFor(new EchoModel()));
       expect(code).toBe(1);
       expect(output).toContain(
-        "Usage: sib eval <listener|bookmaker|inspector|judge|safety|laundry-planner>",
+        "Usage: sib eval <listener|bookmaker|inspector|judge|safety|laundry-planner|advisor>",
       );
     }
   });

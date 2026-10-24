@@ -1,3 +1,4 @@
+import type { AdviceRules } from "../domain/advice.js";
 import type { RulesConfig } from "../domain/rules/index.js";
 import { migrate, openDatabase } from "../server/db.js";
 import { JobRunner, type RunnerOptions } from "../server/gemma/runner.js";
@@ -26,6 +27,8 @@ export interface RunEvalOptions {
   /** The same runner settings the live app uses: tool use mode, answer mode, limits. */
   readonly runner: Pick<RunnerOptions, "toolUse" | "answerMode" | "callTimeoutMs" | "deadlineMs">;
   readonly rules: RulesConfig;
+  /** The advice rules; only the advisor job reads them. */
+  readonly adviceRules?: AdviceRules;
   /** Staged photos by file name, already through the app's photo pipeline. */
   readonly photos: ReadonlyMap<string, ProcessedPhoto>;
   /** Called as each case finishes, for progress output. */
@@ -56,6 +59,7 @@ export async function runEval(options: RunEvalOptions): Promise<CaseRun[]> {
       log,
       db,
       rules: options.rules,
+      ...(options.adviceRules === undefined ? {} : { adviceRules: options.adviceRules }),
       photo: (name: string) => {
         const photo = options.photos.get(name);
         if (photo === undefined) {

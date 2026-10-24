@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { CHORE_TYPES } from "../domain/chores.js";
 import type { SavingsCatalogue } from "../domain/savings.js";
+import type { AdviceRules } from "../domain/advice.js";
 import type { RulesConfig } from "../domain/rules/index.js";
 import { ATTRIBUTION } from "../domain/open-meteo.js";
 import { forecastAgeLabel } from "../domain/weather.js";
@@ -29,6 +30,7 @@ import {
   resumeUnguardedCards,
   retryCard,
 } from "./ledger/gemma-cards.js";
+import { adviceCardId, retryAdvice } from "./ledger/advice.js";
 import { answerPlannerQuestion, plannerCardId, retryPlanner } from "./ledger/laundry-plan.js";
 import { laundryPlanRoutes } from "./ledger/laundry-plan-routes.js";
 import { sweepOrphanPhotos } from "./ledger/photos.js";
@@ -37,6 +39,7 @@ import { pointsTotal } from "./ledger/points.js";
 import { getReceipt } from "./ledger/receipt.js";
 import { cashOutBet, runRescueChecks } from "./ledger/rescue.js";
 import { backfillSavingsSnapshots, weekSavings } from "./ledger/savings.js";
+import { loadAdviceRules } from "./advice-rules.js";
 import { scoreRoutes } from "./ledger/score-routes.js";
 import { Settler, type SettleOutcome } from "./ledger/settle.js";
 import { getSlips } from "./ledger/slips.js";
@@ -56,6 +59,8 @@ export interface CoreDeps {
   readonly weather: WeatherClient;
   readonly model: ModelClient;
   readonly rules: RulesConfig;
+  /** The advice cards' fixed thresholds (`config/advice-rules.json`); loaded from the file when omitted. */
+  readonly adviceRules?: AdviceRules;
   /** The flags, exposed to the SPA so it can hide entry points of features that are off. */
   readonly flags: Flags;
   /** True in `sib demo`: the SPA shows its "Sample data" banner (AC-029.4). */
@@ -174,6 +179,7 @@ export function createCore(deps: CoreDeps): Core {
     weather: deps.weather,
     gemma,
     rules: deps.rules,
+    adviceRules: deps.adviceRules ?? loadAdviceRules(),
     // Read at every use: a bet takes the household of the moment it is placed (AC-024.2).
     get household() {
       return householdStore?.current() ?? deps.household;
@@ -286,7 +292,19 @@ export function createCore(deps: CoreDeps): Core {
 
     app.post("/api/cards/:id/retry", (request) => {
       const { id } = parse(idParams, request.params);
-      // A laundry planner card (flag `laundryPlanner`) is retried by the planner, not the bookmaker.
+      // An advice card (flag `adviceCards`) is retried by the advisor, a laundry planner card (flag
+      // `laundryPlanner`) by the planner, not the bookmaker.
+      if (adviceCardId(ledger, id)) {
+        if (!deps.flags.adviceCards) {
+          // The flag is off: the advisor does not run, and the bookmaker has nothing to do here.
+          throw new HttpError(
+            409,
+            "Advice cards are off",
+            "Turn the adviceCards flag on to retry.",
+          );
+        }
+        return retryAdvice(ledger, id);
+      }
       return deps.flags.laundryPlanner && plannerCardId(ledger, id)
         ? retryPlanner(ledger, id)
         : retryCard(ledger, id);
@@ -295,6 +313,9 @@ export function createCore(deps: CoreDeps): Core {
     app.post("/api/cards/:id/answer", (request) => {
       const { id } = parse(idParams, request.params);
       const yes = parse(answerBody, request.body).yes;
+      if (adviceCardId(ledger, id)) {
+        throw new HttpError(409, "Gemma has no question on this card");
+      }
       return deps.flags.laundryPlanner && plannerCardId(ledger, id)
         ? answerPlannerQuestion(ledger, id, yes)
         : answerCard(ledger, id, yes);

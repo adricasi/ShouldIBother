@@ -22,6 +22,33 @@ export function formatSettleTime(iso: string): string {
   return dayAndTime.format(new Date(iso));
 }
 
+const dayOnly = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+
+const clockOnly = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * "Thu 23 Oct, 14:00 to 20:00": an advice window in Madrid time, the date written once when it
+ * starts and ends on the same day, and again when it does not.
+ */
+export function formatWindow(fromIso: string, toIso: string): string {
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  const sameDay = dayOnly.format(from) === dayOnly.format(to);
+  return `${dayOnly.format(from)}, ${clockOnly.format(from)} to ${
+    sameDay ? clockOnly.format(to) : `${dayOnly.format(to)}, ${clockOnly.format(to)}`
+  }`;
+}
+
 /** "Thursday 22 October" for the header of Today. */
 export function formatLongDate(iso: string): string {
   return longDate.format(new Date(iso));

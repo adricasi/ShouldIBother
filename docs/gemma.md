@@ -290,7 +290,7 @@ A photo deleted or replaced while Gemma works makes the job stale and its result
 
 ## 6. The job runner every Gemma call goes through
 
-All eight prompts (seven jobs; the appeal reuses the `judge` job) run through one class, `JobRunner` (`src/server/gemma/runner.ts`). A job is a prompt
+All nine prompts (eight jobs; the appeal reuses the `judge` job) run through one class, `JobRunner` (`src/server/gemma/runner.ts`). A job is a prompt
 file, an input builder, a zod output schema, optional checks and an optional tool; the runner gives
 all of them the same discipline.
 
@@ -373,6 +373,7 @@ Privacy rules for the log:
 | [`judge`](#76-judge) | `prompts/judge.v3.md` | Ollama, primary | none | none |
 | [`judge`, appeal](#77-judge-appeal) | `prompts/judge-appeal.v2.md` | Ollama, primary | none | `appeals` |
 | [`laundry-planner`](#78-laundry-planner) | `prompts/laundry-planner.v1.md` | Ollama, primary | none | `laundryPlanner` |
+| [`advisor`](#79-advisor) | `prompts/advisor.v1.md` | Ollama, primary | `get_forecast` (required, `hours_ahead` 1..72) | `adviceCards` |
 
 Versions are in the file names; the runner records `prompt_version` (for example `judge.v3`) on each
 decision and bet. `prompts/judge.v1.md`, `judge.v2.md`, `judge-appeal.v1.md` and `listener.v1.md` are still in the repository but no code loads them. A prompt
@@ -401,8 +402,8 @@ section 11).
   "Not a weather chore" card with no odds; `other_weather`, or a type this version does not offer,
   becomes a "Coming later" card; the four rain types (`car_rinse`, `bike_rinse`, `terrace_rinse`,
   `rain_fill`) take the chore path when `rainChores` is on and read "Coming later" otherwise, and the
-  four advice types (`windows_clean`, `balcony_sweep`, `outdoor_paint`, `lawn_feed`) read "Coming
-  later" until `adviceCards` ships its cards (T-039); `laundry_plan` becomes a planner card when `laundryPlanner` is on;
+  four advice types (`windows_clean`, `balcony_sweep`, `outdoor_paint`, `lawn_feed`) become advice
+  cards ([7.9](#79-advisor)) when `adviceCards` is on and read "Coming later" otherwise; `laundry_plan` becomes a planner card when `laundryPlanner` is on;
   every other type takes the same path as a quick chip, so the offer window, season check, safety
   backstop and rule quote all apply.
 - **Budget.** The common budget of section 6 (no tool, so at most 2 calls).
@@ -718,6 +719,46 @@ output  {"status":"ok","state":"skip_today","best_day":"day_2",
 
 The weather values in the input are illustrative; the answer is the fixture's.
 
+### 7.9 Advisor
+
+- **Purpose and when it runs.** Advises when to do an outdoor chore the weather can undo: clean the
+  windows (`windows_clean`), sweep the balcony leaves (`balcony_sweep`), paint or varnish outdoors
+  (`outdoor_paint`) or feed the lawn (`lawn_feed`) (REQ-031, flag `adviceCards`). It runs on the card
+  the listener's chore makes, on Retry and nowhere else. It is advice, never a bet: no quote, points,
+  savings or calibration.
+- **Prompt.** `prompts/advisor.v1.md`. **Runtime.** Ollama, primary. **Tool.** `get_forecast`, required,
+  `hours_ahead` 1..72 for this job only (the bookmaker stays 1..48), served from the 4-day forecast
+  fetch; row 0 is the hour the card was created in. The decision keeps up to 72 rows of the result.
+- **Input, built by code** (`advisorUserMessage`): the chore, the person's words, the Madrid time and
+  the horizon; no weather, which Gemma must fetch. Typed text is untrusted data.
+- **Output schema** (`advisorOutputSchema`): `{status: ok | unsure, advice: do_now | wait | no_window,
+  window?: {start_hours_ahead, end_hours_ahead}, reason (140)}`. A window counts hours from row 0, only
+  `wait` has one, it ends after it starts and lies inside the 72 hours. `unsure` needs nothing else.
+- **Checks afterwards** (`adviceContradiction`, `src/domain/advice.ts`): the forecast must not
+  contradict the window (windows: a wet hour in it, or a start before the last wet hour of the next
+  48 h; sweep: gusts of 40 km/h or more anywhere in it; paint: a wet, humid or cold hour in
+  `[start, start + 24)`, or `start + 24` past 72 h; lawn: a start before the end of a spell of
+  consecutive wet hours adding to 10 mm that starts in 0 to 48 h). `do_now` is checked as `[0, 3)`; a
+  `no_window` is contradicted when the rule finds a window. The numbers are in
+  `config/advice-rules.json`; a wet hour is 0.1 mm. A contradicted answer gets the single retry.
+- **Rule advice.** Code computes it for every card (`ruleAdvice`) and shows it at once as "Rule advice ·
+  Gemma is thinking". It sits beside Gemma's when the advice differs or the window starts differ
+  by 3 h or more.
+- **Fallback.** Gemma offline, timed out, invalid, still refused after the retry, or `unsure`: the card
+  keeps the rule advice labelled "Rule advice", with the reason, and offers Retry.
+- **On Today.** A card leaves Today at the end of the window it advises (a "do it now" after its 3
+  hours), and 72 hours after it was made for "no window". "No good window in the next N h" says the
+  forecast hours it saw (72 at most); a rule wait window is cut at hour 72. An alert that replaces the
+  advice reads "Not safe today".
+- **Safety.** The fixed backstop runs on the rule's window before the advisor and on Gemma's window
+  after it; the safety guard (flag `safetyGuard`) runs before the advisor. An alert replaces the advice
+  with a "Do it now" card (AC-031.4).
+- **Stored.** `input_summary` = `advice card windows_clean, 72 forecast hours`; the advice JSON lives
+  on the card (`cards.advice`, `kind = 'weather'`, no quote).
+- **Where you see it.** The advice card: the headline ("Clean the windows after Thursday 14:00"), the
+  label, the reason, the window in Madrid time, the rule advice when it differs, the forecast numbers
+  of the window, Retry and "How Gemma decided" (`src/web/AdviceParts.tsx`).
+
 ## 8. The ModelClient boundary
 
 The jobs never talk to a runtime. They talk to a `ModelClient` (`src/server/model/client.ts`):
@@ -870,7 +911,7 @@ has not been checked", rather than implying agreement.
 
 `sib eval` runs a staged 20-case set through the real job and the real runner on the configured model
 (`src/eval/`), so it measures what the live app gets. Jobs: `listener`, `bookmaker`, `inspector`,
-`judge`, `safety`, `laundry-planner` (`evals/<job>/cases.json`, synthetic text and synthetic weather,
+`judge`, `safety`, `laundry-planner`, `advisor` (`evals/<job>/cases.json`, synthetic text and synthetic weather,
 no household data). The voice job and the appeal prompt have no eval set.
 
 | Check | Target | Source |
@@ -1029,7 +1070,7 @@ Until the builder's laptop has run the real model, treat these as open:
 | Topic | Path |
 |---|---|
 | Job runner, queue, deadlines, retry | `src/server/gemma/runner.ts` |
-| One module per job | `src/server/gemma/{listener,listener-audio,bookmaker,inspector,safety,judge,laundry-planner}.ts` |
+| One module per job | `src/server/gemma/{listener,listener-audio,bookmaker,inspector,safety,judge,laundry-planner,advisor}.ts` |
 | The `get_forecast` tool | `src/server/gemma/forecast-tool.ts` |
 | Prompts (versioned) | `prompts/<job>.v<n>.md` |
 | Model clients, selection, guards | `src/server/model/` |

@@ -70,7 +70,11 @@ export function shortDigest(digest: string | null): string | null {
   return digest.replace(/^sha256:/, "").slice(0, 12);
 }
 
-function parseForecast(text: string | null): ForecastRow[] | null {
+export function parseForecast(
+  text: string | null,
+  from = 0,
+  to = SHOWN_HOURS,
+): ForecastRow[] | null {
   if (text === null) {
     return null;
   }
@@ -80,7 +84,7 @@ function parseForecast(text: string | null): ForecastRow[] | null {
       return null;
     }
     const number = (value: unknown): number | null => (typeof value === "number" ? value : null);
-    return rows.slice(0, SHOWN_HOURS).flatMap((row: unknown) => {
+    return rows.slice(from, to).flatMap((row: unknown) => {
       if (!Array.isArray(row) || typeof row[0] !== "string") {
         return [];
       }

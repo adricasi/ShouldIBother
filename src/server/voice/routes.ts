@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+import { isAdviceChore } from "../../domain/advice.js";
 import { LAUNDRY_PLAN, isChoreType } from "../../domain/chores.js";
 import { runListenerAudio } from "../gemma/listener-audio.js";
 import { listenerOutputSchema, type ListenerChore } from "../gemma/listener.js";
@@ -41,7 +42,8 @@ function kindOf(deps: Pick<LedgerDeps, "flags">, chore: ListenerChore): VoiceCho
   }
   const bettable =
     isChoreType(chore.chore_type) ||
-    (chore.chore_type === LAUNDRY_PLAN && deps.flags.laundryPlanner);
+    (chore.chore_type === LAUNDRY_PLAN && deps.flags.laundryPlanner) ||
+    (isAdviceChore(chore.chore_type) && deps.flags.adviceCards);
   return bettable ? "weather" : "coming_later";
 }
 

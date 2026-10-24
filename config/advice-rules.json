@@ -1,0 +1,15 @@
+{
+  "_comment": "Final values for this version (design.md, Advice cards). No tuning. Separate from rules.json, whose hash is in the backtest and dataset manifests. Hours are counted from the hour the card was created in.",
+  "version": 1,
+  "wetHourMm": 0.1,
+  "nowHours": 3,
+  "windowsClean": { "lookaheadHours": 48, "settleHours": 6, "waitWindowHours": 12 },
+  "balconySweep": {
+    "gustKmhAtLeast": 40,
+    "lookaheadHours": 24,
+    "settleHours": 3,
+    "waitWindowHours": 12
+  },
+  "outdoorPaint": { "runHours": 24, "humidityPctBelow": 85, "tempCAtLeast": 10 },
+  "lawnFeed": { "spellMmAtLeast": 10, "lookaheadHours": 48, "waitWindowHours": 24 }
+}

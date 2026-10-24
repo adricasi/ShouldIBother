@@ -1,0 +1,27 @@
+{
+  "description": "Synthetic: a valid window that starts earlier than the rule's, so the card shows both.",
+  "steps": [
+    {
+      "toolCalls": [
+        {
+          "name": "get_forecast",
+          "arguments": {
+            "hours_ahead": 72
+          }
+        }
+      ],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "advice": "wait",
+        "window": {
+          "start_hours_ahead": 11,
+          "end_hours_ahead": 20
+        },
+        "reason": "The rain ends around 19:00, then the glass can dry before dark."
+      }
+    }
+  ]
+}

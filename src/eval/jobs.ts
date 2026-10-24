@@ -1,10 +1,13 @@
+import type { AdviceRules } from "../domain/advice.js";
 import { CHORES, LAUNDRY_PLAN, LAUNDRY_PLAN_SPEC, type ChoreType } from "../domain/chores.js";
 import { PLAN_FORECAST_HOURS, planDayFacts } from "../domain/laundry-plan.js";
+import { ADVICE_HORIZON_HOURS } from "../domain/advice.js";
 import type { RulesConfig } from "../domain/rules/index.js";
 import { madridDateOf, madridWallTimeToEpochMs } from "../domain/time.js";
 import { digestOf } from "../domain/weather-digest.js";
 import { hoursInWindow } from "../domain/weather.js";
 import type { Db } from "../server/db.js";
+import { ADVISOR_PROMPT, runAdvisor } from "../server/gemma/advisor.js";
 import { BOOKMAKER_PROMPT, runBookmaker, type BookmakerInput } from "../server/gemma/bookmaker.js";
 import { INSPECTOR_PROMPT, runInspector } from "../server/gemma/inspector.js";
 import { JUDGE_PROMPT, judgeBet, type JudgeEvidence } from "../server/gemma/judge.js";
@@ -21,6 +24,7 @@ import { FORECAST_HOURS, FORECAST_PAST_HOURS, forecastFrom } from "../server/led
 
 import type { CallLog, LoggedCall } from "./call-log.js";
 import {
+  advisorCaseSchema,
   bookmakerCaseSchema,
   inspectorCaseSchema,
   judgeCaseSchema,
@@ -28,6 +32,7 @@ import {
   plannerCaseSchema,
   readCaseFile,
   safetyCaseSchema,
+  type AdvisorCase,
   type BookmakerCase,
   type EvalJob,
   type InspectorCase,
@@ -45,6 +50,8 @@ export interface EvalContext {
   readonly log: CallLog;
   readonly db: Db;
   readonly rules: RulesConfig;
+  /** The advice rules, loaded for the advisor job only. */
+  readonly adviceRules?: AdviceRules;
   /** A processed staged photo (the app's own pipeline: at most 1024 px, no metadata). */
   readonly photo: (name: string) => { data: Uint8Array; width: number; height: number };
   /** A card number for the decision log; the eval has no cards. */
@@ -520,6 +527,50 @@ const plannerJob: EvalJobSpec = {
     ),
 };
 
+// --- advisor -------------------------------------------------------------------------------------
+
+const advisorJob: EvalJobSpec = {
+  job: "advisor",
+  primaryStep: "advisor",
+  photoBudget: false,
+  promptVersions: [ADVISOR_PROMPT.version],
+  prepare: (path) =>
+    readCaseFile(path, "advisor", advisorCaseSchema).map((entry: AdvisorCase): PreparedCase => ({
+      id: entry.id,
+      note: entry.note ?? null,
+      expect: entry.expect,
+      photos: [],
+      async run(context) {
+        if (context.adviceRules === undefined) {
+          throw new EvalCaseError(`Case ${entry.id}: the advice rules were not loaded`);
+        }
+        const nowMs = parseNow(entry.now);
+        const forecast = syntheticForecast(entry.weather, nowMs, ADVICE_HORIZON_HOURS);
+        const hours = forecastFrom(forecast.hours, nowMs, ADVICE_HORIZON_HOURS);
+        const { result, step, calls } = await measured(context, "advisor", () =>
+          runAdvisor(
+            context.runner,
+            {
+              chore: entry.chore,
+              label: entry.text,
+              nowMs,
+              hours,
+              rules: context.adviceRules!,
+              cardId: context.nextCardId(),
+            },
+            (hoursAhead) => Promise.resolve(forecastFrom(hours, nowMs, hoursAhead)),
+          ),
+        );
+        const key = !result.ok
+          ? "invalid"
+          : result.output.status === "unsure"
+            ? "unsure"
+            : (result.output.advice ?? "invalid");
+        return { record: recordOf(metaOf(entry), [step], "advisor", key), calls };
+      },
+    })),
+};
+
 export const EVAL_JOB_SPECS: Readonly<Record<EvalJob, EvalJobSpec>> = {
   listener: listenerJob,
   bookmaker: bookmakerJob,
@@ -527,4 +578,5 @@ export const EVAL_JOB_SPECS: Readonly<Record<EvalJob, EvalJobSpec>> = {
   judge: judgeJob,
   safety: safetyJob,
   "laundry-planner": plannerJob,
+  advisor: advisorJob,
 };

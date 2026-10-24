@@ -1,6 +1,8 @@
 import {
-  Armchair,
+  AppWindow,
   ArrowRight,
+  Armchair,
+  Brush,
   Bike,
   Camera,
   Car,
@@ -9,8 +11,10 @@ import {
   CloudRain,
   Cylinder,
   Droplet,
+  Leaf,
   Lock,
   MapPin,
+  Paintbrush,
   Shirt,
   Sparkles,
   Sprout,
@@ -50,6 +54,10 @@ const GLYPHS = {
   alert: TriangleAlert,
   trophy: Trophy,
   wind: Wind,
+  window: AppWindow,
+  sweep: Brush,
+  paint: Paintbrush,
+  lawn: Leaf,
 } as const satisfies Record<IconName, LucideIcon>;
 
 export type { IconName };
@@ -68,6 +76,10 @@ const CHORE_TYPE_ICONS: Readonly<Record<string, IconName>> = {
   laundry_plan: "shirt",
   ac: "thermo",
   heater: "thermo",
+  windows_clean: "window",
+  balcony_sweep: "sweep",
+  outdoor_paint: "paint",
+  lawn_feed: "lawn",
   car_rinse: "car",
   bike_rinse: "bike",
   terrace_rinse: "terrace",

@@ -1594,3 +1594,47 @@ label.button.disabled {
   width: calc(var(--space-6) * 4);
   margin: calc(var(--space-5) * -1) calc(var(--space-2) * -1) calc(var(--space-4) * -1) 0;
 }
+
+/* Advice cards (flag adviceCards): advice, not a bet; the label says whose advice it is. */
+.advice-tag {
+  color: var(--color-leaf);
+}
+
+.advice-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-3-text);
+}
+
+.advice-label.gemma {
+  font-weight: 600;
+  color: var(--color-leaf);
+}
+
+/* The rule's advice is the quieter voice: a smaller, softer headline. */
+.slip.advice h3.advice-quiet {
+  font-size: var(--text-body);
+  color: var(--color-ink-2);
+}
+
+.advice-note,
+.advice-status {
+  margin: 0;
+}
+
+.advice-rule {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.advice-rule .meta {
+  color: var(--color-ink-2);
+}
+
+.advice-forecast-scroll {
+  max-height: 16rem;
+  overflow: auto;
+}

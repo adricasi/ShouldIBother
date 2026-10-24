@@ -1,0 +1,8 @@
+{
+  "description": "Synthetic: the model takes too long.",
+  "steps": [
+    {
+      "error": "timeout"
+    }
+  ]
+}
