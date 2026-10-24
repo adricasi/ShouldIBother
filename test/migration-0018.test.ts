@@ -4,6 +4,7 @@ import { migrate, openDatabase } from "../src/server/db.js";
 import { MIGRATIONS } from "../src/server/migrations/index.js";
 
 const upTo17 = MIGRATIONS.filter((migration) => migration.id <= 17);
+const upTo18 = MIGRATIONS.filter((migration) => migration.id <= 18);
 
 describe("migration 0018: the advice card's state on its card (NFR-003)", () => {
   it("is number 18, after 0016 and 0017 of T-035", () => {
@@ -28,7 +29,7 @@ describe("migration 0018: the advice card's state on its card (NFR-003)", () => 
     const cardsBefore = db.prepare("SELECT * FROM cards ORDER BY id").all();
     const quotesBefore = db.prepare("SELECT * FROM quotes").all();
     const betsBefore = db.prepare("SELECT * FROM bets").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([18]);
+    expect(migrate(db, upTo18)).toEqual([18]);
     expect(db.prepare("SELECT * FROM cards ORDER BY id").all()).toEqual(
       cardsBefore.map((card) => ({ ...(card as object), advice: null })),
     );
@@ -45,7 +46,7 @@ describe("migration 0018: the advice card's state on its card (NFR-003)", () => 
     });
     expect(db.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
     expect(db.pragma("foreign_key_check")).toEqual([]);
-    expect(migrate(db, MIGRATIONS)).toEqual([]);
+    expect(migrate(db, upTo18)).toEqual([]);
     db.close();
   });
 

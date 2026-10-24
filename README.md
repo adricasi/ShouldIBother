@@ -496,9 +496,68 @@ jobs: [docs/gemma.md, section 8](docs/gemma.md#8-the-modelclient-boundary).
 ### Environment variables
 
 The table is under [Development without a GPU](#development-without-a-gpu): `SIB_FAKE_MODEL`,
-`SIB_FAKE_WEATHER`, `SIB_DATA_DIR`, `SIB_PORT`, `SIB_LAN_ADDRESS`. If you run Node with
+`SIB_FAKE_WEATHER`, `SIB_DATA_DIR`, `SIB_PORT`, `SIB_LAN_ADDRESS`. The hosted-mode variables
+(`SIB_MODE`, `SIB_PUBLIC_ORIGIN`, `SIB_DO_MODEL`, `SIB_DO_INFERENCE_KEY`, `SIB_DO_VISION`,
+`SIB_TOOL_USE`, `SIB_DAILY_MODEL_CALLS`, `SIB_BIND_ADDRESS`) are in the table under
+[Hosted mode (optional)](#hosted-mode-optional). If you run Node with
 `NODE_USE_ENV_PROXY=1` and a proxy, set `NO_PROXY=127.0.0.1,localhost,::1`: the app refuses to start
 its model clients otherwise, so nothing local goes through a proxy.
+
+## Hosted mode (optional)
+
+Home mode, everything above, is the default and stays as it is. For one household that wants to use
+the app away from home without a GPU, `SIB_MODE=hosted` runs the same app on a small public server
+(one DigitalOcean Droplet behind Caddy with automatic HTTPS), with Gemma from DigitalOcean's
+Serverless Inference instead of Ollama. The step-by-step, costs and the security checklist are in
+[docs/deploy-digitalocean.md](docs/deploy-digitalocean.md); the decision is
+[ADR-0011](docs/adr/0011-optional-hosted-mode-on-digitalocean.md) and the requirement is REQ-032.
+
+**The privacy trade-off, plainly.** In hosted mode **Gemma runs on DigitalOcean's inference service**.
+Your chores, habits, answers to Gemma's questions and the area forecast are sent there. **Photos
+stay on the server** unless you set `SIB_DO_VISION=1`; with it off (the default) photo upload is
+refused, the photo buttons are gone and bets settle with one tap at half points. Voice and the
+fine-tuned bookmaker are off. Your data (database and photos) lives on a cloud server and in its
+backups, not on your laptop. The app says so on screen ("Gemma 4 · DigitalOcean · <model ID>" and a
+privacy line on Today). DigitalOcean states it does not store this data or train on it; where it is
+processed is not documented (ADR-0011). Home mode is unaffected and keeps "Your photos never leave
+it".
+
+How it differs, in short:
+
+- **No accounts and no login.** Each phone is linked once and then remembered (a 30-day cookie
+  renewed on use). On the server run `sib pair`; it prints `https://<your host>/pair#t=<token>` and a
+  QR code to the terminal only. The page behind that link has a "Pair this phone" button; the token
+  sits in the URL fragment, so no log or link preview ever sees it. `sib forget-devices` signs
+  every device out.
+- **Only your host answers.** The Host and Origin checks accept exactly `SIB_PUBLIC_ORIGIN`; the
+  client address behind the proxy comes from `X-Forwarded-For`, believed only from loopback and
+  private addresses.
+- **A daily call cap.** At most `SIB_DAILY_MODEL_CALLS` requests to the inference API per Madrid
+  day. From 80 % only judge verdicts call Gemma (cards say "Gemma's daily limit · rule odds"); at the
+  cap verdicts wait like Gemma offline and go first after the reset.
+- **`sib hosted-check`** calls the API once per check (model listed, JSON valid, a tool call comes
+  back, an image is accepted) with a few synthetic pixels and no household data. Run it once after
+  deploying, with the server's env file, then decide on `SIB_TOOL_USE` and `SIB_DO_VISION`.
+- **The container** runs as a non-root user with a read-only root filesystem. The app writes only
+  in the data folder (`SIB_DATA_DIR`: the database with its `-wal`, `-shm` and `-journal` files,
+  and `photos/`); that folder must be writable by the container user. Give it a small tmpfs `/tmp`
+  for the image library (not used for ordinary photos). `/healthz` answers 204 without a session
+  only to a request from 127.0.0.1 inside the container.
+
+| Variable | Hosted mode | Default |
+|---|---|---|
+| `SIB_MODE` | `home` or `hosted`; any other value is refused. Hosted variables set in home mode are ignored with one warning | `home` |
+| `SIB_PUBLIC_ORIGIN` | **Required.** `https://` origin only, e.g. `https://sib.example.com` | none |
+| `SIB_DO_MODEL` | **Required.** A Gemma 4 model ID as `GET /v1/models` lists it (for example `gemma-4-31B-it`, unverified: see ADR-0011) | none |
+| `SIB_DO_INFERENCE_KEY` | **Required.** A model access key, inference only, read from the environment only; never logged, stored or returned | none |
+| `SIB_DO_VISION` | `1` sends photos to DigitalOcean; `0` keeps them on the server | `0` |
+| `SIB_TOOL_USE` | `injected` (the app calls `get_forecast` and hands Gemma the result) or `native`; overrides `gemma.toolUse` | `injected` |
+| `SIB_DAILY_MODEL_CALLS` | Chat-completions requests per Madrid day, a positive whole number | `300` |
+| `SIB_BIND_ADDRESS` | Address the app listens on, inside the container | `0.0.0.0` |
+
+`SIB_DATA_DIR` and `SIB_PORT` work as in home mode; `SIB_FAKE_MODEL=1` still wins over the inference
+service (tests and demos), and `SIB_LAN_ADDRESS` is ignored. The settings are checked once at
+start-up; a missing or invalid one refuses to start and names the variable, never its value.
 
 ## Feature flags
 
@@ -680,6 +739,10 @@ Today:
 > Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0.
 
 ## Privacy and your data
+
+This section describes home mode, the default. Hosted mode sends chore text and habits to
+DigitalOcean's inference service and keeps the data on a server: see
+[Hosted mode (optional)](#hosted-mode-optional).
 
 - Photos, chore text, habits and audio stay on the laptop, in the data folder
   `~/.should-i-bother/` (`SIB_DATA_DIR` to change it). It lives outside the repository and is kept

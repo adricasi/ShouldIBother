@@ -7,7 +7,7 @@ import Fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify"
 
 import type { Allowlist } from "./auth/allowlist.js";
 import { frameworkErrorHandler, registerAuth } from "./auth/guard.js";
-import { FailureLimiter } from "./auth/rate-limit.js";
+import { FailureLimiter, SlidingWindowLimiter } from "./auth/rate-limit.js";
 import type { AuthStore } from "./auth/store.js";
 import type { Core } from "./core.js";
 import { FLAG_NAMES, type FlagName, type Flags } from "./flags.js";
@@ -23,8 +23,23 @@ export interface AuthOptions {
   readonly print?: (line: string) => void;
 }
 
+/**
+ * Hosted mode (REQ-032): the app sits behind the Caddy reverse proxy. Absent in home mode, whose
+ * app is then built exactly as before.
+ */
+export interface HostedAppOptions {
+  /** Pairing POSTs allowed per client address and minute (AC-032.3). */
+  readonly pairAttemptsPerMinute?: number;
+}
+
+/** Named ranges of proxy-addr: loopback, link-local and private (RFC 1918, fc00::/7) addresses. */
+export const TRUSTED_PROXY_RANGES: readonly string[] = ["loopback", "linklocal", "uniquelocal"];
+/** Pairing attempts per client address and minute in hosted mode. */
+export const PAIR_ATTEMPTS_PER_MINUTE = 10;
+
 export interface AppOptions {
   readonly auth: AuthOptions;
+  readonly hosted?: HostedAppOptions;
   readonly flags: Flags;
   readonly features?: FeaturePlugins;
   /** The core loop (cards, bets, settlement). Omitted by tests that only exercise the access control. */
@@ -102,6 +117,10 @@ export function staticCacheControl(root: string, path: string): string {
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const now = options.auth.store.now;
   const app = Fastify({
+    // Behind Caddy the peer is the proxy; `request.ip` (and so every rate limit) must be the client
+    // address the proxy reports in `X-Forwarded-For`. Forwarded headers are believed only from
+    // loopback and private addresses (the Compose network), never from the internet (AC-032.3).
+    ...(options.hosted === undefined ? {} : { trustProxy: [...TRUSTED_PROXY_RANGES] }),
     frameworkErrors: frameworkErrorHandler,
     logger: options.logger
       ? {
@@ -114,6 +133,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     store: options.auth.store,
     limiter: new FailureLimiter(now),
     allowlist: options.auth.allowlist,
+    ...(options.hosted === undefined
+      ? {}
+      : {
+          hosted: {
+            pairLimiter: new SlidingWindowLimiter(
+              now,
+              options.hosted.pairAttemptsPerMinute ?? PAIR_ATTEMPTS_PER_MINUTE,
+            ),
+          },
+        }),
     print: options.auth.print ?? ((line) => console.error(line)),
   });
   app.get("/healthz", () => ({ status: "ok" }));

@@ -29,9 +29,12 @@ export function gemmaDisplayName(tag: string): string {
 }
 
 /** The words of the status line: the model and where it runs, or the fake and offline states. */
-export function gemmaStatusText(gemma: Today["gemma"]): string {
+export function gemmaStatusText(gemma: Today["gemma"], mode: "home" | "hosted" = "home"): string {
   if (gemma.status === "online" && gemma.detail !== null && gemma.detail !== "fake model") {
-    return `${gemmaDisplayName(gemma.detail)} · on this laptop`;
+    // Hosted mode says where Gemma runs and which model answers (AC-032.6).
+    return mode === "hosted"
+      ? `Gemma 4 · DigitalOcean · ${gemma.detail}`
+      : `${gemmaDisplayName(gemma.detail)} · on this laptop`;
   }
   return `${GEMMA_STATUS_TEXT[gemma.status]}${gemma.detail === "fake model" ? " (fake model)" : ""}`;
 }
@@ -41,12 +44,18 @@ export function gemmaStatusText(gemma: Today["gemma"]): string {
  * names the model and says it runs on this laptop (design.md Round 3, item 17); the fake model
  * and the offline state read as they did.
  */
-export function GemmaStatus({ gemma }: { gemma: Today["gemma"] }) {
+export function GemmaStatus({
+  gemma,
+  mode = "home",
+}: {
+  gemma: Today["gemma"];
+  mode?: "home" | "hosted";
+}) {
   return (
     <>
       <p className={`gemma-status ${gemma.status}`} role="status">
         <span className="status-dot" aria-hidden="true" />
-        {gemmaStatusText(gemma)}
+        {gemmaStatusText(gemma, mode)}
       </p>
       {gemma.warning === undefined ? null : (
         <p className="gemma-status offline" role="status">
@@ -81,7 +90,9 @@ export function TodayHeader({
       <div className="today-hello">
         <p className="eyebrow">{formatDateLine(now)}</p>
         <p className="greeting">{greetingFor(now)}</p>
-        {today === undefined ? null : <GemmaStatus gemma={today.gemma} />}
+        {today === undefined ? null : (
+          <GemmaStatus gemma={today.gemma} mode={today.mode ?? "home"} />
+        )}
       </div>
       {today === undefined ? null : (
         <p className="points">

@@ -56,6 +56,15 @@ export class ModelUnavailableError extends Error {
   override readonly name = "ModelUnavailableError";
 }
 
+/**
+ * Hosted mode's daily call cap leaves the call unsent: the card keeps rule odds and says so
+ * ("Gemma's daily limit", AC-032.5). A kind of "Gemma offline".
+ */
+export class ModelDailyLimitError extends ModelUnavailableError {}
+
+/** Hosted mode holds a call back so waiting verdicts run first after the reset (AC-032.5). */
+export class ModelBusyError extends ModelUnavailableError {}
+
 /** The call did not answer within `timeoutMs`. */
 export class ModelTimeoutError extends Error {
   override readonly name = "ModelTimeoutError";

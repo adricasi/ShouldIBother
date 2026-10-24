@@ -386,6 +386,10 @@ export const todaySchema = z.object({
   /** True when the server runs `sib demo`: sample data, shown with a banner (AC-029.4). */
   demo: z.boolean().optional(),
   flags: flagsSchema,
+  /** Where Gemma runs: on the laptop (home, the default) or at DigitalOcean (hosted, AC-032.6). */
+  mode: z.enum(["home", "hosted"]).optional(),
+  /** False when photos cannot be sent: hosted mode without `SIB_DO_VISION` (AC-032.4). */
+  photos: z.boolean().optional(),
   points: z.object({ total: z.number() }),
   /** This week's savings, Monday to Sunday in Madrid time (AC-011.6). */
   week: z.object({ from: z.string(), to: z.string(), totals: savingsTotalsSchema }),

@@ -73,6 +73,7 @@ export const FAILURE_NOTES: Readonly<Record<string, string>> = {
   weather: "The forecast was not available.",
   internal: "Something went wrong inside the app.",
   busy: "Gemma is busy with other requests.",
+  daily_limit: "Gemma's daily limit · rule odds",
   superseded: "Your bet was placed before Gemma answered.",
   unresolved: "Gemma could not settle on odds, even with your answers.",
   restart: "The app restarted while Gemma was thinking.",

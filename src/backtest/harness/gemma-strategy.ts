@@ -210,7 +210,12 @@ export class GemmaStrategy implements Strategy {
     });
 
     if (!result.ok) {
-      if (result.failure === "unavailable") {
+      // The daily call cap exists only in hosted mode; here it would be the model being offline.
+      if (
+        result.failure === "unavailable" ||
+        result.failure === "daily_limit" ||
+        result.failure === "busy"
+      ) {
         throw new ModelOfflineError(result.error);
       }
       if (result.failure === "timeout" || result.failure === "deadline") {

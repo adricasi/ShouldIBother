@@ -14,6 +14,9 @@ import { EmptyState, ErrorState, LoadingState } from "./ui/States.js";
 export interface SlipsScreenProps {
   readonly slips: Slips | undefined;
   readonly flags: Readonly<Record<string, boolean>>;
+  /** Where Gemma runs and whether photos can be sent (AC-032.6); absent: home mode. */
+  readonly mode?: "home" | "hosted" | undefined;
+  readonly photos?: boolean | undefined;
   /** The raised voice button of the tab bar (flag `voice`, mic available); absent: plain tabs. */
   readonly fab?: ReactNode;
   /** The server's clock estimated now, so countdowns tick without requests. */
@@ -46,7 +49,7 @@ export const SLIPS_EMPTY_TEXT = {
 export function SlipsScreen(props: SlipsScreenProps) {
   const { slips, nowMs, busy, notice } = props;
   return (
-    <PrivacyProvider voice={props.flags["voice"] === true}>
+    <PrivacyProvider voice={props.flags["voice"] === true} mode={props.mode} photos={props.photos}>
       <main className="screen">
         <header className="header">
           <div>
@@ -94,6 +97,7 @@ export function SlipsScreen(props: SlipsScreenProps) {
                     bet={bet}
                     busy={busy}
                     onSettle={props.onSettle}
+                    {...(props.photos === false ? { photosOff: true } : {})}
                     {...(props.onSettlePhoto === undefined ? {} : { onPhoto: props.onSettlePhoto })}
                     {...(props.onSettleAnswer === undefined
                       ? {}

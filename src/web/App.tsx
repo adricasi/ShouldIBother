@@ -318,6 +318,9 @@ function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
     />
   ) : undefined;
 
+  // Hosted mode without `SIB_DO_VISION`: photos are not taken, bets settle by tap (AC-032.4).
+  const photosOn = today?.photos !== false;
+
   const reload = (): void => {
     void act(() => Promise.resolve(undefined));
   };
@@ -373,6 +376,7 @@ function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
         fab={voiceFab}
         firstRun={firstRun}
         onboarding={onboarding}
+        hosted={today?.mode === "hosted"}
         flags={today?.flags ?? {}}
         busy={busy}
         notice={notice}
@@ -409,15 +413,18 @@ function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
         fab={voiceFab}
         slips={slips}
         flags={today?.flags ?? {}}
+        mode={today?.mode}
+        photos={today?.photos}
         nowMs={slipsNow}
         busy={busy}
         notice={notice}
         onSettle={onSettle}
-        onSettlePhoto={onSettlePhoto}
+        // No photo button anywhere while the server takes no photos (hosted, AC-032.4).
+        {...(photosOn ? { onSettlePhoto } : {})}
         onSettleAnswer={onSettleAnswer}
         onUndo={onUndo}
         {...(today?.flags["rescue"] === true ? { onCashOut } : {})}
-        {...(today?.flags["appeals"] === true ? { onAppeal } : {})}
+        {...(today?.flags["appeals"] === true && photosOn ? { onAppeal } : {})}
         {...(appealingBetId === undefined ? {} : { appealingBetId })}
         onReload={reload}
       />
@@ -467,18 +474,22 @@ function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
           return undefined;
         });
       }}
-      onPhoto={(cardId, file) => {
-        void act(async () => {
-          await uploadPhoto(cardId, file);
-          return undefined;
-        });
-      }}
-      onDeletePhoto={(photoId) => {
-        void act(async () => {
-          await deletePhoto(photoId);
-          return { kind: "info", text: "Photo deleted, with what Gemma read from it." };
-        });
-      }}
+      {...(photosOn
+        ? {
+            onPhoto: (cardId: number, file: File) => {
+              void act(async () => {
+                await uploadPhoto(cardId, file);
+                return undefined;
+              });
+            },
+            onDeletePhoto: (photoId: string) => {
+              void act(async () => {
+                await deletePhoto(photoId);
+                return { kind: "info", text: "Photo deleted, with what Gemma read from it." };
+              });
+            },
+          }
+        : {})}
       onPlanNeed={(cardId, needed) => {
         void act(async () => {
           await answerPlanNeed(cardId, needed);
@@ -498,7 +509,7 @@ function Screens({ onDemo }: { readonly onDemo: (demo: boolean) => void }) {
         place(cardId, quoteId, "do_it");
       }}
       onSettle={onSettle}
-      onSettlePhoto={onSettlePhoto}
+      {...(photosOn ? { onSettlePhoto } : {})}
       onSettleAnswer={onSettleAnswer}
       onUndo={onUndo}
       onReload={reload}

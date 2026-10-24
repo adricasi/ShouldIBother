@@ -111,6 +111,8 @@ export interface SettleActions {
   readonly onPhoto?: (betId: number, file: File) => void;
   /** Answer the judge's yes/no question (AC-008.5). */
   readonly onAnswer?: (betId: number, yes: boolean) => void;
+  /** Hosted mode without photos (AC-032.4): the text says one tap settles it, at half points. */
+  readonly photosOff?: boolean;
 }
 
 /**
@@ -125,6 +127,7 @@ export function DueSlip({
   onSettle,
   onPhoto,
   onAnswer,
+  photosOff = false,
 }: { bet: Bet; busy: boolean } & SettleActions) {
   const settle = bet.settle;
   const fallbackNote = statusText(bet.status) ?? "Waiting to be settled.";
@@ -172,11 +175,19 @@ export function DueSlip({
               }}
             />
           )}
-          <p className="meta">
-            A photo pays a win in full, one tap pays half; losses cost the same either way. No
-            answer by {formatSettleTime(settle.answer_until)}: Gemma settles it from the weather
-            record at half points.
-          </p>
+          {photosOff ? (
+            <p className="meta">
+              One tap settles it and pays a win at half points; losses cost the same either way. No
+              answer by {formatSettleTime(settle.answer_until)}: Gemma settles it from the weather
+              record at half points.
+            </p>
+          ) : (
+            <p className="meta">
+              A photo pays a win in full, one tap pays half; losses cost the same either way. No
+              answer by {formatSettleTime(settle.answer_until)}: Gemma settles it from the weather
+              record at half points.
+            </p>
+          )}
           {settle.note === null ? null : <p className="meta">{settle.note}</p>}
         </>
       ) : settle?.state === "question" && settle.question !== null ? (

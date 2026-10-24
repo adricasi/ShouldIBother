@@ -5,6 +5,8 @@ import { findHashConstantTime, generateSecret, hashSecret, isWellFormedSecret } 
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_DEVICES_PER_TOKEN = 3;
+/** Hosted mode renews a remembered device's session when it is used and the last renewal is older than this. */
+export const SESSION_RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 /** `last_seen_at` is a hint for the owner, so it is refreshed at most this often (one write per minute). */
 const LAST_SEEN_GRANULARITY_MS = 60 * 1000;
 
@@ -35,6 +37,7 @@ export class AuthStore {
   private readonly claimSlot;
   private readonly insertSession;
   private readonly touchSession;
+  private readonly renewSessionRow;
   private readonly revokeAllSessions;
   private readonly pruneSessions;
   private readonly pruneTokens;
@@ -65,6 +68,9 @@ export class AuthStore {
     );
     this.touchSession = db.prepare<[number, number, number]>(
       "UPDATE sessions SET last_seen_at = ? WHERE rowid = ? AND last_seen_at < ?",
+    );
+    this.renewSessionRow = db.prepare<[number, number, number]>(
+      "UPDATE sessions SET expires_at = ? WHERE rowid = ? AND revoked_at IS NULL AND expires_at <= ?",
     );
     this.revokeAllSessions = db.prepare<[number]>(
       "UPDATE sessions SET revoked_at = ? WHERE revoked_at IS NULL",
@@ -128,23 +134,45 @@ export class AuthStore {
       .immediate();
   }
 
-  /** True when `sessionId` belongs to a live session (AC-001.3, AC-001.8). */
-  isValidSession(sessionId: string): boolean {
+  /** The live session row for `sessionId`, or undefined (unknown, malformed, expired, revoked). */
+  private findLive(sessionId: string): HashRow | undefined {
     if (!isWellFormedSecret(sessionId)) {
-      return false;
+      return undefined;
     }
-    const now = this.now();
-    const rows = this.activeSessions.all(now);
+    const rows = this.activeSessions.all(this.now());
     const index = findHashConstantTime(
       rows.map((row) => row.hash),
       hashSecret(sessionId),
     );
-    const row = rows[index];
+    return rows[index];
+  }
+
+  /** True when `sessionId` belongs to a live session (AC-001.3, AC-001.8). */
+  isValidSession(sessionId: string): boolean {
+    const row = this.findLive(sessionId);
     if (row === undefined) {
       return false;
     }
+    const now = this.now();
     this.touchSession.run(now, row.id, now - LAST_SEEN_GRANULARITY_MS);
     return true;
+  }
+
+  /**
+   * Hosted mode (AC-032.3): a device stays remembered. Gives a live session a full lifetime again
+   * when its last renewal is more than `renewAfterMs` old (once a day at most, so a request does
+   * not write every time) and returns the new expiry, or undefined when nothing changed. There is
+   * no absolute cap: a phone in use is never signed out. Home mode never calls this.
+   */
+  renewSession(sessionId: string, renewAfterMs = SESSION_RENEW_AFTER_MS): number | undefined {
+    const row = this.findLive(sessionId);
+    if (row === undefined) {
+      return undefined;
+    }
+    const now = this.now();
+    const expiresAt = now + SESSION_TTL_MS;
+    const changed = this.renewSessionRow.run(expiresAt, row.id, expiresAt - renewAfterMs);
+    return changed.changes === 1 ? expiresAt : undefined;
   }
 
   /** Revokes every session and every unexpired token (AC-001.6). */
