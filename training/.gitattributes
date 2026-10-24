@@ -1,0 +1,2 @@
+# The fixture dataset is hashed byte for byte by its manifest: no line-ending conversion.
+tests/fixtures/** -text

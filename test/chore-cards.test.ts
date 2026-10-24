@@ -24,7 +24,7 @@ import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const GRACIA = { latitude: 41.4012, longitude: 2.1587 };
+const GRACIA = { latitude: 41.4045, longitude: 2.1555 };
 
 interface CardJson {
   id: number;

@@ -62,6 +62,8 @@ export interface BetRow {
   band_without_photo: Band | null;
   model_version: string | null;
   prompt_version: string | null;
+  /** The Gemma decision that priced the bet (migration 0017); null on rule odds and older bets. */
+  decision_id: number | null;
   savings_snapshot: string | null;
   placed_at: number;
   undo_until: number;

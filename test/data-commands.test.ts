@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -331,6 +332,17 @@ describe("the app must not be running (C5, Sec-S1)", () => {
 });
 
 describe("the export folder (Sec-S3)", () => {
+  it("NFR-002: refuses a target inside a git working tree that git would not ignore", async () => {
+    await liveWeek();
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    expect(() => {
+      exportCommand(runtime(), join(repo, "out"), print);
+    }).toThrow(/could be committed/);
+    expect(existsSync(join(repo, "out"))).toBe(false);
+  });
+
   it("refuses a symlink as the target, also to an empty folder, and writes nothing through it", async () => {
     await liveWeek();
     const elsewhere = join(root, "elsewhere");

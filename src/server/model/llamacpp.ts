@@ -15,7 +15,7 @@ import {
   parseErrorText,
   type AudioWireSettings,
 } from "./llamacpp-wire.js";
-import { loopbackOrigin } from "./loopback.js";
+import { NonLoopbackRuntimeError, loopbackOrigin } from "./loopback.js";
 import { assertNoProxyForLoopback } from "./proxy-guard.js";
 
 export interface LlamaCppOptions {
@@ -33,10 +33,7 @@ export interface LlamaCppOptions {
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
 
-/** Thrown when the configured address is not on this laptop; a setup error, not a Gemma outage. */
-export class NonLoopbackRuntimeError extends Error {
-  override readonly name = "NonLoopbackRuntimeError";
-}
+export { NonLoopbackRuntimeError } from "./loopback.js";
 
 /**
  * `ModelClient` for Gemma 4 audio on the llama.cpp server (ADR-0004), used only by the voice job
