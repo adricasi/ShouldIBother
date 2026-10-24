@@ -88,7 +88,7 @@ npm audit --audit-level=high             # dependency vulnerabilities
 - Hosted mode (REQ-032) is optional and off by default: it may call only DigitalOcean's inference
   host besides Open-Meteo, reads its key from the environment only, keeps photos on the server
   unless `SIB_DO_VISION=1`, and must say on screen that Gemma runs at DigitalOcean. Agents prepare
-  the deployment; the builder runs `terraform apply` and the deploy.
+  the deployment kit and guide; the builder creates the server by hand and deploys.
 
 ## Project kit
 Local to each machine: this repository is public, so `.claude/` is git-ignored. Recreate the
