@@ -170,25 +170,35 @@ function JudgeLine({ judge }: { readonly judge: Score["judge"] }) {
 }
 
 /**
- * The sentence over the chart (mockup 08): the band Gemma used most that has enough bets to say
- * anything, with how often doing nothing worked there and the N behind it. Undefined when no band
- * has five bets yet, so a shaky share never becomes a headline (AC-020.3).
+ * The sentence over the chart (mockup 08, AC-020.3): the band Gemma used most that has enough bets
+ * to say anything, with how often doing nothing worked there and the N behind it, and the rule's
+ * figure for the same band beside it (AC-028.3). Undefined when no Gemma band has five bets yet,
+ * so a shaky share never becomes a headline.
  */
-export function calibrationHeadline(bands: readonly CalibrationBand[]): string | undefined {
-  const best = bands
+export function calibrationHeadline(
+  gemmaBands: readonly CalibrationBand[],
+  ruleBands: readonly CalibrationBand[] = [],
+): string | undefined {
+  const best = gemmaBands
     .filter((band) => !band.too_few && band.actual_pct !== null)
     .reduce<CalibrationBand | undefined>(
       (most, band) => (most === undefined || band.n > most.n ? band : most),
       undefined,
     );
-  return best === undefined
-    ? undefined
-    : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
+  if (best === undefined) {
+    return undefined;
+  }
+  const rule = ruleBands.find((band) => band.band === best.band);
+  const ruleText =
+    rule === undefined || rule.too_few || rule.actual_pct === null
+      ? `the rule: too few bets to judge${rule === undefined ? "" : ` (${bets(rule.n)})`}`
+      : `the rule: ${rule.actual_pct}% (${bets(rule.n)})`;
+  return `When Gemma says ${best.name}, doing nothing worked ${best.actual_pct ?? 0}% (${bets(best.n)}); ${ruleText}.`;
 }
 
 function Calibration({ calibration }: { readonly calibration: Score["calibration"] }) {
   const { lucky_wins: lucky } = calibration;
-  const headline = calibrationHeadline(calibration.gemma);
+  const headline = calibrationHeadline(calibration.gemma, calibration.rule);
   return (
     <section aria-labelledby="honest-title">
       <h2 id="honest-title" className="section-title">

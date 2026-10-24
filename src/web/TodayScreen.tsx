@@ -5,6 +5,7 @@ import { DueSlip, WaitingLine, type SettleActions } from "./BetParts.js";
 import { ReceiptCard, WeekStrip } from "./SettleParts.js";
 import { PhotoBlock, type PhotoActions } from "./PhotoParts.js";
 import { PlanDays, PlannerSlip, type PlannerActions } from "./PlannerParts.js";
+import { BandsSideBySide, HowGemmaDecided } from "./GemmaParts.js";
 import { formatOdds, formatPoints, formatSettleTime } from "./format.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
@@ -272,9 +273,16 @@ function CardSlip({
       </div>
       <p className="label-tag">{quote.label}</p>
       <p>{quote.reason}</p>
+      {quote.source === "gemma" ? (
+        <BandsSideBySide
+          gemma={{ band: quote.band, band_name: quote.band_name, odds: quote.odds }}
+          rule={card.rule}
+        />
+      ) : null}
       {card.savings_estimate === undefined ? null : (
         <SavingsEstimateLine estimate={card.savings_estimate} />
       )}
+      <HowGemmaDecided decisions={[{ decision: card.decision }]} />
       {plan === null ? null : <PlanDays plan={plan} />}
       <GemmaBlock card={card} busy={busy} onRetry={onRetry} onAnswer={onAnswer} />
       {plan === null ? <PhotoBlock card={card} busy={busy} actions={photoActions} /> : null}

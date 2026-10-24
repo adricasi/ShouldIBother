@@ -175,7 +175,10 @@ describe("AC-028.3, AC-028.4: placed bets and receipts say whose odds they were"
     const settled = (await h.get("/api/slips")).json<{
       settled: { receipt: Record<string, unknown> }[];
     }>().settled[0]!.receipt;
-    expect(settled).toMatchObject({ odds_source: "gemma", odds_reason: expect.any(String) });
+    expect(settled).toMatchObject({
+      odds_source: "gemma",
+      odds_reason: expect.any(String) as unknown,
+    });
     const decisions = settled["decisions"] as { odds: Decision | null; verdict: Decision | null };
     expect(decisions.odds).toMatchObject({ job: "bookmaker", fake: true });
     expect(decisions.verdict).toMatchObject({ job: "judge", fake: true });

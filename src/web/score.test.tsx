@@ -301,14 +301,15 @@ describe("NFR-009: Score screen accessibility (axe)", () => {
   });
 });
 
-describe("The calibration headline (mockup 08, AC-020.3)", () => {
+describe("The calibration headline (mockup 08, AC-020.3, AC-028.3)", () => {
   const band = (
+    index: number,
     name: string,
     predicted: number,
     n: number,
     actual: number | null,
   ): CalibrationBand => ({
-    band: 0,
+    band: index,
     name,
     predicted_pct: predicted,
     n,
@@ -317,19 +318,28 @@ describe("The calibration headline (mockup 08, AC-020.3)", () => {
     too_few: n < 5,
   });
 
-  it("names the band with the most bets that has enough of them", () => {
+  it("names the Gemma band with the most bets and puts the rule's figure for the same band beside it", () => {
     expect(
-      calibrationHeadline([
-        band("unlikely", 35, 8, 50),
-        band("likely", 70, 9, 74),
-        band("x", 15, 3, null),
-      ]),
-    ).toBe("When Gemma says 70%, doing nothing works 74% of the time (9 bets).");
+      calibrationHeadline(
+        [band(1, "unlikely", 35, 8, 50), band(3, "likely", 70, 9, 74), band(0, "x", 15, 3, null)],
+        [band(1, "unlikely", 35, 5, 40), band(3, "likely", 70, 9, 66)],
+      ),
+    ).toBe("When Gemma says likely, doing nothing worked 74% (9 bets); the rule: 66% (9 bets).");
+  });
+
+  it("says so when the rule has too few bets in that band, or none", () => {
+    const gemma = [band(3, "likely", 70, 9, 74)];
+    expect(calibrationHeadline(gemma, [band(3, "likely", 70, 2, 50)])).toBe(
+      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule: too few bets to judge (2 bets).",
+    );
+    expect(calibrationHeadline(gemma, [])).toBe(
+      "When Gemma says likely, doing nothing worked 74% (9 bets); the rule: too few bets to judge.",
+    );
   });
 
   it("says nothing while no band has five bets, so a shaky share is never a headline", () => {
     expect(
-      calibrationHeadline([band("likely", 70, 4, 75), band("x", 15, 0, null)]),
+      calibrationHeadline([band(3, "likely", 70, 4, 75), band(0, "x", 15, 0, null)]),
     ).toBeUndefined();
     expect(calibrationHeadline([])).toBeUndefined();
   });
