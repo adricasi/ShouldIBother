@@ -364,7 +364,9 @@ propose a change that contradicts the spec, change the spec first.
   exact terms on the Gemma 4 model card before relying on that.
 - **Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**; the free tier is for non-commercial use. The
-  attribution is shown in the footer of Today.
+  footer of Today shows the attribution word for word:
+
+  > Weather data by Open-Meteo.com (https://open-meteo.com/), licensed CC BY 4.0.
 - [Ollama](https://ollama.com) and llama.cpp serve the model locally; Fastify, React, Vite, zod,
   better-sqlite3, sharp and pino are the application stack.
 - Fonts (Big Shoulders Display, IBM Plex Mono, Figtree: SIL Open Font License 1.1, served by the app, no CDN)
