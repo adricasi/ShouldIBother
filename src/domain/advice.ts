@@ -7,9 +7,9 @@ import type { ForecastHour } from "./weather.js";
  * contradiction checks live here as pure functions of the forecast; Gemma's advisor job reads the
  * same forecast through `get_forecast` and its answer is checked against these rules.
  *
- * Every function takes `hours`: the forecast from the current hour on, index 0 being the hour that
- * contains now (what `get_forecast` returns), so a window `{start, end}` in hours ahead means the
- * hours with index `start` up to, not including, `end`.
+ * Every function takes `hours`: the forecast from the hour the card was created in, index 0 being that
+ * hour (what `get_forecast` returns), so a window `{start, end}` in hours ahead means the hours
+ * with index `start` up to, not including, `end`.
  */
 
 export const ADVICE_CHORE_TYPES = [
@@ -49,24 +49,22 @@ export const ADVICE_MIN_FORECAST_HOURS = 48;
  * Final for this version, no tuning; `config/rules.json` is not touched.
  */
 export interface AdviceRules {
-  /** A wet hour has at least this much rain (the same value as `wetHourMm` in config/rules.json). */
+  /** A wet hour has at least this much rain. */
   readonly wetHourMm: number;
+  /** A "do it now" is the window [0, nowHours) when it is checked against the forecast. */
+  readonly nowHours: number;
   readonly windowsClean: {
-    /** Rain in the lookahead at or above this total makes it wait. */
-    readonly rainMmAtLeast: number;
+    /** Any wet hour in the lookahead makes it wait until `settleHours` after the last one. */
     readonly lookaheadHours: number;
-    /** Wait until this many hours after the end of the last wet hour. */
     readonly settleHours: number;
-    /** How long the rule's "wait" window is, and how long a "do it now" lasts when checked. */
+    /** How long the rule's "wait" window is. */
     readonly waitWindowHours: number;
-    readonly nowHours: number;
   };
   readonly balconySweep: {
     readonly gustKmhAtLeast: number;
     readonly lookaheadHours: number;
     readonly settleHours: number;
     readonly waitWindowHours: number;
-    readonly nowHours: number;
   };
   readonly outdoorPaint: {
     /** The run of hours with no wet hour, humidity under the cap and warm enough. */
@@ -75,10 +73,10 @@ export interface AdviceRules {
     readonly tempCAtLeast: number;
   };
   readonly lawnFeed: {
-    readonly rainMmAtLeast: number;
+    /** A spell of consecutive wet hours with at least this much rain, starting in the lookahead. */
+    readonly spellMmAtLeast: number;
     readonly lookaheadHours: number;
     readonly waitWindowHours: number;
-    readonly nowHours: number;
   };
 }
 
@@ -90,34 +88,47 @@ function isWet(hour: ForecastHour, rules: AdviceRules): boolean {
   return rainOf(hour) >= rules.wetHourMm;
 }
 
-function totalRain(hours: readonly ForecastHour[]): number {
-  return hours.reduce((sum, hour) => sum + rainOf(hour), 0);
-}
-
-/** Index of the last hour that is wet; with no hour that wet, the last with any rain; else -1. */
-function lastRainIndex(hours: readonly ForecastHour[], rules: AdviceRules): number {
-  const wet = hours.findLastIndex((hour) => isWet(hour, rules));
-  return wet >= 0 ? wet : hours.findLastIndex((hour) => rainOf(hour) > 0);
-}
-
 function waitFrom(start: number, length: number): Advice {
   return { advice: "wait", window: { startHoursAhead: start, endHoursAhead: start + length } };
 }
 
-/** The last hour of a rain spell that makes the rule wait (clean windows, feed lawn), if there is one. */
-function rainSpellEnd(
-  chore: "windows_clean" | "lawn_feed",
+/** Index of the last wet hour among the first `lookahead` hours, or -1. */
+function lastWetIndex(
+  hours: readonly ForecastHour[],
+  lookahead: number,
+  rules: AdviceRules,
+): number {
+  return hours.slice(0, lookahead).findLastIndex((hour) => isWet(hour, rules));
+}
+
+/**
+ * Rain spells of the lawn rule: runs of consecutive wet hours that start within the lookahead and
+ * add up to the threshold. `end` is the index of the hour after the spell.
+ */
+function lawnSpells(
   hours: readonly ForecastHour[],
   rules: AdviceRules,
-): { lastHour: number } | undefined {
-  const spec = chore === "windows_clean" ? rules.windowsClean : rules.lawnFeed;
-  const ahead = hours.slice(0, spec.lookaheadHours);
-  // Forecast rain comes in tenths of a millimetre: the sum may be a hair under its true value.
-  if (totalRain(ahead) + 1e-6 < spec.rainMmAtLeast) {
-    return undefined;
+): { start: number; end: number }[] {
+  const { lookaheadHours, spellMmAtLeast } = rules.lawnFeed;
+  const spells: { start: number; end: number }[] = [];
+  let index = 0;
+  while (index < Math.min(lookaheadHours, hours.length)) {
+    if (!isWet(hours[index]!, rules)) {
+      index += 1;
+      continue;
+    }
+    const start = index;
+    let total = 0;
+    while (index < hours.length && isWet(hours[index]!, rules)) {
+      total += rainOf(hours[index]!);
+      index += 1;
+    }
+    // Forecast rain comes in tenths of a millimetre: the sum may be a hair under its true value.
+    if (total + 1e-6 >= spellMmAtLeast) {
+      spells.push({ start, end: index });
+    }
   }
-  const lastHour = lastRainIndex(ahead, rules);
-  return lastHour < 0 ? undefined : { lastHour };
+  return spells;
 }
 
 /** True when an hour is fit for outdoor paint: dry, not humid, warm enough. A missing value is not fit. */
@@ -136,11 +147,12 @@ function paintFit(hour: ForecastHour, rules: AdviceRules): boolean {
  * The rule advice for a chore (design.md, Advice cards): computed for every advice card, shown
  * beside Gemma's when they differ, and the whole answer when Gemma has none.
  *
- * - Clean windows: rain of 1 mm or more in the next 48 h → wait until 6 h after the last wet hour.
+ * - Clean windows: any wet hour in 0-48 h → wait until 6 h after the last wet hour.
  * - Sweep balcony: gusts of 40 km/h or more in the next 24 h → wait until 3 h after the last one.
  * - Paint outdoors: the first run of 24 h with no wet hour, humidity under 85 % and 10 °C or more
- *   → do it then (now when it starts now); none in the forecast → no window.
- * - Feed lawn: 10 mm or more in the next 48 h → wait until after the rain.
+ *   → do it then (now when it starts now); none in the 72 hours → no window.
+ * - Feed lawn: a spell of consecutive wet hours adding up to 10 mm or more that starts in 0-48 h →
+ *   wait until after it (the last such spell).
  *
  * "After the last hour" is counted from the end of that hour. The numbers are in `rules`.
  */
@@ -152,16 +164,19 @@ export function ruleAdvice(
   switch (chore) {
     case "windows_clean": {
       const spec = rules.windowsClean;
-      const spell = rainSpellEnd(chore, hours, rules);
-      return spell === undefined
+      const last = lastWetIndex(hours, spec.lookaheadHours, rules);
+      return last < 0
         ? { advice: "do_now" }
-        : waitFrom(spell.lastHour + 1 + spec.settleHours, spec.waitWindowHours);
+        : waitFrom(last + 1 + spec.settleHours, spec.waitWindowHours);
     }
     case "lawn_feed": {
-      const spell = rainSpellEnd(chore, hours, rules);
-      return spell === undefined
-        ? { advice: "do_now" }
-        : waitFrom(spell.lastHour + 1, rules.lawnFeed.waitWindowHours);
+      const last = lawnSpells(hours, rules).at(-1);
+      if (last === undefined) {
+        return { advice: "do_now" };
+      }
+      return last.end >= Math.min(hours.length, ADVICE_HORIZON_HOURS)
+        ? { advice: "no_window" }
+        : waitFrom(last.end, rules.lawnFeed.waitWindowHours);
     }
     case "balcony_sweep": {
       const spec = rules.balconySweep;
@@ -221,45 +236,27 @@ function firstWhere(
   return undefined;
 }
 
-/** How long a "do it now" lasts when it is checked against the forecast, in hours. */
-function nowHours(chore: AdviceChore, rules: AdviceRules): number {
-  switch (chore) {
-    case "windows_clean":
-      return rules.windowsClean.nowHours;
-    case "balcony_sweep":
-      return rules.balconySweep.nowHours;
-    case "outdoor_paint":
-      return rules.outdoorPaint.runHours;
-    case "lawn_feed":
-      return rules.lawnFeed.nowHours;
-  }
-}
-
-/** The window a check looks at: the answer's own window, or the first hours for a "do it now". */
-function checkedWindow(
-  chore: AdviceChore,
-  answer: Advice,
-  rules: AdviceRules,
-): AdviceWindow | undefined {
+/** The window an advice stands for: its own, or [0, nowHours) for "do it now"; none for "no window". */
+export function adviceWindowOf(answer: Advice, rules: AdviceRules): AdviceWindow | undefined {
   if (answer.advice === "wait") {
     return answer.window;
   }
   return answer.advice === "do_now"
-    ? { startHoursAhead: 0, endHoursAhead: nowHours(chore, rules) }
+    ? { startHoursAhead: 0, endHoursAhead: rules.nowHours }
     : undefined;
 }
 
 /**
  * Why the forecast contradicts Gemma's answer, as a message for the retry, or undefined when it
- * does not (AC-031.2). "No window" is never contradicted: it is shown beside the rule's advice
- * when they differ. A "do it now" is checked as a window starting now.
+ * does not (AC-031.2). A "do it now" is checked as the window [0, 3) h. A "no window" is
+ * contradicted when the rule finds a window.
  *
  * | Chore | A window is contradicted when |
  * |---|---|
- * | Clean windows | it contains a wet hour, or starts before the last wet hour of the next 48 h (when that rain is 1 mm or more) |
- * | Sweep balcony | it contains an hour with gusts of 40 km/h or more |
- * | Paint outdoors | any hour in its first 24 h is wet, humid (85 % or more) or below 10 °C |
- * | Feed lawn | it lies before the end of a rain spell of 10 mm or more in the next 48 h |
+ * | Clean windows | it contains a wet hour, or starts before the last wet hour of the next 48 h |
+ * | Sweep balcony | any hour of the whole window has gusts of 40 km/h or more |
+ * | Paint outdoors | any hour in [start, start + 24) is wet, humid (85 % or more) or below 10 °C, or start + 24 is past 72 h |
+ * | Feed lawn | it starts before a rain spell (consecutive wet hours, 10 mm or more, starting in 0-48 h) ends |
  */
 export function adviceContradiction(
   chore: AdviceChore,
@@ -267,7 +264,16 @@ export function adviceContradiction(
   answer: Advice,
   rules: AdviceRules,
 ): string | undefined {
-  const window = checkedWindow(chore, answer, rules);
+  if (answer.advice === "no_window") {
+    const rule = ruleAdvice(chore, hours, rules);
+    if (rule.advice === "no_window") {
+      return undefined;
+    }
+    return rule.window === undefined
+      ? "saying there is no good window is contradicted: the forecast allows doing it now"
+      : `saying there is no good window is contradicted: the forecast has a good window from hour ${String(rule.window.startHoursAhead)} ahead`;
+  }
+  const window = adviceWindowOf(answer, rules);
   if (window === undefined) {
     return undefined;
   }
@@ -282,9 +288,9 @@ export function adviceContradiction(
       if (wet !== undefined) {
         return `${label} contains a wet hour (hour ${String(wet)} ahead, ${String(rainOf(hours[wet]!))} mm)`;
       }
-      const spell = rainSpellEnd(chore, hours, rules);
-      return spell !== undefined && start <= spell.lastHour
-        ? `${label} starts before the last wet hour of the next ${String(rules.windowsClean.lookaheadHours)} hours (hour ${String(spell.lastHour)} ahead)`
+      const last = lastWetIndex(hours, rules.windowsClean.lookaheadHours, rules);
+      return last >= start
+        ? `${label} starts before the last wet hour of the next ${String(rules.windowsClean.lookaheadHours)} hours (hour ${String(last)} ahead)`
         : undefined;
     }
     case "balcony_sweep": {
@@ -299,21 +305,20 @@ export function adviceContradiction(
         : `${label} contains an hour with gusts of ${String(hours[gust]!.gustKmh)} km/h (hour ${String(gust)} ahead)`;
     }
     case "outdoor_paint": {
-      const bad = firstWhere(
-        hours,
-        start,
-        Math.min(end, start + rules.outdoorPaint.runHours),
-        (hour) => !paintFit(hour, rules),
-      );
+      const run = rules.outdoorPaint.runHours;
+      if (start + run > ADVICE_HORIZON_HOURS) {
+        return `${label} leaves less than ${String(run)} hours before the ${String(ADVICE_HORIZON_HOURS)} hours end`;
+      }
+      const bad = firstWhere(hours, start, start + run, (hour) => !paintFit(hour, rules));
       return bad === undefined
         ? undefined
         : `${label} has an hour that is wet, humid or cold for paint (hour ${String(bad)} ahead)`;
     }
     case "lawn_feed": {
-      const spell = rainSpellEnd(chore, hours, rules);
-      return spell !== undefined && start <= spell.lastHour
-        ? `${label} lies before the end of the heavy rain of the next ${String(rules.lawnFeed.lookaheadHours)} hours (last wet hour ${String(spell.lastHour)} ahead)`
-        : undefined;
+      const spell = lawnSpells(hours, rules).find((candidate) => start < candidate.end);
+      return spell === undefined
+        ? undefined
+        : `${label} starts before the heavy rain ends (hours ${String(spell.start)}-${String(spell.end)} ahead)`;
     }
   }
 }
@@ -323,7 +328,9 @@ export interface AdviceChoreSpec {
   readonly title: string;
   /** The words for doing it, e.g. "Clean the windows". */
   readonly action: string;
-  /** The headline of "no good window in the next 3 days". */
+  /** The chore in the safety guard's words. */
+  readonly judgeName: string;
+  /** The headline of "no good window in the next 72 h". */
   readonly noWindow: string;
   /** "after" for a chore that waits for something to pass, "from" for paint that waits for a run. */
   readonly connector: "after" | "from";
@@ -331,27 +338,31 @@ export interface AdviceChoreSpec {
 
 export const ADVICE_CHORES: Readonly<Record<AdviceChore, AdviceChoreSpec>> = {
   windows_clean: {
+    judgeName: "clean the windows",
     title: "Clean the windows",
     action: "Clean the windows",
-    noWindow: "No good time to clean the windows in the next 3 days",
+    noWindow: "No good time to clean the windows in the next 72 h",
     connector: "after",
   },
   balcony_sweep: {
+    judgeName: "sweep the balcony",
     title: "Sweep the balcony",
     action: "Sweep the balcony",
-    noWindow: "No good time to sweep the balcony in the next 3 days",
+    noWindow: "No good time to sweep the balcony in the next 72 h",
     connector: "after",
   },
   outdoor_paint: {
+    judgeName: "paint or varnish outdoors",
     title: "Paint or varnish outdoors",
     action: "Paint or varnish outdoors",
-    noWindow: "No good window to paint outdoors in the next 3 days",
+    noWindow: "No good window to paint outdoors in the next 72 h",
     connector: "from",
   },
   lawn_feed: {
+    judgeName: "feed the lawn",
     title: "Feed the lawn",
     action: "Feed the lawn",
-    noWindow: "No good time to feed the lawn in the next 3 days",
+    noWindow: "No good time to feed the lawn in the next 72 h",
     connector: "after",
   },
 };
@@ -403,8 +414,8 @@ export function ruleReason(chore: AdviceChore, answer: Advice, rules: AdviceRule
     case "windows_clean": {
       const spec = rules.windowsClean;
       return waits
-        ? `Rule: ${String(spec.rainMmAtLeast)} mm of rain or more in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last wet hour.`
-        : `Rule: under ${String(spec.rainMmAtLeast)} mm of rain in the next ${String(spec.lookaheadHours)} hours.`;
+        ? `Rule: rain in the next ${String(spec.lookaheadHours)} hours; wait until ${String(spec.settleHours)} hours after the last wet hour.`
+        : `Rule: no rain in the next ${String(spec.lookaheadHours)} hours.`;
     }
     case "balcony_sweep": {
       const spec = rules.balconySweep;
@@ -421,9 +432,12 @@ export function ruleReason(chore: AdviceChore, answer: Advice, rules: AdviceRule
     }
     case "lawn_feed": {
       const spec = rules.lawnFeed;
-      return waits
-        ? `Rule: ${String(spec.rainMmAtLeast)} mm of rain or more in the next ${String(spec.lookaheadHours)} hours; wait until it has passed.`
-        : `Rule: under ${String(spec.rainMmAtLeast)} mm of rain in the next ${String(spec.lookaheadHours)} hours.`;
+      const spell = `a rain spell of ${String(spec.spellMmAtLeast)} mm or more`;
+      return answer.advice === "do_now"
+        ? `Rule: no ${spell} in the next ${String(spec.lookaheadHours)} hours.`
+        : answer.advice === "no_window"
+          ? `Rule: ${spell} runs past the ${String(ADVICE_HORIZON_HOURS)} hours.`
+          : `Rule: ${spell} in the next ${String(spec.lookaheadHours)} hours; wait until it has passed.`;
     }
   }
 }

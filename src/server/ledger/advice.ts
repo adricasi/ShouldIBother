@@ -7,6 +7,7 @@ import {
   ADVICE_KINDS,
   ADVICE_MIN_FORECAST_HOURS,
   adviceHeadline,
+  adviceWindowOf,
   advicesDiffer,
   isAdviceChore,
   ruleAdvice,
@@ -14,8 +15,10 @@ import {
   type Advice,
   type AdviceChore,
 } from "../../domain/advice.js";
-import { bandTable } from "../../domain/rules/index.js";
+
+import { bandTable, safetyAlert } from "../../domain/rules/index.js";
 import { HOUR_MS } from "../../domain/time.js";
+import { hoursInWindow, type ForecastHour } from "../../domain/weather.js";
 import {
   ADVISOR_CONTRADICTION_PREFIX,
   ADVISOR_PROMPT,
@@ -24,14 +27,15 @@ import {
   type AdvisorOutput,
 } from "../gemma/advisor.js";
 import { JobQueueFullError } from "../gemma/runner.js";
+import { runSafetyGuard } from "../gemma/safety.js";
 import { HttpError } from "../problem.js";
 import { WeatherUnavailableError } from "../weather/client.js";
 
 import { cardLocationOf, stampCardLocation } from "./card-location.js";
 import type { LedgerDeps } from "./deps.js";
 import { forecastFrom } from "./forecast.js";
-import { decisionView } from "./gemma-facts.js";
-import { assertGemmaCapacity } from "./gemma-cards.js";
+import { decisionView, parseForecast, type ForecastRow } from "./gemma-facts.js";
+import { assertGemmaCapacity, turnIntoAlert } from "./gemma-cards.js";
 import type { CardRow } from "./rows.js";
 import { FAILURE_NOTES, cardView, type CardView } from "./views.js";
 
@@ -178,11 +182,16 @@ function markOffline(
 }
 
 /**
- * A new advice card (AC-031.1, flag `adviceCards`): it shows at once as "Gemma is working out
- * when", and the advisor runs in the background like the bookmaker does. The listener found the
- * chore, so this is the normal capture path; no quote, bet, points or savings come with it.
+ * A new advice card (AC-031.1, flag `adviceCards`): the rule's advice shows at once ("Gemma is
+ * thinking · rule advice") and the advisor runs in the background like the bookmaker does. The
+ * listener found the chore, so this is the normal capture path; no quote, bet, points or savings
+ * come with it. Without a forecast the card is made anyway and says so when the run ends.
  */
-export function createAdviceCard(deps: LedgerDeps, chore: AdviceChore, label: string): CardView {
+export async function createAdviceCard(
+  deps: LedgerDeps,
+  chore: AdviceChore,
+  label: string,
+): Promise<CardView> {
   const advice = pendingAdvice(chore);
   const id = Number(
     deps.db
@@ -193,6 +202,14 @@ export function createAdviceCard(deps: LedgerDeps, chore: AdviceChore, label: st
       .run(label, chore, JSON.stringify(advice), deps.now()).lastInsertRowid,
   );
   stampCardLocation(deps, id);
+  try {
+    await withRuleAdvice(deps, loadCard(deps, id), advice);
+  } catch (error) {
+    // The run in the background reports a forecast that is missing; anything else is a bug to log.
+    if (!(error instanceof WeatherUnavailableError)) {
+      deps.log({ event: "advice_rule_failed", cardId: id });
+    }
+  }
   launchAdvisor(deps, id, advice.attempt);
   return adviceCardView(deps, id);
 }
@@ -211,25 +228,148 @@ function wordsOf(card: CardRow, chore: AdviceChore): string {
   return card.input_text === ADVICE_CHORES[chore].title ? "" : card.input_text;
 }
 
-/** The rule's advice, then Gemma's, for one card (REQ-031). Ends with the card out of `thinking`. */
+interface ForecastForAdvice {
+  /** The forecast from the hour the card was created in, at most 72 hours. */
+  readonly hours: readonly ForecastHour[];
+  readonly fetchedAt: number;
+}
+
+/**
+ * The forecast an advice card works on. Hours are counted from the hour the card was created in,
+ * also on a Retry, so a window never moves. Throws `WeatherUnavailableError` when it is not there
+ * or covers too few hours to decide.
+ */
+async function forecastOfCard(deps: LedgerDeps, card: CardRow): Promise<ForecastForAdvice> {
+  const forecast = await deps.weather.getForecast({
+    fromMs: card.created_at,
+    hours: ADVICE_HORIZON_HOURS,
+    ...cardLocationOf(card),
+  });
+  const hours = forecastFrom(forecast.hours, card.created_at, ADVICE_HORIZON_HOURS);
+  if (hours.length < ADVICE_MIN_FORECAST_HOURS) {
+    throw new WeatherUnavailableError("The forecast covers too few hours for advice");
+  }
+  return { hours, fetchedAt: forecast.fetchedAt };
+}
+
+/** Computes the rule's advice and writes it on the card, with Gemma's answer cleared. */
+async function withRuleAdvice(
+  deps: LedgerDeps,
+  card: CardRow,
+  current: StoredAdvice,
+): Promise<{ stored: StoredAdvice; forecast: ForecastForAdvice; rule: Advice }> {
+  const forecast = await forecastOfCard(deps, card);
+  const rule = ruleAdvice(current.chore, forecast.hours, deps.adviceRules);
+  const stored: StoredAdvice = {
+    ...current,
+    rule: toStored(rule),
+    gemma: null,
+    first_hour_at: forecast.hours[0]!.startsAt,
+    forecast_at: forecast.fetchedAt,
+  };
+  writeAdvice(deps, card.id, stored);
+  return { stored, forecast, rule };
+}
+
+/** The span the safety checks look at for an advice: its window, or the next hours for "do it now". */
+function safetySpan(
+  deps: Pick<LedgerDeps, "adviceRules">,
+  firstHourMs: number,
+  answer: Advice,
+): { fromMs: number; toMs: number } {
+  const window = adviceWindowOf(answer, deps.adviceRules) ?? {
+    startHoursAhead: 0,
+    endHoursAhead: deps.adviceRules.nowHours,
+  };
+  return {
+    fromMs: firstHourMs + window.startHoursAhead * HOUR_MS,
+    toMs: firstHourMs + window.endHoursAhead * HOUR_MS,
+  };
+}
+
+/** The card becomes a "Do it now" alert if the run is still the card's current one (AC-031.4). */
+function alertInstead(
+  deps: LedgerDeps,
+  cardId: number,
+  attempt: number,
+  reason: string,
+  event: string,
+): boolean {
+  return deps.db
+    .transaction((): boolean => {
+      const fresh = loadCard(deps, cardId);
+      if (fresh.gemma_state !== "thinking" || parseAdvice(fresh)?.attempt !== attempt) {
+        return false;
+      }
+      turnIntoAlert(deps, cardId, reason, event);
+      return true;
+    })
+    .immediate();
+}
+
+/**
+ * The Gemma safety guard on an advice card (AC-031.4, flag `safetyGuard`). Returns the alert's
+ * reason, or null when there is none, the guard is unsure, away or late (AC-012.4).
+ */
+async function guardAdvice(
+  deps: LedgerDeps,
+  card: CardRow,
+  chore: AdviceChore,
+  span: { fromMs: number; toMs: number },
+  hours: readonly ForecastHour[],
+): Promise<string | null> {
+  const enqueuedAt = deps.now();
+  try {
+    const result = await runSafetyGuard(deps.gemma, {
+      chore,
+      label: wordsOf(card, chore),
+      nowMs: enqueuedAt,
+      window: span,
+      forecast: hoursInWindow(hours, span.fromMs, span.toMs).sort(
+        (a, b) => a.startsAt - b.startsAt,
+      ),
+      cardId: card.id,
+      enqueuedAt,
+    });
+    if (!result.ok) {
+      deps.log({ event: "safety_guard_unavailable", cardId: card.id, failure: result.failure });
+      return null;
+    }
+    if (result.output.status === "ok") {
+      deps.db
+        .prepare(
+          "UPDATE cards SET safety_checked_at = ? WHERE id = ? AND safety_checked_at IS NULL",
+        )
+        .run(deps.now(), card.id);
+    }
+    return result.output.status === "ok" && result.output.alert === true
+      ? (result.output.reason ?? "").trim()
+      : null;
+  } catch (error) {
+    deps.log({
+      event: "safety_guard_unavailable",
+      cardId: card.id,
+      failure: error instanceof JobQueueFullError ? "busy" : "internal",
+    });
+    return null;
+  }
+}
+
+/**
+ * The rule's advice, the safety checks, then Gemma's advice, for one card (REQ-031). Ends with the
+ * card out of `thinking`. The fixed backstop and then the guard run before the advisor, and the
+ * backstop again on the window Gemma gives; an alert replaces the advice (AC-031.4).
+ */
 async function adviseCard(deps: LedgerDeps, cardId: number, attempt: number): Promise<void> {
   const card = loadCard(deps, cardId);
   const current = parseAdvice(card);
   if (current === null || card.gemma_state !== "thinking" || current.attempt !== attempt) {
     return;
   }
-  // The job's 45 s deadline starts before the forecast is fetched.
-  const enqueuedAt = deps.now();
-  let hours;
-  let fetchedAt;
+  const chore = current.chore;
+  let prepared;
   try {
-    const forecast = await deps.weather.getForecast({
-      fromMs: enqueuedAt,
-      hours: ADVICE_HORIZON_HOURS,
-      ...cardLocationOf(card),
-    });
-    fetchedAt = forecast.fetchedAt;
-    hours = forecastFrom(forecast.hours, enqueuedAt, ADVICE_HORIZON_HOURS);
+    prepared = await withRuleAdvice(deps, card, current);
   } catch (error) {
     if (error instanceof WeatherUnavailableError) {
       markOffline(deps, cardId, "weather", attempt);
@@ -237,36 +377,41 @@ async function adviseCard(deps: LedgerDeps, cardId: number, attempt: number): Pr
     }
     throw error;
   }
-  const first = hours[0];
-  if (first === undefined || hours.length < ADVICE_MIN_FORECAST_HOURS) {
-    markOffline(deps, cardId, "weather", attempt);
+  const { stored: withRule, forecast, rule } = prepared;
+  const hours = forecast.hours;
+  const firstHourMs = hours[0]!.startsAt;
+
+  // The fixed backstop on the rule's window, then the guard when its flag is on (AC-031.4).
+  const ruleSpan = safetySpan(deps, firstHourMs, rule);
+  const backstop = safetyAlert(hours, ruleSpan.fromMs, ruleSpan.toMs, deps.rules);
+  if (backstop !== null) {
+    alertInstead(deps, cardId, attempt, backstop.reason, "alert_on_final_window");
     return;
   }
-  const rule = ruleAdvice(current.chore, hours, deps.adviceRules);
-  // The rule's advice is on the card before Gemma answers, so it is there if Gemma never does.
-  const withRule: StoredAdvice = {
-    ...current,
-    rule: toStored(rule),
-    gemma: null,
-    first_hour_at: first.startsAt,
-    forecast_at: fetchedAt,
-  };
-  writeAdvice(deps, cardId, withRule);
+  if (deps.flags.safetyGuard) {
+    const reason = await guardAdvice(deps, card, chore, ruleSpan, hours);
+    if (reason !== null && reason !== "") {
+      alertInstead(deps, cardId, attempt, reason, "alert_from_safety_guard");
+      return;
+    }
+  }
 
+  // The job's 45 s deadline starts here.
+  const enqueuedAt = deps.now();
   let result;
   try {
     result = await runAdvisor(
       deps.gemma,
       {
-        chore: current.chore,
-        label: wordsOf(card, current.chore),
+        chore,
+        label: wordsOf(card, chore),
         nowMs: enqueuedAt,
         hours,
         rules: deps.adviceRules,
         cardId,
         enqueuedAt,
       },
-      (hoursAhead) => Promise.resolve(forecastFrom(hours, enqueuedAt, hoursAhead)),
+      (hoursAhead) => Promise.resolve(forecastFrom(hours, card.created_at, hoursAhead)),
     );
   } catch (error) {
     if (error instanceof JobQueueFullError) {
@@ -293,6 +438,13 @@ async function adviseCard(deps: LedgerDeps, cardId: number, attempt: number): Pr
   if (answer === null) {
     // "Unsure": nothing to show of Gemma's, so the rule's advice stands and Retry is offered.
     markOffline(deps, cardId, "unsure", attempt);
+    return;
+  }
+  // The backstop again on the window Gemma chose (AC-031.4).
+  const gemmaSpan = safetySpan(deps, firstHourMs, fromStored(answer));
+  const final = safetyAlert(hours, gemmaSpan.fromMs, gemmaSpan.toMs, deps.rules);
+  if (final !== null) {
+    alertInstead(deps, cardId, attempt, final.reason, "alert_on_final_window");
     return;
   }
   deps.db
@@ -347,6 +499,50 @@ export function retryAdvice(deps: LedgerDeps, cardId: number): CardView {
   return adviceCardView(deps, cardId);
 }
 
+/** The most forecast rows the card shows for a window. */
+const MAX_WINDOW_ROWS = 24;
+
+const HOUR_LABEL = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "Europe/Madrid",
+});
+
+/**
+ * The rows of the stored tool result that fall in the advice's window, each named by its Madrid
+ * day and hour. Rows are counted from the first forecast hour, like the window. Empty without a
+ * stored decision or for "no window".
+ */
+function windowForecast(
+  db: LedgerDeps["db"],
+  decisionId: number | null,
+  firstHourMs: number,
+  answer: Advice,
+  rules: LedgerDeps["adviceRules"],
+): ForecastRow[] {
+  const window = adviceWindowOf(answer, rules);
+  if (decisionId === null || window === undefined) {
+    return [];
+  }
+  const row = db
+    .prepare<[number], { tool_result: string | null }>(
+      "SELECT tool_result FROM gemma_decisions WHERE id = ?",
+    )
+    .get(decisionId);
+  const from = window.startHoursAhead;
+  const rows = parseForecast(
+    row?.tool_result ?? null,
+    from,
+    Math.min(window.endHoursAhead, from + MAX_WINDOW_ROWS),
+  );
+  return (rows ?? []).map((entry, index) => ({
+    ...entry,
+    hour: HOUR_LABEL.format(firstHourMs + (from + index) * HOUR_MS).replace(",", ""),
+  }));
+}
+
 /** What the client shows of an advice card (`advice` on the card view). */
 export function adviceView(
   deps: Pick<LedgerDeps, "db" | "adviceRules">,
@@ -386,11 +582,23 @@ export function adviceView(
     stage: shown === null ? (offline ? "unavailable" : "thinking") : "advice",
     source: shown?.source ?? null,
     /** "Gemma's advice" or "Rule advice" (AC-031.2). */
-    label: shown === null ? null : shown.source === "gemma" ? "Gemma's advice" : "Rule advice",
+    label:
+      shown === null
+        ? null
+        : shown.source === "gemma"
+          ? "Gemma's advice"
+          : state === "thinking"
+            ? "Gemma is thinking · rule advice"
+            : "Rule advice",
     advice: shown?.advice.advice ?? null,
     headline: shown === null ? null : headline(shown.advice),
     reason: shown?.reason ?? null,
     window: shown === null ? null : windowOf(shown.advice),
+    /** The forecast numbers Gemma was given for the window, from the stored decision (AC-031.1). */
+    forecast:
+      shown === null || firstHourMs === null
+        ? []
+        : windowForecast(deps.db, stored.decision_id, firstHourMs, shown.advice, deps.adviceRules),
     /** The rule's advice beside Gemma's, only when they differ (AC-031.2). */
     rule:
       differs && rule !== null
@@ -399,10 +607,8 @@ export function adviceView(
     /** Why Gemma's advice is not shown, or what Gemma is doing. */
     note: offline
       ? (ADVICE_FAILURE_NOTES[card.gemma_failure ?? "unavailable"] ?? "Gemma is not running.")
-      : state === "thinking"
-        ? shown === null
-          ? "Gemma is checking the forecast."
-          : "Gemma is checking the forecast. This is the rule's advice for now."
+      : state === "thinking" && shown === null
+        ? "Gemma is checking the forecast."
         : null,
     can_retry: offline,
     /** "How Gemma decided" (AC-028.4, AC-031.3): the advisor decision behind the card. */
@@ -420,6 +626,7 @@ export type AdviceView = {
   readonly reason: string | null;
   readonly window: { readonly from: string; readonly to: string } | null;
   readonly rule: { readonly headline: string | null; readonly reason: string } | null;
+  readonly forecast: ForecastRow[];
   readonly note: string | null;
   readonly can_retry: boolean;
   readonly decision: ReturnType<typeof decisionView>;

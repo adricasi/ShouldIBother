@@ -14,14 +14,9 @@ const adviceRulesSchema = z
     _comment: z.string().optional(),
     version: z.literal(1),
     wetHourMm: positive,
+    nowHours: hours,
     windowsClean: z
-      .object({
-        rainMmAtLeast: positive,
-        lookaheadHours: hours,
-        settleHours: hours,
-        waitWindowHours: hours,
-        nowHours: hours,
-      })
+      .object({ lookaheadHours: hours, settleHours: hours, waitWindowHours: hours })
       .strict(),
     balconySweep: z
       .object({
@@ -29,7 +24,6 @@ const adviceRulesSchema = z
         lookaheadHours: hours,
         settleHours: hours,
         waitWindowHours: hours,
-        nowHours: hours,
       })
       .strict(),
     outdoorPaint: z
@@ -40,12 +34,7 @@ const adviceRulesSchema = z
       })
       .strict(),
     lawnFeed: z
-      .object({
-        rainMmAtLeast: positive,
-        lookaheadHours: hours,
-        waitWindowHours: hours,
-        nowHours: hours,
-      })
+      .object({ spellMmAtLeast: positive, lookaheadHours: hours, waitWindowHours: hours })
       .strict(),
   })
   .strict();
@@ -56,8 +45,8 @@ export function parseAdviceRules(raw: unknown): AdviceRules {
   if (!result.success) {
     throw new Error(`Invalid advice rules: ${result.error.message}`);
   }
-  const { wetHourMm, windowsClean, balconySweep, outdoorPaint, lawnFeed } = result.data;
-  return { wetHourMm, windowsClean, balconySweep, outdoorPaint, lawnFeed };
+  const { wetHourMm, nowHours, windowsClean, balconySweep, outdoorPaint, lawnFeed } = result.data;
+  return { wetHourMm, nowHours, windowsClean, balconySweep, outdoorPaint, lawnFeed };
 }
 
 /** Loads `config/advice-rules.json`, the final thresholds of the advice cards (design.md). */

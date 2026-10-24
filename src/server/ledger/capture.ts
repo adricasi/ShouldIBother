@@ -68,7 +68,7 @@ export async function cardsFromChores(
       cards.push(createPlannerCard(deps, chore.label));
     } else if (isAdviceChore(chore.chore_type) && deps.flags.adviceCards) {
       // REQ-031 (flag `adviceCards`): an outdoor chore gets advice from the advisor, not a bet.
-      cards.push(createAdviceCard(deps, chore.chore_type, chore.label));
+      cards.push(await createAdviceCard(deps, chore.chore_type, chore.label));
     } else {
       cards.push(createUnbettableCard(deps, "coming_later", chore.chore_type, chore.label));
     }

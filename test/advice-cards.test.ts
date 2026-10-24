@@ -76,6 +76,7 @@ interface AdviceCard {
     headline: string | null;
     reason: string | null;
     window: { from: string; to: string } | null;
+    forecast: { hour: string; rain_mm: number | null; temp_c: number | null }[];
     rule: { headline: string | null; reason: string } | null;
     note: string | null;
     can_retry: boolean;
@@ -153,8 +154,12 @@ describe("AC-031.1: the advisor gives do it now, wait for a window or no window,
   it("AC-031.1: with the flag on, a clean-the-windows chore is a card that is thinking, then gives a window", async () => {
     const h = await setup();
     const { created, card } = await capture(h, "advice-windows", "windows-wait-rain");
-    expect(created.advice?.stage).toBe("thinking");
-    expect(created.advice?.note).toBe("Gemma is checking the forecast.");
+    // The rule's advice shows at once, labelled as such until Gemma answers.
+    expect(created.advice).toMatchObject({
+      stage: "advice",
+      source: "rule",
+      label: "Gemma is thinking · rule advice",
+    });
     expect(card).toMatchObject({ kind: "weather", title: "Clean the windows", quote: null });
     expect(card.advice).toMatchObject({
       stage: "advice",
@@ -169,6 +174,15 @@ describe("AC-031.1: the advisor gives do it now, wait for a window or no window,
       from: new Date(THURSDAY_9 + 16 * HOUR_MS).toISOString(),
       to: new Date(THURSDAY_9 + 28 * HOUR_MS).toISOString(),
     });
+  });
+
+  it("AC-031.1: the card shows the forecast numbers of the tool result for the window", async () => {
+    const h = await setup();
+    const { card } = await capture(h, "advice-windows", "windows-wait-rain");
+    // The window is hours 16 to 28 after the card's hour (Friday 01:00 to 13:00): twelve rows, dry.
+    expect(card.advice?.forecast).toHaveLength(12);
+    expect(card.advice?.forecast[0]).toMatchObject({ hour: "Fri 01:00", rain_mm: 0, temp_c: 18 });
+    expect(card.advice?.forecast.at(-1)?.hour).toBe("Fri 12:00");
   });
 
   it("AC-031.1: Gemma is asked with get_forecast, up to 72 hours, and the tool is called", async () => {
@@ -198,7 +212,7 @@ describe("AC-031.1: the advisor gives do it now, wait for a window or no window,
       "paint-no-window",
       SHOWERS,
       "no_window",
-      "No good window to paint outdoors in the next 3 days",
+      "No good window to paint outdoors in the next 72 h",
     ],
     [
       "advice-lawn",
@@ -285,7 +299,9 @@ describe("AC-031.2: the rule advice, and what happens when Gemma's window is con
     expect(card.advice?.source).toBe("gemma");
     expect(card.advice?.headline).toBe("Clean the windows after today 20:00");
     expect(card.advice?.rule).toMatchObject({ headline: "Clean the windows after tomorrow 01:00" });
-    expect(card.advice?.rule?.reason).toMatch(/^Rule: 1 mm of rain or more in the next 48 hours/);
+    expect(card.advice?.rule?.reason).toMatch(
+      /^Rule: rain in the next 48 hours; wait until 6 hours/,
+    );
   });
 
   it("AC-031.2: the rule advice is not shown beside Gemma's when they agree", async () => {
@@ -463,5 +479,63 @@ describe("AC-031.3: advice cards are advice only, logged, and disclosed", () => 
       .run(card.id);
     const after = (await h.get(`/api/cards/${card.id}`)).json<AdviceCard>();
     expect(after.advice?.can_retry).toBe(true);
+  });
+});
+
+describe("AC-031.4: the backstop and the safety guard run on advice cards, and an alert replaces the advice", () => {
+  interface AlertCard extends AdviceCard {
+    alert_reason: string | null;
+  }
+
+  const heat = (index: number): Partial<ForecastHour> => (index < 6 ? { temperatureC: 37 } : {});
+
+  it("AC-031.4: the fixed backstop turns the card into a Do it now alert and the advisor is not asked", async () => {
+    const h = await setup(heat);
+    const { card } = await capture(h, "advice-sweep", "sweep-do-now");
+    const alert = card as AlertCard;
+    expect(alert.kind).toBe("alert");
+    expect(alert.alert_reason).toMatch(/°C/);
+    expect(alert).not.toHaveProperty("advice");
+    expect(advisorCalls(h)).toHaveLength(0);
+    expect(
+      h.db.prepare("SELECT COUNT(*) AS n FROM gemma_decisions WHERE job = 'advisor'").get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it("AC-031.4: heat after the window starts does not touch a card whose window is earlier", async () => {
+    const h = await setup((index) => (index >= 30 ? { temperatureC: 37 } : rain(2, 10, 1)(index)));
+    const { card } = await capture(h, "advice-windows", "windows-wait-rain");
+    expect(card.kind).toBe("weather");
+    expect(card.advice?.source).toBe("gemma");
+  });
+
+  it("AC-031.4: the safety guard, when its flag is on, can raise an alert before the advisor", async () => {
+    const h = await setup(CALM, { flags: { adviceCards: true, safetyGuard: true } });
+    h.model.setScenario("safety", "alert");
+    const { card } = await capture(h, "advice-lawn", "sweep-do-now");
+    expect((card as AlertCard).kind).toBe("alert");
+    expect((card as AlertCard).alert_reason).not.toBeNull();
+    expect(advisorCalls(h)).toHaveLength(0);
+  });
+
+  it("AC-031.4: a guard that finds nothing lets the advice through and is recorded as checked", async () => {
+    const h = await setup(CALM, { flags: { adviceCards: true, safetyGuard: true } });
+    h.model.setScenario("safety", "ok");
+    const { card } = await capture(h, "advice-sweep", "sweep-do-now");
+    expect(card.kind).toBe("weather");
+    expect(card.advice?.source).toBe("gemma");
+    expect(
+      h.db.prepare("SELECT safety_checked_at FROM cards WHERE id = ?").get(card.id),
+    ).not.toEqual({
+      safety_checked_at: null,
+    });
+    expect(h.model.calls.filter((call) => call.job === "safety")).toHaveLength(1);
+  });
+
+  it("AC-031.4: a guard that is away leaves the advice as it is", async () => {
+    const h = await setup(CALM, { flags: { adviceCards: true, safetyGuard: true } });
+    h.model.setScenario("safety", "offline");
+    const { card } = await capture(h, "advice-sweep", "sweep-do-now");
+    expect(card.advice?.source).toBe("gemma");
   });
 });

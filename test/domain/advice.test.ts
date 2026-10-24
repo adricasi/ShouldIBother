@@ -57,13 +57,13 @@ describe("AC-031.2: the rule advice for each advice chore (design.md, Advice car
   });
 
   describe("clean windows", () => {
-    it("says do it now when under 1 mm falls in the next 48 hours", () => {
+    it("says do it now when no hour in the next 48 is wet (under 0.1 mm)", () => {
       expect(ruleAdvice("windows_clean", forecast(72, rainBetween(10, 20, 0.09)), CONFIG)).toEqual({
         advice: "do_now",
       });
     });
 
-    it("waits until 6 hours after the end of the last wet hour when 1 mm or more falls", () => {
+    it("waits until 6 hours after the end of the last wet hour", () => {
       // Wet hours 5..9 (the last is hour 9, which ends at 10): wait from 10 + 6 = 16.
       const advice = ruleAdvice("windows_clean", forecast(72, rainBetween(5, 10)), CONFIG);
       expect(advice).toEqual({
@@ -78,7 +78,7 @@ describe("AC-031.2: the rule advice for each advice chore (design.md, Advice car
       });
     });
 
-    it("counts a drizzle that adds up to 1 mm with no hour as wet as the rain, ending at its last hour", () => {
+    it("counts a light shower of 0.1 mm as a wet hour", () => {
       const advice = ruleAdvice("windows_clean", forecast(72, rainBetween(2, 13, 0.1)), CONFIG);
       expect(advice).toEqual({
         advice: "wait",
@@ -203,9 +203,12 @@ describe("AC-031.2: a Gemma window the forecast contradicts is refused", () => {
     );
   });
 
-  it("clean windows: does not refuse a window before rain that is under 1 mm in all", () => {
+  it("clean windows: a drizzle of 0.1 mm is a wet hour too", () => {
     const hours = forecast(72, rainBetween(30, 33, 0.1));
-    expect(adviceContradiction("windows_clean", hours, wait(2, 6), CONFIG)).toBeUndefined();
+    expect(adviceContradiction("windows_clean", hours, wait(2, 6), CONFIG)).toMatch(
+      /starts before the last wet hour/,
+    );
+    expect(adviceContradiction("windows_clean", hours, wait(40, 44), CONFIG)).toBeUndefined();
   });
 
   it("sweep: refuses a window with an hour of gusts of 40 km/h or more", () => {
@@ -233,9 +236,26 @@ describe("AC-031.2: a Gemma window the forecast contradicts is refused", () => {
   it("lawn: refuses a window before the end of a spell of 10 mm or more", () => {
     const hours = forecast(72, rainBetween(10, 20, 1.2));
     expect(adviceContradiction("lawn_feed", hours, wait(2, 6), CONFIG)).toMatch(
-      /lies before the end of the heavy rain/,
+      /starts before the heavy rain ends \(hours 10-20 ahead\)/,
     );
     expect(adviceContradiction("lawn_feed", hours, wait(20, 30), CONFIG)).toBeUndefined();
+  });
+
+  it("lawn: a spell is consecutive wet hours: two showers of 6 mm apart are not one", () => {
+    const hours = forecast(72, (i) =>
+      i === 10 || i === 11 || i === 20 || i === 21 ? { precipitationMm: 3 } : {},
+    );
+    expect(ruleAdvice("lawn_feed", hours, CONFIG)).toEqual({ advice: "do_now" });
+    expect(adviceContradiction("lawn_feed", hours, wait(2, 6), CONFIG)).toBeUndefined();
+  });
+
+  it("lawn: a spell that starts after 48 hours is ignored, and one that runs past 72 hours leaves no window", () => {
+    expect(ruleAdvice("lawn_feed", forecast(72, rainBetween(50, 60, 2)), CONFIG)).toEqual({
+      advice: "do_now",
+    });
+    expect(ruleAdvice("lawn_feed", forecast(72, rainBetween(40, 72, 2)), CONFIG)).toEqual({
+      advice: "no_window",
+    });
   });
 
   it("lawn: does not refuse a window when the rain is under 10 mm", () => {
@@ -256,12 +276,35 @@ describe("AC-031.2: a Gemma window the forecast contradicts is refused", () => {
     expect(adviceContradiction("lawn_feed", heavy, { advice: "do_now" }, CONFIG)).toBeDefined();
   });
 
-  it("never contradicts 'no window': it is shown beside the rule's advice instead", () => {
-    for (const chore of ADVICE_CHORE_TYPES) {
-      expect(adviceContradiction(chore, forecast(72), { advice: "no_window" }, CONFIG)).toBe(
-        undefined,
-      );
-    }
+  it("refuses 'no window' when the rule finds a window, and accepts it when the rule finds none", () => {
+    expect(
+      adviceContradiction("balcony_sweep", forecast(72), { advice: "no_window" }, CONFIG),
+    ).toMatch(/allows doing it now/);
+    expect(
+      adviceContradiction(
+        "windows_clean",
+        forecast(72, rainBetween(5, 10)),
+        { advice: "no_window" },
+        CONFIG,
+      ),
+    ).toMatch(/good window from hour 16 ahead/);
+    expect(
+      adviceContradiction(
+        "outdoor_paint",
+        forecast(72, rainBetween(10, 72)),
+        { advice: "no_window" },
+        CONFIG,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("paint: a window must leave 24 hours inside the 72", () => {
+    expect(adviceContradiction("outdoor_paint", forecast(72), wait(50, 72), CONFIG)).toMatch(
+      /leaves less than 24 hours/,
+    );
+    expect(
+      adviceContradiction("outdoor_paint", forecast(72), wait(48, 72), CONFIG),
+    ).toBeUndefined();
   });
 
   it("refuses a window that starts after the forecast it was given", () => {
@@ -335,7 +378,7 @@ describe("AC-031.1: the headline names the time in Madrid", () => {
       ),
     ).toBe("Paint or varnish outdoors from tomorrow 09:00");
     expect(adviceHeadline("lawn_feed", { advice: "no_window" }, START, now)).toBe(
-      "No good time to feed the lawn in the next 3 days",
+      "No good time to feed the lawn in the next 72 h",
     );
   });
 });
