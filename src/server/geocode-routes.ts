@@ -9,10 +9,12 @@ import {
 import { sessionKeyOf } from "./auth/guard.js";
 import { SlidingWindowLimiter } from "./auth/rate-limit.js";
 import { HttpError } from "./problem.js";
+import { CallBudgetExhaustedError } from "./weather/cache.js";
 import { WeatherUnavailableError } from "./weather/client.js";
 import type { Geocoder } from "./weather/geocoding.js";
 
 const OFFLINE_TITLE = "Search is offline; type the coordinates";
+const CAP_TITLE = "Search limit reached for today; type the coordinates";
 const BUSY_DETAIL =
   "That is a lot of searches in a minute. Please wait a moment and search again, or type the coordinates.";
 
@@ -32,7 +34,8 @@ export function geocodeRoutes(options: {
 }): FastifyPluginAsync {
   const limiter = new SlidingWindowLimiter(options.now, GEOCODE_SEARCHES_PER_MINUTE);
   return (app) => {
-    app.get("/api/geocode", async (request, reply) => {
+    // No HEAD twin: a HEAD request must not spend a search, a rate-limit slot or the day's cap.
+    app.get("/api/geocode", { exposeHeadRoute: false }, async (request, reply) => {
       // Every request that passed the guard has a session; the fallback is a single shared bucket.
       const waitSeconds = limiter.take(sessionKeyOf(request) ?? "no-session");
       if (waitSeconds > 0) {
@@ -56,6 +59,9 @@ export function geocodeRoutes(options: {
       try {
         return { results: await options.geocoder.search(parsed.query, language) };
       } catch (error) {
+        if (error instanceof CallBudgetExhaustedError) {
+          throw new HttpError(503, CAP_TITLE);
+        }
         if (error instanceof WeatherUnavailableError) {
           throw new HttpError(503, OFFLINE_TITLE);
         }

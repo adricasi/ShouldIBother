@@ -22,10 +22,8 @@ import { loadRuntime, type Runtime } from "./runtime.js";
 import type { WeatherClient } from "./weather/client.js";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client.js";
 import { PLANNER_FORECAST_DAYS } from "./weather/open-meteo.js";
-import { PersistentCallCounter } from "./weather/cache.js";
 import { FakeGeocoder } from "./weather/fake-geocoder.js";
-import { OpenMeteoGeocoder, type Geocoder } from "./weather/geocoding.js";
-import { OpenMeteoHttp } from "./weather/http.js";
+import { OpenMeteoGeocoder, createGeocodeHttp, type Geocoder } from "./weather/geocoding.js";
 
 /**
  * Human-facing console output goes to stderr: stdout carries the JSON logs, so
@@ -119,10 +117,7 @@ export async function startServer(
     const geocoder: Geocoder = useFakeWeather
       ? new FakeGeocoder()
       : new OpenMeteoGeocoder(
-          new OpenMeteoHttp({
-            counter: new PersistentCallCounter(runtime.db, now),
-            log: (entry) => appRef?.log.info(entry),
-          }),
+          createGeocodeHttp(runtime.db, now, { log: (entry) => appRef?.log.info(entry) }),
         );
     core = createCore({
       db: runtime.db,

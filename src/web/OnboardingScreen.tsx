@@ -202,6 +202,9 @@ function Form({
   const [latitude, setLatitude] = useState(String(initial.location.latitude));
   const [longitude, setLongitude] = useState(String(initial.location.longitude));
   const [placeLabel, setPlaceLabel] = useState(initialPlaceLabel);
+  // Where the label came from: a name the person typed (or saved before) is never overwritten by
+  // a search result; one a previous result offered may be replaced by the next, or cleared.
+  const [labelFromResult, setLabelFromResult] = useState(false);
   const [editingPlace, setEditingPlace] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const latitudeBad = invalid && parseCoordinate(latitude, 90) === undefined;
@@ -350,13 +353,22 @@ function Form({
               setLatitude(String(position.latitude));
               setLongitude(String(position.longitude));
               setInvalid(false);
+              // A name offered by an earlier result no longer fits the new position.
+              if (labelFromResult) {
+                setPlaceLabel("");
+                setLabelFromResult(false);
+              }
             }}
             onChoose={(place) => {
               setLatitude(String(place.latitude));
               setLongitude(String(place.longitude));
               setInvalid(false);
-              // The result's name is offered as the place label, to edit (AC-024.4).
-              setPlaceLabel(clampPlaceLabel(placeTitle(place)));
+              // The result's name is offered as the place label, to edit (AC-024.4), unless the
+              // person typed one themselves.
+              if (placeLabel.trim() === "" || labelFromResult) {
+                setPlaceLabel(clampPlaceLabel(placeTitle(place)));
+                setLabelFromResult(true);
+              }
               placeInput.current?.focus();
             }}
           />
@@ -376,6 +388,7 @@ function Form({
               onChange={(event) => {
                 // 40 characters as the server counts them: code points, not UTF-16 units.
                 setPlaceLabel(clampPlaceLabel(event.target.value));
+                setLabelFromResult(false);
               }}
             />
             <p className="meta" id="place-help">

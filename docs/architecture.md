@@ -187,7 +187,8 @@ Each request carries the household's coordinates **rounded to 2 decimals** (abou
 variables asked for, nothing else. The one exception is the place search: the text typed into it
 (2 to 60 characters, only when the person presses Search) is sent to the geocoding host by the
 laptop, never by the page (the CSP stays `default-src 'self'`). It is limited to 10 searches a
-minute per session, dropped from request logs like the `/pair` token, not cached or stored, and
+minute per session and 50 a day (a budget of its own, one try each, so searching can never use up
+the forecast calls), dropped from request logs like the `/pair` token, not cached or stored, and
 never part of a Gemma prompt or decision; Open-Meteo also necessarily sees the laptop's IP address. There is
 a budget of 1,000 calls a day (the free tier allows 10,000). Setup-time downloads are the only other
 traffic and are not part of the app: the Ollama registry for the models, npm and PyPI for packages,

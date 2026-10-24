@@ -316,6 +316,12 @@
   list-style: none;
 }
 
+/* Busy, but still focusable (aria-disabled instead of disabled keeps the focus where it was). */
+.place-finder .button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
 .place-result {
   display: flex;
   flex-direction: column;

@@ -2,11 +2,12 @@
 export const MAX_PLACE_LABEL_CODE_POINTS = 40;
 
 /**
- * Control characters (Unicode category Cc: newlines, tabs, escapes) and format characters (Cf:
- * bidirectional overrides, zero-width spaces and joiners, the byte-order mark), which can make a
- * label read differently from what it holds.
+ * Control characters (Unicode category Cc: newlines, tabs, escapes), format characters (Cf:
+ * bidirectional overrides, zero-width spaces and joiners, the byte-order mark), lone surrogates
+ * (Cs, broken text) and the line and paragraph separators (Zl, Zp), which can make a label read
+ * differently from what it holds.
  */
-const CONTROL = /[\p{Cc}\p{Cf}]/u;
+const CONTROL = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 /** True when `text` holds a control or invisible character (the same test as the place label). */
 export function hasControlOrInvisibleCharacters(text: string): boolean {

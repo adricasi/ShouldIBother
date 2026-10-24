@@ -367,7 +367,7 @@ describe("AC-024.4: place search", () => {
     expect(saved[0]?.location.latitude).toBe(41.4);
   });
 
-  it("an older search that answers late does not replace the newer one", async () => {
+  it("Enter while a search is waiting asks nothing more, and the answer still arrives", async () => {
     const answers: ((response: Response) => void)[] = [];
     vi.stubGlobal("fetch", (path: string) => {
       fetched.push(path);
@@ -375,8 +375,6 @@ describe("AC-024.4: place search", () => {
     });
     await render();
     search("Gracia");
-    // The button is busy, so the person edits the text and presses Enter again.
-    type("#onboarding-search", "Madrid");
     await act(async () => {
       container
         .querySelector("#onboarding-search")
@@ -385,21 +383,13 @@ describe("AC-024.4: place search", () => {
         );
       await Promise.resolve();
     });
-    expect(fetched).toHaveLength(2);
-    await act(async () => {
-      answers[1]?.(found(MADRID));
-      await Promise.resolve();
-    });
+    expect(fetched).toHaveLength(1);
     await act(async () => {
       answers[0]?.(found(GRACIA));
       await Promise.resolve();
     });
     await flush();
-    expect(
-      [...container.querySelectorAll("ul.place-results .place-result-title")].map(
-        (element) => element.textContent,
-      ),
-    ).toEqual(["Madrid, Community of Madrid"]);
+    expect(status()).toBe("1 place found. Choose one.");
   });
 
   it("never calls Open-Meteo from the page, and keeps the text out of the browser's storage", async () => {
@@ -440,5 +430,111 @@ describe("AC-024.4: place search", () => {
     search("a");
     await flush();
     expect(await run()).toEqual([]);
+  });
+});
+
+describe("AC-024.3, AC-024.4: busy buttons keep the focus", () => {
+  it("Search is aria-disabled while it waits, not disabled, so focus stays and a second press does nothing", async () => {
+    const answers: ((response: Response) => void)[] = [];
+    vi.stubGlobal("fetch", (path: string) => {
+      fetched.push(path);
+      return new Promise<Response>((resolve) => answers.push(resolve));
+    });
+    await render();
+    type("#onboarding-search", "Gracia");
+    const searchButton = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (element) => element.textContent === "Search",
+    )!;
+    searchButton.focus();
+    click("button", "Search");
+    expect(searchButton.getAttribute("aria-disabled")).toBe("true");
+    expect(searchButton.disabled).toBe(false);
+    expect(document.activeElement).toBe(searchButton);
+    click("button", "Search");
+    expect(fetched).toHaveLength(1);
+    await act(async () => {
+      answers[0]?.(found(GRACIA));
+      await Promise.resolve();
+    });
+    await flush();
+    expect(searchButton.getAttribute("aria-disabled")).toBe("false");
+    expect(document.activeElement).toBe(searchButton);
+  });
+
+  it("Use my location is aria-disabled while it waits, and a second press asks nothing more", async () => {
+    const getCurrentPosition = vi.fn<GetCurrentPosition>(); // never answers
+    setGeolocation({ getCurrentPosition });
+    await render();
+    const locateButton = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (element) => element.textContent?.trim() === "Use my location",
+    )!;
+    locateButton.focus();
+    click("button", "Use my location");
+    expect(locateButton.getAttribute("aria-disabled")).toBe("true");
+    expect(locateButton.disabled).toBe(false);
+    expect(document.activeElement).toBe(locateButton);
+    click("button", "Use my location");
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AC-024.4: a result offers its name as the label only when that does not replace the person's own", () => {
+  const choose = async (query: string, index = 0): Promise<void> => {
+    type("#onboarding-search", query);
+    click("button", "Search");
+    await flush();
+    const buttons = container.querySelectorAll<HTMLElement>("ul.place-results button");
+    act(() => {
+      buttons[index]!.click();
+    });
+  };
+
+  it("keeps a name the person typed, and still fills the coordinates", async () => {
+    stubGeocode(() => found(GRACIA));
+    await render();
+    type("#onboarding-place", "My home");
+    await choose("Gracia");
+    expect(value("#onboarding-place")).toBe("My home");
+    expect(value("#onboarding-latitude")).toBe("41.4");
+  });
+
+  it("replaces a name an earlier result offered, but not one edited since", async () => {
+    stubGeocode(() => found(GRACIA, MADRID));
+    await render();
+    await choose("Gracia", 0);
+    expect(value("#onboarding-place")).toBe("Gràcia, Barcelona");
+    await choose("Madrid", 1);
+    expect(value("#onboarding-place")).toBe("Madrid, Community of Madrid");
+    type("#onboarding-place", "Madrid, Community of Madrid 2");
+    await choose("Gracia", 0);
+    expect(value("#onboarding-place")).toBe("Madrid, Community of Madrid 2");
+    expect(value("#onboarding-latitude")).toBe("41.4");
+  });
+
+  it("a label that was erased is offered again", async () => {
+    stubGeocode(() => found(GRACIA));
+    await render();
+    type("#onboarding-place", "Mine");
+    type("#onboarding-place", "");
+    await choose("Gracia");
+    expect(value("#onboarding-place")).toBe("Gràcia, Barcelona");
+  });
+
+  it("Use my location clears a name a result offered, and keeps one typed", async () => {
+    setGeolocation({
+      getCurrentPosition: (success) => {
+        success({ coords: { latitude: 10.123, longitude: 20.456 } });
+      },
+    });
+    stubGeocode(() => found(GRACIA));
+    await render();
+    await choose("Gracia");
+    expect(value("#onboarding-place")).toBe("Gràcia, Barcelona");
+    click("button", "Use my location");
+    expect(value("#onboarding-place")).toBe("");
+    expect(value("#onboarding-latitude")).toBe("10.12");
+    type("#onboarding-place", "Mine");
+    click("button", "Use my location");
+    expect(value("#onboarding-place")).toBe("Mine");
   });
 });

@@ -24,9 +24,34 @@ import {
 } from "../../domain/geocode.js";
 import { OPEN_METEO_HOSTS, roundCoordinate } from "../../domain/open-meteo.js";
 import { hasControlOrInvisibleCharacters } from "../../domain/place-label.js";
+import type { Db } from "../db.js";
 
+import { PersistentCallCounter } from "./cache.js";
 import { WeatherUnavailableError } from "./client.js";
-import type { OpenMeteoHttp } from "./http.js";
+import { OpenMeteoHttp, type OpenMeteoHttpOptions } from "./http.js";
+
+/**
+ * Searches a day (Madrid time). The place search has a budget of its own, kept in the same table
+ * as the weather's, so a busy search session can never use up the 1,000 calls of the forecasts
+ * and the settlement weather; once it is spent, searching says so and the coordinates are typed.
+ */
+export const GEOCODE_DAILY_CAP = 50;
+
+/** Row prefix of the search's own daily count in `weather_cache` (`geocode-calls|YYYY-MM-DD`). */
+const GEOCODE_COUNTER_PREFIX = "geocode-calls";
+
+/** The HTTP layer of the place search: its own daily cap and one try, so a search is one call. */
+export function createGeocodeHttp(
+  db: Db,
+  now: () => number,
+  options: Omit<OpenMeteoHttpOptions, "counter" | "maxAttempts"> = {},
+): OpenMeteoHttp {
+  return new OpenMeteoHttp({
+    ...options,
+    counter: new PersistentCallCounter(db, now, GEOCODE_DAILY_CAP, GEOCODE_COUNTER_PREFIX),
+    maxAttempts: 1,
+  });
+}
 
 export const GEOCODE_URL = `https://${OPEN_METEO_HOSTS.geocoding}/v1/search`;
 

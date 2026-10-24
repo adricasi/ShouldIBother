@@ -9,6 +9,7 @@ import {
   parseGeocodeQuery,
 } from "../src/domain/geocode.js";
 import { OPEN_METEO_HOSTS } from "../src/domain/open-meteo.js";
+import { madridDateOf } from "../src/domain/time.js";
 import { redactUrl, serializeRequest } from "../src/server/app.js";
 import { SlidingWindowLimiter } from "../src/server/auth/rate-limit.js";
 import type { Db } from "../src/server/db.js";
@@ -16,12 +17,14 @@ import { WeatherUnavailableError } from "../src/server/weather/client.js";
 import { PersistentCallCounter } from "../src/server/weather/cache.js";
 import { FakeGeocoder } from "../src/server/weather/fake-geocoder.js";
 import {
+  GEOCODE_DAILY_CAP,
   OpenMeteoGeocoder,
+  createGeocodeHttp,
   geocodeUrl,
   parseGeocodeAnswer,
   type Geocoder,
 } from "../src/server/weather/geocoding.js";
-import { OpenMeteoHttp, type CallLogEntry } from "../src/server/weather/http.js";
+import type { CallLogEntry } from "../src/server/weather/http.js";
 
 import { createCoreHarness, pair, type CoreHarness } from "./core-helpers.js";
 import { FakeOpenMeteo } from "./support/fake-open-meteo.js";
@@ -41,7 +44,12 @@ afterEach(async () => {
 
 /** A harness whose geocoder is the real one, on a fake Open-Meteo server. */
 async function setupLive(
-  options: { flags?: { onboarding: boolean }; logLines?: string[]; callLog?: CallLogEntry[] } = {},
+  options: {
+    flags?: { onboarding: boolean };
+    logLines?: string[];
+    callLog?: CallLogEntry[];
+    maxResponseBytes?: number;
+  } = {},
 ): Promise<{ harness: CoreHarness; openMeteo: FakeOpenMeteo }> {
   const server = new FakeOpenMeteo(Date.now);
   await server.start();
@@ -52,11 +60,13 @@ async function setupLive(
   const geocoder: Geocoder = {
     search: (query, language) =>
       new OpenMeteoGeocoder(
-        new OpenMeteoHttp({
-          counter: new PersistentCallCounter(shared.db!, Date.now),
+        createGeocodeHttp(shared.db!, () => harness!.clock.now(), {
           fetch: server.transport,
           sleep: () => Promise.resolve(),
           log: (entry) => options.callLog?.push(entry),
+          ...(options.maxResponseBytes === undefined
+            ? {}
+            : { maxResponseBytes: options.maxResponseBytes }),
         }),
       ).search(query, language),
   };
@@ -94,6 +104,14 @@ const search = (
     url: `/api/geocode?q=${encodeURIComponent(query)}`,
     headers: { cookie: target!.cookie, ...headers },
   });
+
+/** The search's own count for the day of the harness clock (`weather_cache`). */
+function searchCalls(target: CoreHarness): number {
+  const row = target.db
+    .prepare<[string], { body: string }>("SELECT body FROM weather_cache WHERE key = ?")
+    .get(`geocode-calls|${madridDateOf(target.clock.now())}`);
+  return row === undefined ? 0 : (JSON.parse(row.body) as { count: number }).count;
+}
 
 const GRACIA = {
   name: "Gràcia",
@@ -134,11 +152,12 @@ describe("AC-024.4: the search asks Open-Meteo's geocoding API through the weath
     expect(response.json()).toEqual({ results: [GRACIA] });
   });
 
-  it("counts the call against the daily budget like every other Open-Meteo call", async () => {
+  it("counts the call in the search's own daily count and leaves the forecast budget alone", async () => {
     const log: CallLogEntry[] = [];
     const live = await setupLive({ callLog: log });
     await search("Gracia");
-    expect(new PersistentCallCounter(live.harness.db, Date.now).countToday()).toBe(1);
+    expect(searchCalls(live.harness)).toBe(1);
+    expect(new PersistentCallCounter(live.harness.db, live.harness.clock.now).countToday()).toBe(0);
     // The call log has the host and the path, never the query (NFR-006).
     expect(log).toHaveLength(1);
     expect(JSON.stringify(log)).not.toContain("Gracia");
@@ -434,7 +453,7 @@ describe("AC-024.4: the text is not logged, cached or stored, and Gemma never se
       .prepare<[], { key: string }>("SELECT key FROM weather_cache")
       .all()
       .map((row) => row.key);
-    expect(keys.every((key) => key.startsWith("calls|"))).toBe(true);
+    expect(keys.every((key) => key.startsWith("geocode-calls|"))).toBe(true);
   });
 
   it("is never part of a Gemma prompt or decision", async () => {
@@ -476,5 +495,144 @@ describe("AC-024.4: with fake weather the search answers from a few synthetic pl
       "Valencia",
     ]);
     expect(await search_("atlantis")).toEqual([]);
+  });
+});
+
+describe("AC-024.4: the place search has its own daily cap and makes one try", () => {
+  it("is 50 a day, and the 51st is a 503 that says so; the forecast budget is untouched", async () => {
+    const live = await setupLive();
+    const clock = live.harness.clock;
+    for (let count = 0; count < GEOCODE_DAILY_CAP; count += 1) {
+      if (count > 0 && count % 10 === 0) {
+        clock.advance(61_000); // the per-minute limit is a different rule
+      }
+      expect((await search("Gracia")).statusCode).toBe(200);
+    }
+    expect(live.openMeteo.geocodeRequests).toHaveLength(GEOCODE_DAILY_CAP);
+    clock.advance(61_000);
+    const capped = await search("Gracia");
+    expect(capped.statusCode).toBe(503);
+    expect(capped.json()).toMatchObject({
+      title: "Search limit reached for today; type the coordinates",
+    });
+    expect(live.openMeteo.geocodeRequests).toHaveLength(GEOCODE_DAILY_CAP); // not asked
+    expect(searchCalls(live.harness)).toBe(GEOCODE_DAILY_CAP);
+    // The forecasts and the settlement weather still have their whole day.
+    const forecast = new PersistentCallCounter(live.harness.db, clock.now);
+    expect(forecast.countToday()).toBe(0);
+    expect(forecast.take()).toBe(1);
+    // The next Madrid day starts a new count.
+    clock.advance(24 * 3_600_000);
+    expect((await search("Gracia")).statusCode).toBe(200);
+  });
+
+  it("the cap survives a restart: the count is in the database, not in memory", async () => {
+    const live = await setupLive();
+    await search("Gracia");
+    await search("Gracia");
+    // A new geocoder over the same database continues the count.
+    const again = createGeocodeHttp(live.harness.db, live.harness.clock.now, {
+      fetch: live.openMeteo.transport,
+    });
+    await new OpenMeteoGeocoder(again).search("Gracia", "en");
+    expect(searchCalls(live.harness)).toBe(3);
+  });
+
+  it("a failing service is asked once: no retries, so a search costs one call", async () => {
+    const live = await setupLive();
+    live.openMeteo.mode = "http-500";
+    expect((await search("Gracia")).statusCode).toBe(503);
+    expect(live.openMeteo.geocodeRequests).toHaveLength(1);
+    expect(searchCalls(live.harness)).toBe(1);
+  });
+
+  it("an answer over 256 KB is refused as a format error: the search is offline", async () => {
+    const live = await setupLive();
+    live.openMeteo.geocodeAnswer = {
+      results: [{ ...GRACIA, name: "x".repeat(99) }],
+      padding: "p".repeat(300 * 1024),
+    };
+    const response = await search("Gracia");
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ title: "Search is offline; type the coordinates" });
+  });
+});
+
+describe("AC-024.4: HEAD is not a search", () => {
+  it("has no HEAD twin: a HEAD request is a 404 and spends no search, limit slot or cap", async () => {
+    const live = await setupLive();
+    for (let count = 0; count < 12; count += 1) {
+      const head = await live.harness.request({
+        method: "HEAD",
+        url: "/api/geocode?q=Gracia",
+        headers: { cookie: live.harness.cookie },
+      });
+      expect(head.statusCode).toBe(404);
+    }
+    expect(live.openMeteo.geocodeRequests).toHaveLength(0);
+    expect(searchCalls(live.harness)).toBe(0);
+    // All ten of the minute's searches are still there.
+    for (let count = 0; count < 10; count += 1) {
+      expect((await search("Gracia")).statusCode).toBe(200);
+    }
+  });
+});
+
+describe("AC-024.4: the typed text cannot change the request around it", () => {
+  const HOSTILE = [
+    "@evil/",
+    "//x",
+    "#",
+    "&count=999",
+    "../",
+    "a&language=fr",
+    "x#y?z=1",
+    "evil.example/../..",
+    "%2e%2e/%00",
+    "https://evil.example/",
+    "a\\b",
+  ];
+
+  it.each(HOSTILE)(
+    "%j stays the value of `name`: host, path and the other parameters are as always",
+    (text) => {
+      const url = new URL(geocodeUrl(text, "es"));
+      expect(url.protocol).toBe("https:");
+      expect(url.hostname).toBe("geocoding-api.open-meteo.com");
+      expect(url.port).toBe("");
+      expect(url.username).toBe("");
+      expect(url.pathname).toBe("/v1/search");
+      expect(url.hash).toBe("");
+      expect([...url.searchParams.keys()]).toEqual(["name", "count", "language", "format"]);
+      expect(url.searchParams.get("name")).toBe(text);
+      expect(url.searchParams.get("count")).toBe("10");
+      expect(url.searchParams.get("language")).toBe("es");
+      expect(url.searchParams.get("format")).toBe("json");
+    },
+  );
+
+  it("the same holds for what the fake Open-Meteo server receives from the route", async () => {
+    const live = await setupLive();
+    for (const text of ["@evil/", "//x", "&count=999", "../"]) {
+      expect((await search(text, {}, live.harness)).statusCode).toBe(200);
+    }
+    expect(live.openMeteo.hostsSeen).toEqual(Array(4).fill("geocoding-api.open-meteo.com"));
+    for (const url of live.openMeteo.geocodeRequests) {
+      expect(url.pathname).toBe("/v1/search");
+      expect([...url.searchParams.keys()]).toEqual(["name", "count", "language", "format"]);
+      expect(url.searchParams.get("count")).toBe("10");
+    }
+    expect(live.openMeteo.geocodeRequests.map((url) => url.searchParams.get("name"))).toEqual([
+      "@evil/",
+      "//x",
+      "&count=999",
+      "../",
+    ]);
+  });
+
+  it("refuses broken text and line separators like any other hidden character", () => {
+    for (const bad of ["Mad\u2028rid", "Mad\u2029rid", "Mad\ud800rid", "Mad\udfffrid"]) {
+      expect(parseGeocodeQuery(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
+    }
   });
 });

@@ -7,7 +7,7 @@ import { Icon } from "./ui/Icon.js";
 const SEARCH_MIN = 2;
 const SEARCH_MAX = 60;
 /** Control and invisible characters, which the laptop refuses too. */
-const HIDDEN = /[\p{Cc}\p{Cf}]/u;
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 /**
  * One position, a coarse one: no high accuracy (a neighbourhood is enough and the GPS chip stays
@@ -100,6 +100,10 @@ export function PlaceFinder({ onLocated, onChoose }: PlaceFinderProps) {
   const statusId = useId();
 
   const locate = (): void => {
+    // Busy buttons are aria-disabled, not disabled, so the focus stays where the person put it.
+    if (busy === "locate") {
+      return;
+    }
     const done = (next: Message): void => {
       setBusy(undefined);
       setMessage(next);
@@ -128,6 +132,9 @@ export function PlaceFinder({ onLocated, onChoose }: PlaceFinderProps) {
   };
 
   const search = async (): Promise<void> => {
+    if (busy === "search") {
+      return;
+    }
     const text = query.trim();
     const length = [...text].length;
     if (length < SEARCH_MIN || length > SEARCH_MAX || HIDDEN.test(text)) {
@@ -199,7 +206,7 @@ export function PlaceFinder({ onLocated, onChoose }: PlaceFinderProps) {
         <button
           type="button"
           className="button secondary"
-          disabled={busy === "locate"}
+          aria-disabled={busy === "locate"}
           onClick={locate}
         >
           <Icon name="pin" />
@@ -227,7 +234,7 @@ export function PlaceFinder({ onLocated, onChoose }: PlaceFinderProps) {
         <button
           type="button"
           className="button secondary"
-          disabled={busy === "search"}
+          aria-disabled={busy === "search"}
           onClick={() => {
             void search();
           }}
