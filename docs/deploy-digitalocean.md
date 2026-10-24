@@ -22,7 +22,8 @@ Contents: [1 What hosted mode is](#1-what-hosted-mode-is-and-what-it-costs-you-i
 [7 Configure and start](#7-configure-and-start) · [8 Check Gemma](#8-check-the-inference-service) ·
 [9 Link your phone](#9-link-your-phone) · [10 Operations](#10-operations) ·
 [11 Security checklist](#11-security-checklist) · [12 Troubleshooting](#12-troubleshooting) ·
-[13 Tear down](#13-tear-down)
+[13 Tear down](#13-tear-down) ·
+[14 Release with one command (recommended)](#14-release-with-one-command-recommended)
 
 ## 1. What hosted mode is, and what it costs you in privacy
 
@@ -238,6 +239,10 @@ Docker's repository is not covered by unattended upgrades. Update Docker with
 `apt-get update && apt-get upgrade` from time to time (monthly).
 
 ## 6. Build the image on your laptop and ship it
+
+> **Easier: use the release script (section 14).** It does this section and the image part of 10.2
+> in one command, through DigitalOcean's Container Registry, with short-lived credentials and an
+> automatic rollback. This section is the manual way, without a registry.
 
 There is no registry and no registry credential: you copy the image over SSH.
 
@@ -580,3 +585,67 @@ When you stop using hosted mode:
 7. On the laptop: `docker rmi` the `sib:*` images if you want the space, and remove the Droplet's
    host key: `ssh-keygen -R <reserved IP>`.
 8. Home mode keeps working without any of this.
+
+## 14. Release with one command (recommended)
+
+One command on the laptop builds the image, pushes it to your DigitalOcean Container Registry and
+deploys it on the Droplet:
+
+```bash
+deploy/digitalocean/release.sh
+```
+
+What it does, in order:
+
+1. Checks that the working tree is clean and is `origin/main` (asks before releasing anything else).
+   The image tag is the commit (`git rev-parse --short=12 HEAD`), so every release is traceable.
+2. Builds the image (`linux/amd64`).
+3. Pushes it with a **push credential that doctl creates for 30 minutes** (`doctl registry
+   docker-config --read-write --expiry-seconds 1800`), kept in a temporary folder and deleted after.
+4. Copies the deploy kit (`compose.yaml`, `Caddyfile`, `backup.sh`, `deploy.sh`) to `/opt/sib`. Your
+   settings (`/etc/sib/sib.env`, `/opt/sib/.env`) are never touched.
+5. Runs `deploy.sh` on the Droplet with a **read-only pull credential valid for 10 minutes**, sent over
+   SSH and deleted right after the pull. No registry credential is ever stored on the Droplet.
+6. `deploy.sh` backs up the database (`/srv/sib/backups/pre-deploy`, newest 3), switches to the new
+   image, waits until the app is healthy (3 minutes at most) and **rolls back to the previous version
+   by itself** if it is not.
+
+### 14.1 One-time setup on the laptop
+
+1. **Create the registry:** Container Registry > Create, name for example `sib-registry`, region AMS3,
+   the free Starter plan if it is offered **[verify]** (one repository is enough).
+2. **Install doctl**, DigitalOcean's CLI: https://docs.digitalocean.com/reference/doctl/how-to/install/
+   (in WSL: the Linux tarball from its GitHub releases, then `sudo mv doctl /usr/local/bin`).
+3. **Sign in once:** API > Generate New Token (a custom scope with registry read and write is enough
+   **[verify]** the scope names), then `doctl auth init` and paste it. doctl keeps it in
+   `~/.config/doctl/config.yaml` (your user only). Check with `doctl registry get sib-registry`.
+4. **Settings:** `mkdir -p ~/.config/sib && cp deploy/digitalocean/release.env.example ~/.config/sib/release.env`,
+   then set `SIB_DROPLET=root@<reserved IP>` and `SIB_REGISTRY=<registry name>`.
+5. Docker running on the laptop (Docker Desktop with WSL integration, or Docker Engine in WSL).
+6. If your SSH key has a passphrase: `eval "$(ssh-agent)" && ssh-add` once per terminal.
+
+### 14.2 First release on a new Droplet
+
+```bash
+deploy/digitalocean/release.sh --setup   # copies the kit and runs setup-droplet.sh (step 5)
+```
+
+Then create the two settings files on the Droplet (step 7: `/etc/sib/sib.env` with your domain and
+Gemma key, `/opt/sib/.env` with `SIB_HOST`; `SIB_IMAGE_TAG` is set by the release), and release:
+
+```bash
+deploy/digitalocean/release.sh
+ssh root@<reserved IP> 'cd /opt/sib && docker compose exec app sib hosted-check'   # step 8
+ssh -t root@<reserved IP> 'cd /opt/sib && docker compose exec app sib pair'        # step 9
+```
+
+### 14.3 Every release after that
+
+```bash
+git switch main && git pull
+deploy/digitalocean/release.sh
+```
+
+If the release says it rolled back, the old version is running and nothing is lost; read the app
+lines it printed, fix the problem and release again. To go back to an earlier version by hand, see
+10.3 (the last three images are kept on the Droplet).
