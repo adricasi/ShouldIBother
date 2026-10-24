@@ -198,7 +198,10 @@ export function betView(
     status: bet.status,
     payouts: payoutsAt(bet.odds),
     // A do-it decision has no question: the judge decides from the recorded weather (AC-008.9).
-    tap_answers: bet.kind === "do_nothing" ? (chore?.tapAnswers ?? []) : [],
+    tap_answers:
+      bet.kind === "do_nothing"
+        ? (chore?.tapAnswers ?? []).map(({ id, label }) => ({ id, label }))
+        : [],
     settle: settleView(bet, progress, nowMs),
     // Only with the `rescue` flag on, and only for a bet that can still be folded (REQ-022).
     ...(rescue === undefined ? {} : { rescue }),

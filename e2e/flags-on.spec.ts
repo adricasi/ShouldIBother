@@ -16,6 +16,7 @@ const ALL_ON = {
   heater: true,
   splitFlap: true,
   voice: true,
+  rainChores: true,
 } as const;
 
 const server = new TestServer({ flags: ALL_ON });

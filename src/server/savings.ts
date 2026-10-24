@@ -1,9 +1,4 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-
 import { z } from "zod";
-
-import { RAIN_CHORES } from "../domain/outcomes.js";
 
 import { DRYER_TYPES, FIGURE_BASES, type SavingsCatalogue } from "../domain/savings.js";
 
@@ -36,6 +31,11 @@ const catalogueSchema = z
     laundry_tonight: figureSchema,
     ac: figureSchema,
     heater: figureSchema,
+    // The city rain bets (REQ-030); optional so the backtest's older copies of the file still load.
+    car_rinse: figureSchema.optional(),
+    bike_rinse: figureSchema.optional(),
+    terrace_rinse: figureSchema.optional(),
+    rain_fill: figureSchema.optional(),
   })
   .strict()
   // Hanging laundry instead of the dryer replaces a step: time counts skipped steps only (AC-011.4).
@@ -45,43 +45,24 @@ const catalogueSchema = z
   });
 
 export const DEFAULT_SAVINGS_PATH = `${CONFIG_DIR}savings.json`;
-/** The city rain figures (REQ-030), apart from `savings.json` so the backtest's hash never moves. */
-export const RAIN_SAVINGS_FILE = "savings-rain.json";
 
-const rainCatalogueSchema = z
-  .object({
-    _comment: z.string().optional(),
-    ...(Object.fromEntries(RAIN_CHORES.map((chore) => [chore, figureSchema])) as Record<
-      (typeof RAIN_CHORES)[number],
-      typeof figureSchema
-    >),
-  })
-  .strict();
-
-/** Loads `config/savings.json`: the savings of one won bet per chore (REQ-011, design.md). */
+/**
+ * Loads `config/savings.json`: the savings of one won bet per chore (REQ-011, design.md). Called
+ * with no path (the app) it also returns the city rain figures (REQ-030) under `rain`; given a
+ * path (the backtest) it returns the five REQ-016 chores alone, so the catalogue the backtest
+ * report hashes stays as it was (AC-030.3).
+ */
 export function loadSavings(path?: string): SavingsCatalogue {
-  const base = loadBaseSavings(path ?? DEFAULT_SAVINGS_PATH);
-  if (path !== undefined) {
-    return base;
-  }
-  // The app (no path) also gets the city rain figures; the backtest passes its path and does not.
-  const rainPath = join(dirname(DEFAULT_SAVINGS_PATH), RAIN_SAVINGS_FILE);
-  if (!existsSync(rainPath)) {
-    return base;
-  }
-  const rain = rainCatalogueSchema.safeParse(readJsonFile(rainPath));
-  if (!rain.success) {
-    throw new Error(`Invalid savings config ${rainPath}: ${rain.error.message}`);
-  }
-  const { car_rinse, bike_rinse, terrace_rinse, rain_fill } = rain.data;
-  return { ...base, rain: { car_rinse, bike_rinse, terrace_rinse, rain_fill } };
-}
-
-function loadBaseSavings(path: string): SavingsCatalogue {
-  const result = catalogueSchema.safeParse(readJsonFile(path));
+  const file = path ?? DEFAULT_SAVINGS_PATH;
+  const result = catalogueSchema.safeParse(readJsonFile(file));
   if (!result.success) {
-    throw new Error(`Invalid savings config ${path}: ${result.error.message}`);
+    throw new Error(`Invalid savings config ${file}: ${result.error.message}`);
   }
-  const { plants, laundry_line, laundry_tonight, ac, heater } = result.data;
-  return { plants, laundry_line, laundry_tonight, ac, heater };
+  const { plants, laundry_line, laundry_tonight, ac, heater, car_rinse, bike_rinse } = result.data;
+  const { terrace_rinse, rain_fill } = result.data;
+  const base = { plants, laundry_line, laundry_tonight, ac, heater };
+  if (path !== undefined || !car_rinse || !bike_rinse || !terrace_rinse || !rain_fill) {
+    return base;
+  }
+  return { ...base, rain: { car_rinse, bike_rinse, terrace_rinse, rain_fill } };
 }

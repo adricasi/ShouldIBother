@@ -1,0 +1,17 @@
+{
+  "description": "Hand-written synthetic bookmaker answer for a city rain bet: calls get_forecast, then says likely (70%) with a settle time the next morning.",
+  "steps": [
+    {
+      "toolCalls": [{ "name": "get_forecast", "arguments": { "hours_ahead": 24 } }],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "likely",
+        "reason": "About 5 mm of rain is due tomorrow morning, enough to rinse the car.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}
