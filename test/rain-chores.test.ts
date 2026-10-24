@@ -15,7 +15,9 @@ import {
 import { ruleQuote } from "../src/domain/rules/index.js";
 import { HOUR_MS, madridWallTime } from "../src/domain/time.js";
 import { loadRules } from "../src/server/rules.js";
+import { assertRainConfig } from "../src/server/rain-config.js";
 import { loadSavings } from "../src/server/savings.js";
+import { RAIN_CHORE_TYPES } from "../src/web/api.js";
 import {
   FAKE_WEATHER_PROFILES,
   fakeForecastHours,
@@ -394,16 +396,47 @@ describe("AC-030.2: evidence, judge answers and the dusty-rain loss", () => {
   });
 
   it("AC-030.2: the lucky flag is computed by code from the rain over created_at + 24 h", async () => {
+    // Settled after the window closed: 5 mm of rain is delivered (not lucky), a dry day is lucky.
     const wet = await setup();
     const wetBet = await betAndWait(wet, "car_rinse");
+    wet.clock.current = T0 + 25 * HOUR_MS;
     await tap(wet, wetBet.id, "car_clean");
     expect(settlementOf(wet, wetBet.id)["lucky_win"]).toBe(0);
     await wet.close();
 
     const dry = await setup({ weatherProfile: DRY });
     const dryBet = await betAndWait(dry, "car_rinse");
+    dry.clock.current = T0 + 25 * HOUR_MS;
     await tap(dry, dryBet.id, "car_clean");
     expect(settlementOf(dry, dryBet.id)["lucky_win"]).toBe(1);
+  });
+
+  /** A card made at 20:00 settles at 08:00, 12 h in: the 24 h label window is still open. */
+  async function earlySettle(profile: FakeWeatherProfile): Promise<{ h: CoreHarness; id: number }> {
+    const h = await setup({ weatherProfile: profile });
+    h.clock.current = T0 + 10 * HOUR_MS;
+    const bet = await betAndWait(h, "car_rinse");
+    expect(Date.parse(bet.settle_at)).toBe(T0 + 22 * HOUR_MS);
+    await tap(h, bet.id, "car_clean");
+    return { h, id: bet.id };
+  }
+
+  it("AC-030.2: settled at +12 h with 3 mm so far, the lucky flag is unknown (NULL), not lucky", async () => {
+    const { h, id } = await earlySettle({
+      temperatureC: 15,
+      dryProbabilityPct: 10,
+      rain: { startsAfterHours: 1, hours: 3, mmPerHour: 1 },
+    });
+    expect(settlementOf(h, id)["lucky_win"]).toBeNull();
+  });
+
+  it("AC-030.2: settled at +12 h with 4 mm or more already, the label is delivered: not lucky", async () => {
+    const { h, id } = await earlySettle({
+      temperatureC: 15,
+      dryProbabilityPct: 10,
+      rain: { startsAfterHours: 1, hours: 4, mmPerHour: 1 },
+    });
+    expect(settlementOf(h, id)["lucky_win"]).toBe(0);
   });
 });
 
@@ -463,6 +496,39 @@ describe("AC-030.3: nothing changes for the backtest, the dataset or the calibra
     expect(score.calibration.rule.every((band) => band.n === 0)).toBe(true);
     expect(score.calibration.gemma.every((band) => band.n === 0)).toBe(true);
     expect(score.calibration.lucky_wins.wins_labelled).toBe(0);
+  });
+});
+
+describe("start-up and drift checks", () => {
+  it("AC-030.1: with rainChores on, a missing rules-rain.json or rain savings row stops the start", () => {
+    const rules = loadRules();
+    const savings = loadSavings();
+    expect(() => assertRainConfig({ rainChores: true }, rules, savings)).not.toThrow();
+    expect(() => assertRainConfig({ rainChores: true }, {}, savings)).toThrow(
+      /rules-rain\.json is missing/,
+    );
+    expect(() =>
+      assertRainConfig({ rainChores: true }, rules, {
+        rain: { ...savings.rain!, rain_fill: undefined as never },
+      }),
+    ).toThrow(/no rain row for rain_fill/);
+    expect(() => assertRainConfig({ rainChores: true }, rules, {})).toThrow(/car_rinse/);
+    // With the flag off nothing is required.
+    expect(() => assertRainConfig({ rainChores: false }, {}, {})).not.toThrow();
+  });
+
+  it("the web list of rain chore types equals the domain list", () => {
+    expect([...RAIN_CHORE_TYPES]).toEqual([...RAIN_CHORES]);
+  });
+
+  it("AC-030.1: a card made at 00:30 prices the barrel to 08:00 the next calendar day and settles 08:00-12:00 that day", () => {
+    const now = madrid(23, 0, 30);
+    expect(CHORES.rain_fill.ruleWindow(now)).toEqual({ fromMs: now, toMs: madrid(24, 8) });
+    expect(rainWindow("rain_fill", now).endMs).toBe(madrid(24, 8));
+    expect(CHORES.rain_fill.settleBounds(now)).toEqual({
+      earliestMs: madrid(24, 8),
+      latestMs: madrid(24, 12),
+    });
   });
 });
 

@@ -147,6 +147,8 @@ export const cardSchema = z.object({
   chore_type: z.string(),
   title: z.string(),
   created_at: z.string(),
+  /** City rain bets: the slip shows the loss range without the harmful loss (AC-030.2). */
+  no_harmful_loss: z.boolean().optional(),
   kind: z.enum(["weather", "not_weather", "coming_later", "alert"]),
   /** Set on a "Do it now" alert; the card has no odds and no bet action (AC-012.1). */
   alert_reason: z.string().nullable(),
@@ -322,6 +324,7 @@ export const betSchema = z.object({
   settle_at: z.string(),
   status: z.string(),
   payouts: payoutsSchema,
+  no_harmful_loss: z.boolean().optional(),
   tap_answers: z.array(z.object({ id: z.string(), label: z.string() })),
   settle: settleSchema.nullable(),
   rescue: rescueSchema.optional(),

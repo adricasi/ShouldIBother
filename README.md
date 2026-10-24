@@ -7,8 +7,8 @@
 ![Node.js 24](https://img.shields.io/badge/node-24-339933.svg)
 
 "The Lazy Bookie" turns weather chores (watering balcony plants and line-drying in the core loop;
-laundry overnight, the AC, the heater and the city rain bets for the car, the bike, the terrace and the rain barrel behind feature flags) into bets on doing nothing. **Gemma 4
-E4B, running on your own laptop through Ollama, is the bookmaker and the judge:** it reads what you
+laundry overnight, the AC, the heater and the city rain bets for the car, the bike, the terrace
+and the rain barrel behind feature flags) into bets on doing nothing. **Gemma 4 E4B, running on your own laptop through Ollama, is the bookmaker and the judge:** it reads what you
 type or say, looks at your photo, fetches the forecast itself with a function call, and quotes odds
 as one of five bands (very likely to very unlikely). You bet that the weather will do the job, or you
 do it yourself. When the bet comes due, the app fetches the recorded weather and asks for an after
@@ -514,7 +514,7 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 | `heater` | off | The heater bet and the AC chore |
 | `splitFlap` | off | The split-flap weather board on Today |
 | `rainChores` | off | The city rain bets: rinse the car, rinse the bike, rinse the terrace, fill the rain barrel. The rain does the chore; settle by photo or tap, no before photo; kept out of the backtest and the Score calibration. Rule rows in `config/rules-rain.json` |
-| `adviceCards` | off | Advice cards for windows, balcony sweeping, outdoor painting and the lawn (the cards themselves arrive with T-039; the listener already knows these chore types) |
+| `adviceCards` | off | Advice cards for four chores: clean windows, sweep balcony leaves, paint or varnish outdoors, fertilise the lawn (the cards themselves arrive with T-039; the listener already knows these chore types) |
 | `voice` | off | Voice capture through Gemma 4 audio on llama.cpp: the "Say your chores" button on Today, shown only on HTTPS (see [voice capture](#optional-voice-capture-flag-voice)). TODO(builder): the llama.cpp wire format is unverified until a live voice note works |
 
 ## Presentation

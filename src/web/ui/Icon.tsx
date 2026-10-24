@@ -7,8 +7,8 @@ import {
   Check,
   Clock,
   CloudRain,
+  Cylinder,
   Droplet,
-  Droplets,
   Lock,
   MapPin,
   Shirt,
@@ -29,7 +29,7 @@ import type { IconName } from "./icon-name.js";
 /** The Lucide glyphs the app uses (design-handoff §2, Icons): one place to add or swap one. */
 const GLYPHS = {
   arrow: ArrowRight,
-  barrel: Droplets,
+  barrel: Cylinder,
   bike: Bike,
   bolt: Zap,
   car: Car,

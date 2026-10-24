@@ -35,7 +35,9 @@ export const HEATER_CHIP: QuickChip = { choreType: "heater", label: "Skip the he
 /** The chips for the city rain bets (REQ-030); shown only while the `rainChores` flag is on. */
 export const RAIN_CHIPS: readonly QuickChip[] = [
   { choreType: "car_rinse", label: "Rinse the car" },
-  { choreType: "terrace_rinse", label: "Terrace" },
+  { choreType: "bike_rinse", label: "Rinse the bike" },
+  { choreType: "terrace_rinse", label: "Rinse the terrace" },
+  { choreType: "rain_fill", label: "Fill the rain barrel" },
 ];
 
 export interface TodayScreenProps {
@@ -300,7 +302,9 @@ function CardSlip({
         <span className="win">Win {formatPoints(quote.payouts.win_with_tap)}</span>
         <span className="wrong">
           If wrong {formatPoints(quote.payouts.small_loss)} to{" "}
-          {formatPoints(quote.payouts.harmful_loss)}
+          {formatPoints(
+            card.no_harmful_loss === true ? quote.payouts.normal_loss : quote.payouts.harmful_loss,
+          )}
         </span>
       </p>
       <div className="button-row">

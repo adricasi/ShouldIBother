@@ -78,8 +78,15 @@ export function PhotoBlock({
 }) {
   const photo = card.photo ?? null;
   // A city rain bet takes no before photo: the inspector's observations do not fit (REQ-030).
-  if (actions === undefined || RAIN_CHORE_TYPES.includes(card.chore_type)) {
+  if (actions === undefined) {
     return null;
+  }
+  if (RAIN_CHORE_TYPES.includes(card.chore_type)) {
+    return (
+      <p className="meta">
+        No photo needed now: the rain settles it. You can add one when it&apos;s time.
+      </p>
+    );
   }
   if (photo === null) {
     return (

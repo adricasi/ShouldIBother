@@ -151,7 +151,7 @@
   padding-bottom: var(--space-3);
 }
 
-/* The capture bar: one input row, then a row of chips that scrolls sideways. */
+/* The capture bar: one input row, then the chips, which wrap. */
 .capture {
   display: flex;
   flex-direction: column;
@@ -255,8 +255,9 @@
 /* The row bleeds to the screen edge like the mockup; the padding keeps the focus ring unclipped. */
 .chip-row {
   display: flex;
+  /* Wraps onto more rows instead of scrolling sideways, so nothing hides at 320 px (WCAG 1.4.10). */
+  flex-wrap: wrap;
   gap: var(--space-2);
-  overflow-x: auto;
   margin: calc(var(--space-1) * -1) calc(var(--space-5) * -1);
   padding: var(--space-1) var(--space-5);
   scroll-padding-inline: var(--space-5);
