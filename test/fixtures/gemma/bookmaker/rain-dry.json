@@ -1,0 +1,17 @@
+{
+  "description": "Hand-written synthetic bookmaker answer for a city rain bet on a dry forecast: calls get_forecast, then says unlikely (30%) with a settle time the next day.",
+  "steps": [
+    {
+      "toolCalls": [{ "name": "get_forecast", "arguments": { "hours_ahead": 24 } }],
+      "content": ""
+    },
+    {
+      "content": {
+        "status": "ok",
+        "band": "unlikely",
+        "reason": "Barely any rain is forecast for the next day, not enough to do this job for you.",
+        "settle_in_hours": 24
+      }
+    }
+  ]
+}
