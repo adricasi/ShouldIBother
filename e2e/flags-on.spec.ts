@@ -18,16 +18,12 @@ const ALL_ON = {
   voice: true,
 } as const;
 
-const server = new TestServer();
+const server = new TestServer({ flags: ALL_ON });
 const problems: string[] = [];
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
-  // The first start makes the server's copy of the config; the flags are set while it is stopped.
-  await server.start();
-  await server.stop();
-  server.setFlags(ALL_ON);
   await server.start();
 });
 
@@ -115,6 +111,13 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await expect(slip.getByText(/could save ~5 min/i)).toBeVisible();
   await expect(page.locator("#weather-board-title")).toContainText("Test Quarter · Nowhere");
   await expect(slip.getByText("Gemma's odds")).toBeVisible();
+  // Gemma is the decision maker, and the fake model says it is not Gemma (AC-028.4).
+  await expect(page.getByRole("status").filter({ hasText: "(fake model)" })).toBeVisible();
+  await slip.getByText("How Gemma decided").click();
+  await expect(slip.getByText("Gemma called get_forecast")).toBeVisible();
+  await expect(slip.getByText(/fake model: recorded test answers, not Gemma/)).toBeVisible();
+  await expect(slip.getByRole("table", { name: /forecast the tool returned/ })).toBeVisible();
+  await expectScreenIsSound(page, "today with the disclosure open");
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();
   await expectScreenIsSound(page, "today with a bet");

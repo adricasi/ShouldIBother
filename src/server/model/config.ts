@@ -26,7 +26,7 @@ const modelEntrySchema = z
     /** Ollama tag, e.g. `gemma4:e4b`. */
     tag: z.string().min(1),
     quantization: z.string().optional(),
-    /** Pinned digest, checked by `npm run setup` (T-001, T-010). */
+    /** Pinned digest, set by the builder in T-001/T-010 and recorded with each decision. */
     digest: z.string().optional(),
   })
   .strict();

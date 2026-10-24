@@ -21,7 +21,7 @@ import { withPlan } from "./laundry-plan.js";
 import { latestQuote } from "./quotes.js";
 import type { CardRow, QuoteRow } from "./rows.js";
 import { cardView, type CardView } from "./views.js";
-import { withSavingsEstimate } from "./savings.js";
+import { withCardFacts } from "./card-facts.js";
 
 /** How far ahead the forecast is read; the longest window is "now to next day 12:00". */
 const FORECAST_HOURS = 48;
@@ -276,7 +276,7 @@ export async function createChoreCard(
   const { card, quote } = insert();
   // Gemma quotes in the background; the person sees the rule odds at once (AC-013.1).
   launchNewCardJobs(deps, card.id);
-  return withSavingsEstimate(deps, card, cardView(card, quote, table));
+  return withCardFacts(deps, card, cardView(card, quote, table));
 }
 
 /** A quick chip's card (AC-002.5): no listener involved. */
@@ -297,7 +297,7 @@ export function getCardView(deps: LedgerDeps, cardId: number): CardView {
   const table = bandTable(deps.rules);
   return withPlan(
     card,
-    withSavingsEstimate(
+    withCardFacts(
       deps,
       card,
       cardView(
@@ -335,7 +335,7 @@ export function listOpenCards(deps: LedgerDeps): CardView[] {
         views.push(
           withPlan(
             card,
-            withSavingsEstimate(
+            withCardFacts(
               deps,
               card,
               cardView(card, quote, table, cardPhotoView(deps.db, card, table)),

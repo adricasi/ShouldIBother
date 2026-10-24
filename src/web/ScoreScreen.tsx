@@ -8,6 +8,7 @@ import {
   formatNetDuration,
   formatPoints,
 } from "./format.js";
+import { SampleWatermark } from "./DemoBanner.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import { Achievements, RankHero } from "./RankParts.js";
@@ -48,14 +49,21 @@ export function CalibrationChart({
   title,
   caption,
   bands,
+  sample = false,
 }: {
   readonly id: string;
   readonly title: string;
   readonly caption: string;
   readonly bands: readonly CalibrationBand[];
+  /** Sample data (`sib demo`): the chart carries a SAMPLE watermark. */
+  readonly sample?: boolean;
 }) {
   return (
-    <section aria-labelledby={`${id}-title`} className="calibration">
+    <section
+      aria-labelledby={`${id}-title`}
+      className={sample ? "calibration sample-marked" : "calibration"}
+    >
+      {sample ? <SampleWatermark /> : null}
       <h3 id={`${id}-title`}>{title}</h3>
       <table>
         <caption className="meta">{caption}</caption>
@@ -95,12 +103,20 @@ export function CalibrationChart({
   );
 }
 
-function SavingsTiles({ savings }: { readonly savings: Score["savings"] }) {
+function SavingsTiles({
+  savings,
+  sample,
+}: {
+  readonly savings: Score["savings"];
+  readonly sample: boolean;
+}) {
   return (
-    <section aria-labelledby="saved-title">
+    <section aria-labelledby="saved-title" className={sample ? "sample-marked" : undefined}>
+      {sample ? <SampleWatermark /> : null}
       <h2 id="saved-title" className="section-title">
         What the sky saved
       </h2>
+      {sample ? <p className="meta sample-label">Sample data</p> : null}
       <dl className="stat-tiles score-tiles">
         <div>
           <Icon name="check" />
@@ -170,25 +186,41 @@ function JudgeLine({ judge }: { readonly judge: Score["judge"] }) {
 }
 
 /**
- * The sentence over the chart (mockup 08): the band Gemma used most that has enough bets to say
- * anything, with how often doing nothing worked there and the N behind it. Undefined when no band
- * has five bets yet, so a shaky share never becomes a headline (AC-020.3).
+ * The sentence over the chart (mockup 08, AC-020.3): the band Gemma used most that has enough bets
+ * to say anything, with how often doing nothing worked there and the N behind it, and the rule's
+ * figure for the same band beside it (AC-028.3). Undefined when no Gemma band has five bets yet,
+ * so a shaky share never becomes a headline.
  */
-export function calibrationHeadline(bands: readonly CalibrationBand[]): string | undefined {
-  const best = bands
+export function calibrationHeadline(
+  gemmaBands: readonly CalibrationBand[],
+  ruleBands: readonly CalibrationBand[] = [],
+): string | undefined {
+  const best = gemmaBands
     .filter((band) => !band.too_few && band.actual_pct !== null)
     .reduce<CalibrationBand | undefined>(
       (most, band) => (most === undefined || band.n > most.n ? band : most),
       undefined,
     );
-  return best === undefined
-    ? undefined
-    : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
+  if (best === undefined) {
+    return undefined;
+  }
+  const rule = ruleBands.find((band) => band.band === best.band);
+  const ruleText =
+    rule === undefined || rule.too_few || rule.actual_pct === null
+      ? `the rule's own ${best.name} calls: too few bets to judge${rule === undefined ? "" : ` (${bets(rule.n)})`}`
+      : `the rule's own ${best.name} calls: ${rule.actual_pct}% (${bets(rule.n)})`;
+  return `When Gemma says ${best.name}, doing nothing worked ${best.actual_pct ?? 0}% (${bets(best.n)}); ${ruleText}.`;
 }
 
-function Calibration({ calibration }: { readonly calibration: Score["calibration"] }) {
+function Calibration({
+  calibration,
+  sample,
+}: {
+  readonly calibration: Score["calibration"];
+  readonly sample: boolean;
+}) {
   const { lucky_wins: lucky } = calibration;
-  const headline = calibrationHeadline(calibration.gemma);
+  const headline = calibrationHeadline(calibration.gemma, calibration.rule);
   return (
     <section aria-labelledby="honest-title">
       <h2 id="honest-title" className="section-title">
@@ -198,7 +230,15 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
         <p className="empty">{SCORE_EMPTY_TEXT}</p>
       ) : (
         <>
-          {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
+          {sample ? <p className="meta sample-label">Sample data · fake model</p> : null}
+          {headline === undefined ? null : (
+            <>
+              <p className="calibration-headline">{headline}</p>
+              <p className="meta">
+                The rule is scored on all settled do-nothing bets; Gemma only on the bets it priced.
+              </p>
+            </>
+          )}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
             worked. Every win counts, lucky wins included. A band needs 5 bets before it says
@@ -209,6 +249,7 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             title="Gemma's odds"
             caption="Bets Gemma priced, under the band Gemma gave"
             bands={calibration.gemma}
+            sample={sample}
           />
           {calibration.fake_model_bets > 0 && calibration.gemma.every((band) => band.n === 0) ? (
             <p className="meta">
@@ -221,11 +262,12 @@ function Calibration({ calibration }: { readonly calibration: Score["calibration
             title="The rule's odds"
             caption="Every settled bet, under the band the rule gave"
             bands={calibration.rule}
+            sample={sample}
           />
           <p className="meta">
             {lucky.share_pct === null
               ? "Lucky wins: no win has been labelled yet."
-              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above.`}
+              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above. The share counts all wins, not only Gemma's.`}
           </p>
         </>
       )}
@@ -266,9 +308,9 @@ export function ScoreScreen({ score, flags, fab, notice, onReload }: ScoreScreen
             {score.rank === undefined ? null : (
               <RankHero rank={score.rank} total={score.points.total} />
             )}
-            <SavingsTiles savings={score.savings} />
+            <SavingsTiles savings={score.savings} sample={score.demo === true} />
             <JudgeLine judge={score.judge} />
-            <Calibration calibration={score.calibration} />
+            <Calibration calibration={score.calibration} sample={score.demo === true} />
             {score.achievements === undefined ? null : <Achievements items={score.achievements} />}
           </>
         )}
