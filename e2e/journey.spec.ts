@@ -6,7 +6,8 @@ import { TestServer } from "./server.js";
 
 type Session = Awaited<ReturnType<ReturnType<Page["context"]>["storageState"]>>;
 
-const server = new TestServer();
+// The core journey runs with every flag off, whatever the defaults in config/flags.json are.
+const server = new TestServer({ flags: {} });
 /** The paired browser session, kept from the journey for the width checks (one token pairs 3 devices). */
 let session: Session | undefined;
 
