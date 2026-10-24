@@ -1,0 +1,23 @@
+{
+  "description": "Synthetic: the four rain bets in one sentence.",
+  "content": {
+    "chores": [
+      {
+        "label": "wash the car",
+        "chore_type": "car_rinse"
+      },
+      {
+        "label": "rinse the bike",
+        "chore_type": "bike_rinse"
+      },
+      {
+        "label": "hose down the terrace",
+        "chore_type": "terrace_rinse"
+      },
+      {
+        "label": "fill the rain barrel",
+        "chore_type": "rain_fill"
+      }
+    ]
+  }
+}

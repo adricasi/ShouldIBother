@@ -1,0 +1,19 @@
+{
+  "description": "Synthetic: a car, a balcony sweep and the plants in one sentence (a rain bet, an advice chore and a plants bet).",
+  "content": {
+    "chores": [
+      {
+        "label": "wash the car",
+        "chore_type": "car_rinse"
+      },
+      {
+        "label": "sweep the balcony",
+        "chore_type": "balcony_sweep"
+      },
+      {
+        "label": "water the plants",
+        "chore_type": "plants"
+      }
+    ]
+  }
+}

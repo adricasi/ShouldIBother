@@ -1,0 +1,23 @@
+{
+  "description": "Synthetic: the four advice chores in one sentence.",
+  "content": {
+    "chores": [
+      {
+        "label": "clean the windows",
+        "chore_type": "windows_clean"
+      },
+      {
+        "label": "sweep the balcony",
+        "chore_type": "balcony_sweep"
+      },
+      {
+        "label": "varnish the garden bench",
+        "chore_type": "outdoor_paint"
+      },
+      {
+        "label": "feed the lawn",
+        "chore_type": "lawn_feed"
+      }
+    ]
+  }
+}

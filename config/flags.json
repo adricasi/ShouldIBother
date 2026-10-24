@@ -11,5 +11,7 @@
   "ranks": false,
   "heater": false,
   "splitFlap": false,
-  "voice": false
+  "voice": false,
+  "rainChores": false,
+  "adviceCards": false
 }
