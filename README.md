@@ -42,7 +42,7 @@ Contents: [How Gemma runs the app](#how-gemma-runs-the-app) · [What you see of 
 
 ## How Gemma runs the app
 
-Gemma is the protagonist. One model, **eight prompts for seven jobs** (the voice listener and the
+Gemma is the protagonist. One model, **nine prompts for eight jobs** (the voice listener and the
 appeal judge included), and one rule for the split of labour: **Gemma decides; code executes.** Gemma
 makes every judgement; code fetches the weather, enforces limits, counts points and savings, applies
 a fixed safety backstop and stores everything.
@@ -57,6 +57,7 @@ a fixed safety backstop and stores everything.
 | Judge | Decides how a bet turned out, from the recorded weather and your photo or tap | `prompts/judge.v3.md` |
 | Judge (appeal) | Looks again at a settled bet with a new photo (flag `appeals`) | `prompts/judge-appeal.v2.md` |
 | Laundry planner | Scores the next four drying days: wash today, skip today or no good day (flag `laundryPlanner`) | `prompts/laundry-planner.v1.md` |
+| Advisor | **Calls `get_forecast` (up to 72 h)**, then advises when to clean the windows, sweep the balcony, paint outdoors or feed the lawn: now, after a window, or not in the next 72 h (flag `adviceCards`) | `prompts/advisor.v1.md` |
 
 What keeps a 4B model honest:
 
@@ -120,6 +121,12 @@ Gemma is visible on every screen, not hidden behind the numbers:
 - **Honest points and savings.** Win = (100 - odds) x multiplier, losses -25, -50 or -150, a PAID OUT
   receipt, and time, water and electricity saved with the assumption shown and 30 s of app time
   subtracted per bet. A slip shows what a win would save as an estimate.
+- **Advice, not a bet, for outdoor chores.** Clean the windows, sweep the balcony leaves, paint or
+  varnish outdoors, feed the lawn (flag `adviceCards`): Gemma reads 72 hours of forecast and says "do
+  it now", "wait for <window>" or "no good window in the next 72 h", with a reason. A rule advice
+  (`config/advice-rules.json`) shows beside it when they differ, a window the forecast contradicts is
+  refused, and Gemma away shows the rule advice labelled "Rule advice". No points, savings or
+  calibration; the safety backstop and guard still turn risky weather into an alert.
 - **Safety is never a bet.** A fixed heat, frost and storm backstop turns risky weather into a "Do it
   now" alert; with a flag a Gemma safety guard adds a judgement on top.
 - **Private by design.** Everything runs on one laptop; the only outbound call is the weather lookup
@@ -514,7 +521,7 @@ turns a flag on, after merging and checking the feature. Unknown flag names are 
 | `heater` | off | The heater bet and the AC chore |
 | `splitFlap` | off | The split-flap weather board on Today |
 | `rainChores` | off | The city rain bets: rinse the car, rinse the bike, rinse the terrace, fill the rain barrel. The rain does the chore; settle by photo or tap, no before photo; kept out of the backtest and the Score calibration. Rule rows in `config/rules-rain.json` |
-| `adviceCards` | off | Advice cards for windows, balcony sweeping, outdoor painting and the lawn (the cards themselves arrive with T-039; the listener already knows these chore types) |
+| `adviceCards` | off | Advice cards for cleaning the windows, sweeping the balcony, painting outdoors and feeding the lawn: Gemma's advisor job with `get_forecast` over 72 h, the rule advice beside it, no bet, no points. Thresholds in `config/advice-rules.json` |
 | `voice` | off | Voice capture through Gemma 4 audio on llama.cpp: the "Say your chores" button on Today, shown only on HTTPS (see [voice capture](#optional-voice-capture-flag-voice)). TODO(builder): the llama.cpp wire format is unverified until a live voice note works |
 
 ## Presentation
@@ -585,7 +592,7 @@ development run the same commands through npm: `npm run sib -- <command>`.
 | `sib backtest [options]` | Replays the weather snapshot with the rule, a fixed routine, E2B and E4B (and the fine-tuned model) and writes a report; resumable, `--help` lists the options |
 | `sib snapshot [options]` | Downloads the Open-Meteo snapshot (Previous Runs, Historical Forecast, archive) for the backtest and the fine-tune into the data folder. Details below |
 | `sib dataset [options]` | Builds `train.jsonl`, `holdout.jsonl` and `manifest.json` for the fine-tune from the snapshot, offline. Details below |
-| `sib eval <job> [options]` | Runs the 20-case staged set of one Gemma job (`listener`, `bookmaker`, `inspector`, `judge`, `safety`, `laundry-planner`) through the real job on the configured model and reports valid JSON out of 20, tool use, model calls and latency (p50/p95/max) with the model digest and prompt version. Exit 0 when the target is met (19 of 20), 3 when missed, 2 when Gemma is unreachable. Details below |
+| `sib eval <job> [options]` | Runs the 20-case staged set of one Gemma job (`listener`, `bookmaker`, `inspector`, `judge`, `safety`, `laundry-planner`, `advisor`) through the real job on the configured model and reports valid JSON out of 20, tool use, model calls and latency (p50/p95/max) with the model digest and prompt version. Exit 0 when the target is met (19 of 20), 3 when missed, 2 when Gemma is unreachable. Details below |
 
 ### Evaluating Gemma (`sib eval`)
 
@@ -596,7 +603,7 @@ saw enough; a question from the inspector ends it) valid and within 15 s in 19 o
 pipeline (the report says so).
 
 ```bash
-npm run sib -- eval listener                 # also bookmaker, safety, laundry-planner and judge (taps)
+npm run sib -- eval listener                 # also bookmaker, safety, laundry-planner, advisor and judge (taps)
 npm run sib -- eval inspector --photos ~/eval-photos
 npm run sib -- eval judge --cases evals/judge/photo-cases.json --photos ~/eval-photos
 npm run sib -- eval bookmaker --out ~/sib-evals/bookmaker-1 --record-fixtures ~/sib-evals/fixtures

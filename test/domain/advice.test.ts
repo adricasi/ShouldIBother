@@ -11,6 +11,8 @@ import {
   type AdviceChore,
 } from "../../src/domain/advice.js";
 import { loadAdviceRules } from "../../src/server/advice-rules.js";
+import { isChoreType } from "../../src/domain/chores.js";
+import { BACKTEST_CHORES, OUTCOME_CHORES } from "../../src/domain/outcomes.js";
 import { HOUR_MS, madridWallTimeToEpochMs } from "../../src/domain/time.js";
 import type { ForecastHour } from "../../src/domain/weather.js";
 
@@ -171,6 +173,28 @@ describe("AC-031.2: the rule advice for each advice chore (design.md, Advice car
         window: { startHoursAhead: 16, endHoursAhead: 40 },
       });
     });
+  });
+
+  it("pushes a wait later while its own window still holds a gust or a wet hour, and gives up at the end", () => {
+    // Gusts for 30 hours: the last gust in the 24 h lookahead is hour 23, but hours 24-29 are gusty too.
+    const storm = forecast(72, (i) => (i < 30 ? { gustKmh: 80 } : {}));
+    expect(ruleAdvice("balcony_sweep", storm, CONFIG)).toEqual({
+      advice: "wait",
+      window: { startHoursAhead: 33, endHoursAhead: 45 },
+    });
+    const endless = forecast(72, () => ({ gustKmh: 80 }));
+    expect(ruleAdvice("balcony_sweep", endless, CONFIG)).toEqual({ advice: "no_window" });
+    expect(ruleAdvice("windows_clean", forecast(72, rainBetween(0, 72)), CONFIG)).toEqual({
+      advice: "no_window",
+    });
+  });
+
+  it("keeps the advice chores out of the bet chores, the backtest and the dataset", () => {
+    for (const chore of ADVICE_CHORE_TYPES) {
+      expect(isChoreType(chore)).toBe(false);
+      expect(OUTCOME_CHORES).not.toContain(chore);
+      expect(BACKTEST_CHORES).not.toContain(chore);
+    }
   });
 
   it("reads a missing precipitation or gust as none: it never invents rain", () => {

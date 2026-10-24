@@ -92,6 +92,31 @@ function waitFrom(start: number, length: number): Advice {
   return { advice: "wait", window: { startHoursAhead: start, endHoursAhead: start + length } };
 }
 
+/**
+ * A wait that starts `settleHours` after the end of hour `last`, pushed later while its window
+ * still holds a bad hour, so the rule's own advice is never one its contradiction check refuses.
+ * No room left in the forecast means no window.
+ */
+function waitAfter(
+  last: number,
+  settleHours: number,
+  length: number,
+  hours: readonly ForecastHour[],
+  bad: (hour: ForecastHour) => boolean,
+): Advice {
+  let start = last + 1 + settleHours;
+  for (;;) {
+    const again = hours.slice(start, start + length).findLastIndex(bad);
+    if (again < 0) {
+      break;
+    }
+    start += again + 1 + settleHours;
+  }
+  return start >= Math.min(hours.length, ADVICE_HORIZON_HOURS)
+    ? { advice: "no_window" }
+    : waitFrom(start, length);
+}
+
 /** Index of the last wet hour among the first `lookahead` hours, or -1. */
 function lastWetIndex(
   hours: readonly ForecastHour[],
@@ -167,7 +192,9 @@ export function ruleAdvice(
       const last = lastWetIndex(hours, spec.lookaheadHours, rules);
       return last < 0
         ? { advice: "do_now" }
-        : waitFrom(last + 1 + spec.settleHours, spec.waitWindowHours);
+        : waitAfter(last, spec.settleHours, spec.waitWindowHours, hours, (hour) =>
+            isWet(hour, rules),
+          );
     }
     case "lawn_feed": {
       const last = lawnSpells(hours, rules).at(-1);
@@ -185,7 +212,13 @@ export function ruleAdvice(
         .findLastIndex((hour) => (hour.gustKmh ?? 0) >= spec.gustKmhAtLeast);
       return lastGust < 0
         ? { advice: "do_now" }
-        : waitFrom(lastGust + 1 + spec.settleHours, spec.waitWindowHours);
+        : waitAfter(
+            lastGust,
+            spec.settleHours,
+            spec.waitWindowHours,
+            hours,
+            (hour) => (hour.gustKmh ?? 0) >= spec.gustKmhAtLeast,
+          );
     }
     case "outdoor_paint": {
       const run = rules.outdoorPaint.runHours;
