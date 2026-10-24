@@ -388,6 +388,32 @@ describe("AC-032.7: the container's health check", () => {
     });
     expect(response.statusCode).toBe(401);
   });
+
+  it("exempts only /healthz from the Host allowlist: every other path from loopback keeps the 421", async () => {
+    await hosted();
+    for (const url of ["/api/today", "/pair", "/", "/healthz/", "/healthz?x=1", "/photos/1"]) {
+      const response = await harness.app.inject({
+        url,
+        remoteAddress: "127.0.0.1",
+        headers: { host: "127.0.0.1:8787" },
+      });
+      expect(response.statusCode, url).toBe(421);
+    }
+    // Not a safe method, and not from loopback: the Host allowlist answers.
+    const post = await harness.app.inject({
+      method: "POST",
+      url: "/healthz",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "127.0.0.1:8787" },
+    });
+    expect(post.statusCode).toBe(421);
+    const outside = await harness.app.inject({
+      url: "/healthz",
+      remoteAddress: "203.0.113.9",
+      headers: { host: "127.0.0.1:8787" },
+    });
+    expect(outside.statusCode).toBe(421);
+  });
 });
 
 describe("AC-032.3: sib pair prints the public link with the token in the fragment", () => {
