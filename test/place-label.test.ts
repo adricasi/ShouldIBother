@@ -49,6 +49,10 @@ describe("AC-026.3: the place label is trimmed, free of control characters and a
     ]) {
       expect(parsePlaceLabel(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
     }
+    // Line and paragraph separators, and lone surrogates (broken text), are refused as well.
+    for (const bad of ["Gr\u2028acia", "Gr\u2029acia", "Gr\ud800acia", "Gr\udc00acia"]) {
+      expect(parsePlaceLabel(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
+    }
     // Ordinary punctuation, accents and the middle dot are fine.
     expect(parsePlaceLabel("Gràcia · Barcelona")).toMatchObject({ ok: true });
   });
@@ -81,7 +85,7 @@ describe("migration 0015: household_profile.place_label", () => {
         VALUES (1, 'completed', '{"airConditioning":false,"heaterThisSeason":false,"dryer":"vented"}', 5);
     `);
     const before = db.prepare("SELECT * FROM household_profile").all();
-    expect(migrate(db, MIGRATIONS)).toEqual([15]);
+    expect(migrate(db, MIGRATIONS)).toEqual(ids.filter((id) => id > 14));
     // The existing row is the same and the new column is null on it.
     expect(db.prepare("SELECT * FROM household_profile").all()).toEqual(
       before.map((row) => ({ ...(row as object), place_label: null })),

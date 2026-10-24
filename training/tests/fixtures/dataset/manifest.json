@@ -1,0 +1,220 @@
+{
+  "format_version": 1,
+  "bookmaker_prompt": {
+    "version": "bookmaker.v1",
+    "sha256": "57342f84786e0d0d73e6d8d7646c20dfae4724cde7af371b362fb0a6e0d41d7a"
+  },
+  "rules_json_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "snapshot": {
+    "location": "Gràcia, Barcelona",
+    "start_date": "2026-08-27",
+    "end_date": "2026-09-02",
+    "requested_end_date": "2026-09-02",
+    "fetched_at": "2026-10-22 11:00 Europe/Madrid",
+    "sha256": "f9c9a73d7abdc230e89e971f125ae95a7432343f1d23ff1ab128c8d0235253fa"
+  },
+  "periods": {
+    "train": {
+      "from": "2026-04-01",
+      "to": "2026-08-31"
+    },
+    "holdout": {
+      "from": "2026-09-01",
+      "to": "2026-09-02"
+    }
+  },
+  "habit_profile": {
+    "air_conditioning": true,
+    "balcony_plants": "five pots on a sunny balcony, watered every other evening",
+    "drying": "a clothes line on the balcony and a tumble dryer for wet days",
+    "heating": "a plug-in electric heater for cold evenings",
+    "home_during_the_day": true,
+    "washing": "two or three loads a week, mostly in the morning"
+  },
+  "habits": {
+    "profile": "synthetic",
+    "digest": "4fd64f626ab136ffd65aee9b2f83c974cc5f589262955593899e019eb7017d0d",
+    "live_sends": "{}"
+  },
+  "conversation": {
+    "tool_use": "native",
+    "answer_mode": "single_call",
+    "tool_horizon_hours": 24
+  },
+  "rows": {
+    "train": {
+      "rows": 20,
+      "band_basis": "target",
+      "by_chore": {
+        "plants": {
+          "total": 4,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 2,
+            "toss_up": 0,
+            "likely": 2,
+            "very_likely": 0
+          },
+          "delivered": 2
+        },
+        "laundry_line": {
+          "total": 4,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 3,
+            "very_likely": 1
+          },
+          "delivered": 3
+        },
+        "laundry_tonight": {
+          "total": 4,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 4
+          },
+          "delivered": 4
+        },
+        "ac": {
+          "total": 4,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 4
+          },
+          "delivered": 4
+        },
+        "heater": {
+          "total": 4,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 4
+          },
+          "delivered": 4
+        }
+      },
+      "skipped": {
+        "fallback_forecast": 0,
+        "no_decision_input": 0,
+        "safety_alert": 0,
+        "horizon_crosses_split": 2,
+        "no_target": 0
+      }
+    },
+    "holdout": {
+      "rows": 7,
+      "band_basis": "rule",
+      "by_chore": {
+        "plants": {
+          "total": 1,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 1,
+            "likely": 0,
+            "very_likely": 0
+          },
+          "delivered": 1
+        },
+        "laundry_line": {
+          "total": 2,
+          "by_band": {
+            "very_unlikely": 2,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 0
+          },
+          "delivered": 2
+        },
+        "laundry_tonight": {
+          "total": 1,
+          "by_band": {
+            "very_unlikely": 1,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 0
+          },
+          "delivered": 1
+        },
+        "ac": {
+          "total": 1,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 1
+          },
+          "delivered": 1
+        },
+        "heater": {
+          "total": 2,
+          "by_band": {
+            "very_unlikely": 0,
+            "unlikely": 0,
+            "toss_up": 0,
+            "likely": 0,
+            "very_likely": 2
+          },
+          "delivered": 2
+        }
+      },
+      "skipped": {
+        "fallback_forecast": 0,
+        "no_decision_input": 0,
+        "safety_alert": 0,
+        "horizon_crosses_split": 0,
+        "no_target": 0
+      }
+    }
+  },
+  "dataset_skips": {
+    "outside_periods": 0,
+    "before_snapshot_start": 740,
+    "recorded_weather_forecast": 0,
+    "window_crosses_split": 3,
+    "no_sunset": 0,
+    "short_lead_forecast": 0,
+    "incomplete_archive_window": 3,
+    "incomplete_forecast": 0
+  },
+  "features": {
+    "used": {
+      "plants": ["rain_mm", "max_precipitation_probability_pct", "max_temperature_c"],
+      "laundry_line": ["wet_hours", "mean_drying_index"],
+      "laundry_tonight": ["wet_hours", "dew_hours", "mean_drying_index"],
+      "ac": ["night_min_temperature_c", "mean_wind_kmh"],
+      "heater": ["day_max_temperature_c", "sunshine_hours"]
+    },
+    "dropped": {
+      "plants": [],
+      "laundry_line": [],
+      "laundry_tonight": [],
+      "ac": [],
+      "heater": []
+    }
+  },
+  "files": {
+    "train": {
+      "name": "train.jsonl",
+      "rows": 20,
+      "sha256": "d9fd1e3f4859b63bf2d1e8637113657651ae8378a51b43a4869295acbb115f4e"
+    },
+    "holdout": {
+      "name": "holdout.jsonl",
+      "rows": 7,
+      "sha256": "f96b65e7d10d855d7d093ca7ae4540a6966845ee9aa5515aa2ad8b2bd57afa69"
+    }
+  }
+}

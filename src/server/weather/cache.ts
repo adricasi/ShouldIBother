@@ -59,15 +59,25 @@ export class WeatherCache {
   }
 }
 
+/** The day's budget of a counter is spent: the request was not made. */
+export class CallBudgetExhaustedError extends WeatherUnavailableError {
+  constructor(budget: number) {
+    super(`the daily budget of ${budget} Open-Meteo calls is used up`);
+  }
+}
+
 /**
- * Open-Meteo calls per Madrid day, kept in `weather_cache` (row `calls|YYYY-MM-DD`) so the count
- * survives a restart and shows up next to the weather it paid for (NFR-006).
+ * Open-Meteo calls per Madrid day, kept in `weather_cache` (row `<prefix>|YYYY-MM-DD`, `calls` for
+ * the weather) so the count survives a restart and shows up next to the weather it paid for
+ * (NFR-006). Another prefix is a budget of its own: the place search has one, so searching can
+ * never use up the forecasts and the settlement weather.
  */
 export class PersistentCallCounter implements CallCounter {
   constructor(
     private readonly db: Db,
     private readonly now: () => number,
     private readonly budget: number = DAILY_CALL_BUDGET,
+    private readonly prefix: string = "calls",
   ) {}
 
   countToday(): number {
@@ -80,9 +90,7 @@ export class PersistentCallCounter implements CallCounter {
   take(): number {
     const count = this.countToday();
     if (count >= this.budget) {
-      throw new WeatherUnavailableError(
-        `the daily budget of ${this.budget} Open-Meteo calls is used up`,
-      );
+      throw new CallBudgetExhaustedError(this.budget);
     }
     this.db
       .prepare(
@@ -94,6 +102,6 @@ export class PersistentCallCounter implements CallCounter {
   }
 
   private key(): string {
-    return `calls|${madridDateOf(this.now())}`;
+    return `${this.prefix}|${madridDateOf(this.now())}`;
   }
 }

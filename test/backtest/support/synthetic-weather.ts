@@ -215,7 +215,7 @@ export function withoutVariables(
   return { ...snapshot, [source]: { ...series, values } };
 }
 
-export const GRACIA = { name: "Gràcia, Barcelona", latitude: 41.4036, longitude: 2.1567 };
+export const GRACIA = { name: "Gràcia, Barcelona", latitude: 41.4045, longitude: 2.1555 };
 
 export async function syntheticSnapshot(
   options: FakeOpenMeteoOptions & { requestedEndDate?: string; startDate?: string } = {},

@@ -186,20 +186,30 @@ function JudgeLine({ judge }: { readonly judge: Score["judge"] }) {
 }
 
 /**
- * The sentence over the chart (mockup 08): the band Gemma used most that has enough bets to say
- * anything, with how often doing nothing worked there and the N behind it. Undefined when no band
- * has five bets yet, so a shaky share never becomes a headline (AC-020.3).
+ * The sentence over the chart (mockup 08, AC-020.3): the band Gemma used most that has enough bets
+ * to say anything, with how often doing nothing worked there and the N behind it, and the rule's
+ * figure for the same band beside it (AC-028.3). Undefined when no Gemma band has five bets yet,
+ * so a shaky share never becomes a headline.
  */
-export function calibrationHeadline(bands: readonly CalibrationBand[]): string | undefined {
-  const best = bands
+export function calibrationHeadline(
+  gemmaBands: readonly CalibrationBand[],
+  ruleBands: readonly CalibrationBand[] = [],
+): string | undefined {
+  const best = gemmaBands
     .filter((band) => !band.too_few && band.actual_pct !== null)
     .reduce<CalibrationBand | undefined>(
       (most, band) => (most === undefined || band.n > most.n ? band : most),
       undefined,
     );
-  return best === undefined
-    ? undefined
-    : `When Gemma says ${best.predicted_pct}%, doing nothing works ${best.actual_pct ?? 0}% of the time (${bets(best.n)}).`;
+  if (best === undefined) {
+    return undefined;
+  }
+  const rule = ruleBands.find((band) => band.band === best.band);
+  const ruleText =
+    rule === undefined || rule.too_few || rule.actual_pct === null
+      ? `the rule's own ${best.name} calls: too few bets to judge${rule === undefined ? "" : ` (${bets(rule.n)})`}`
+      : `the rule's own ${best.name} calls: ${rule.actual_pct}% (${bets(rule.n)})`;
+  return `When Gemma says ${best.name}, doing nothing worked ${best.actual_pct ?? 0}% (${bets(best.n)}); ${ruleText}.`;
 }
 
 function Calibration({
@@ -210,7 +220,7 @@ function Calibration({
   readonly sample: boolean;
 }) {
   const { lucky_wins: lucky } = calibration;
-  const headline = calibrationHeadline(calibration.gemma);
+  const headline = calibrationHeadline(calibration.gemma, calibration.rule);
   return (
     <section aria-labelledby="honest-title">
       <h2 id="honest-title" className="section-title">
@@ -221,7 +231,14 @@ function Calibration({
       ) : (
         <>
           {sample ? <p className="meta sample-label">Sample data · fake model</p> : null}
-          {headline === undefined ? null : <p className="calibration-headline">{headline}</p>}
+          {headline === undefined ? null : (
+            <>
+              <p className="calibration-headline">{headline}</p>
+              <p className="meta">
+                The rule is scored on all settled do-nothing bets; Gemma only on the bets it priced.
+              </p>
+            </>
+          )}
           <p className="meta">
             Settled bets on doing nothing only. Each band's odds against how often doing nothing
             worked. Every win counts, lucky wins included. A band needs 5 bets before it says
@@ -250,7 +267,7 @@ function Calibration({
           <p className="meta">
             {lucky.share_pct === null
               ? "Lucky wins: no win has been labelled yet."
-              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above.`}
+              : `Lucky wins: ${lucky.lucky_wins} of ${lucky.wins_labelled} labelled wins (${lucky.share_pct ?? 0}%) came when the weather did not match the chore's outcome. They still count as wins above. The share counts all wins, not only Gemma's.`}
           </p>
         </>
       )}

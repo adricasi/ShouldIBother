@@ -40,13 +40,14 @@ other than Open-Meteo.
   If `tshark` is missing: `sudo apt install tshark`. The phone talks to the laptop over the LAN, so
   the phone's private address (192.168.x.x or 10.x.x.x) appears as a peer of the app port: that is
   expected and is not an outbound host.
-- [ ] Every name that is not the phone or the LAN is one of the four Open-Meteo hosts of the weather
+- [ ] Every name that is not the phone or the LAN is one of the five Open-Meteo hosts of the weather
       client's allowlist (`src/domain/open-meteo.ts`): `api.open-meteo.com`,
       `previous-runs-api.open-meteo.com`, `historical-forecast-api.open-meteo.com`,
-      `archive-api.open-meteo.com`. During the live capture, bet and settle cycle expect **only
+      `archive-api.open-meteo.com`, `geocoding-api.open-meteo.com`. During the live capture, bet and settle cycle expect **only
       `api.open-meteo.com`**: the forecast, and the recent hours used for settlement, both come from
       it. The previous-runs, historical-forecast and archive hosts appear only when you run
-      `sib snapshot` or `sib backtest`; seeing one during the live cycle is a failure to explain.
+      `sib snapshot` or `sib backtest`, and the geocoding host only when you press Search in the
+      onboarding place search; seeing one during the live cycle is a failure to explain.
       Anything else (telemetry, CDN, font host, update checks, Ollama registry, Hugging Face) is a
       failure: find the cause and fix it before publishing.
 - [ ] The host names in `src/domain/open-meteo.ts` carry an "UNVERIFIED" comment. Compare them with

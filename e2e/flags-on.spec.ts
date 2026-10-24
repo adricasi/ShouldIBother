@@ -83,6 +83,27 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await page.getByRole("checkbox", { name: /Balcony plants/ }).check();
   // The optional place name sits with the coordinates, behind Change (AC-024.1, AC-026.3).
   await page.getByRole("button", { name: "Change" }).click();
+
+  // "Use my location" (AC-024.3): localhost is a secure context. One coarse position, rounded to
+  // 2 decimals in the browser, fills the fields; nothing is saved.
+  await page.context().grantPermissions(["geolocation"]);
+  await page.context().setGeolocation({ latitude: 41.40123, longitude: 2.15987 });
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.getByLabel("Latitude")).toHaveValue("41.4");
+  await expect(page.getByLabel("Longitude")).toHaveValue("2.16");
+  await expect(page.getByRole("status")).toContainText("Location filled in: 41.4, 2.16");
+
+  // The place search (AC-024.4), answered by the laptop from its synthetic places: type, search,
+  // choose. The result fills the fields and offers its name as the place name.
+  await page.getByLabel("Search for a place").fill("madrid");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("1 place found. Choose one.");
+  await expectScreenIsSound(page, "first open, place search");
+  await page.getByRole("button", { name: /^Madrid, Community of Madrid/ }).click();
+  await expect(page.getByLabel("Latitude")).toHaveValue("40.42");
+  await expect(page.getByLabel("Longitude")).toHaveValue("-3.7");
+  await expect(page.getByLabel("Place name (optional)")).toHaveValue("Madrid, Community of Madrid");
+  await expect(page.getByLabel("Place name (optional)")).toBeFocused();
   await page.getByLabel("Place name (optional)").fill("Test Quarter · Nowhere");
   await page.getByRole("button", { name: "Start lazing" }).click();
 
@@ -111,6 +132,13 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
   await expect(slip.getByText(/could save ~5 min/i)).toBeVisible();
   await expect(page.locator("#weather-board-title")).toContainText("Test Quarter · Nowhere");
   await expect(slip.getByText("Gemma's odds")).toBeVisible();
+  // Gemma is the decision maker, and the fake model says it is not Gemma (AC-028.4).
+  await expect(page.getByRole("status").filter({ hasText: "(fake model)" })).toBeVisible();
+  await slip.getByText("How Gemma decided").click();
+  await expect(slip.getByText("Gemma called get_forecast")).toBeVisible();
+  await expect(slip.getByText(/fake model: recorded test answers, not Gemma/)).toBeVisible();
+  await expect(slip.getByRole("table", { name: /forecast the tool returned/ })).toBeVisible();
+  await expectScreenIsSound(page, "today with the disclosure open");
   await slip.getByRole("button", { name: "Bet: do nothing" }).click();
   await expect(page.getByRole("button", { name: /^Undo/ })).toBeVisible();
   await expectScreenIsSound(page, "today with a bet");
@@ -133,6 +161,9 @@ test("all flags on: first open, onboarding, Today and Score are sound and quiet"
 
   await page.getByRole("link", { name: "Household" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Household" })).toBeAttached();
+  // The place chosen in the search was saved with the answers (AC-024.4).
+  await expect(page.locator(".place-text")).toContainText("Test Quarter · Nowhere");
+  await expect(page.locator(".place-text")).toContainText("40.42, -3.7");
   await expectScreenIsSound(page, "household");
 
   // A wide screen: the tab bar is a sidebar and Today has two columns, still sound (mockups D1, D2).

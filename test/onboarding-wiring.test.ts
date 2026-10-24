@@ -242,3 +242,57 @@ describe("main.ts wiring: with onboarding off, refetches ask for the current (de
     expect(new Set(places)).toEqual(new Set(["41.4,2.16"]));
   });
 });
+
+describe("main.ts wiring: the place search of onboarding (AC-024.4)", () => {
+  async function start(extraEnv: Record<string, string>) {
+    const configDir = join(dir, "config") + "/";
+    mkdirSync(configDir);
+    writeFileSync(`${configDir}flags.json`, JSON.stringify({ onboarding: true }));
+    for (const name of ["models.json", "server.example.json", "household.example.json"]) {
+      copyFileSync(`${CONFIG_DIR}${name}`, `${configDir}${name}`);
+    }
+    const port = await freePort();
+    running = await startServer(
+      {
+        SIB_DATA_DIR: join(dir, "data"),
+        SIB_FAKE_MODEL: "1",
+        SIB_PORT: String(port),
+        ...extraEnv,
+      },
+      { configDir, output: () => undefined },
+    );
+    const host = `localhost:${String(port)}`;
+    const { token } = running.runtime.store.issuePairingToken();
+    const cookie = cookieHeaderFrom(
+      await running.app.inject({ method: "GET", url: `/pair?token=${token}`, headers: { host } }),
+    );
+    return (query: string) =>
+      running!.app.inject({
+        method: "GET",
+        url: `/api/geocode?q=${encodeURIComponent(query)}`,
+        headers: { host, cookie },
+      });
+  }
+
+  it("with live weather the search goes to the geocoding host", async () => {
+    const search = await start({});
+    const response = await search("Gracia");
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      results: [
+        { name: "Gràcia", admin1: "Barcelona", country: "Spain", latitude: 41.4, longitude: 2.16 },
+      ],
+    });
+    expect(server.hostsSeen).toEqual(["geocoding-api.open-meteo.com"]);
+  });
+
+  it("with SIB_FAKE_WEATHER=1 the search answers from the synthetic places and calls nobody", async () => {
+    const search = await start({ SIB_FAKE_WEATHER: "1" });
+    const response = await search("madrid");
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ results: { name: string }[] }>().results.map((r) => r.name)).toEqual([
+      "Madrid",
+    ]);
+    expect(server.requests).toHaveLength(0);
+  });
+});

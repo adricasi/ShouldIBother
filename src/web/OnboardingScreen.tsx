@@ -5,6 +5,7 @@ import type { Onboarding, OnboardingAnswers } from "./api.js";
 import { Nav } from "./Nav.js";
 import type { Notice } from "./notice.js";
 import "./onboarding.css";
+import { PlaceFinder, placeTitle } from "./PlaceFinder.js";
 import { Icon, type IconName } from "./ui/Icon.js";
 import { NoticeBanner } from "./ui/NoticeBanner.js";
 import { ErrorState, LoadingState } from "./ui/States.js";
@@ -201,6 +202,9 @@ function Form({
   const [latitude, setLatitude] = useState(String(initial.location.latitude));
   const [longitude, setLongitude] = useState(String(initial.location.longitude));
   const [placeLabel, setPlaceLabel] = useState(initialPlaceLabel);
+  // Where the label came from: a name the person typed (or saved before) is never overwritten by
+  // a search result; one a previous result offered may be replaced by the next, or cleared.
+  const [labelFromResult, setLabelFromResult] = useState(false);
   const [editingPlace, setEditingPlace] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const latitudeBad = invalid && parseCoordinate(latitude, 90) === undefined;
@@ -208,6 +212,7 @@ function Form({
   const latitudeInput = useRef<HTMLInputElement>(null);
   const longitudeInput = useRef<HTMLInputElement>(null);
   const placeFieldsId = useId();
+  const placeInput = useRef<HTMLInputElement>(null);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -342,14 +347,40 @@ function Form({
           </button>
         </div>
         <div id={placeFieldsId} hidden={!editingPlace}>
+          <PlaceFinder
+            onLocated={(position) => {
+              // Only the fields are filled in; nothing is saved until Save (AC-024.3).
+              setLatitude(String(position.latitude));
+              setLongitude(String(position.longitude));
+              setInvalid(false);
+              // A name offered by an earlier result no longer fits the new position.
+              if (labelFromResult) {
+                setPlaceLabel("");
+                setLabelFromResult(false);
+              }
+            }}
+            onChoose={(place) => {
+              setLatitude(String(place.latitude));
+              setLongitude(String(place.longitude));
+              setInvalid(false);
+              // The result's name is offered as the place label, to edit (AC-024.4), unless the
+              // person typed one themselves.
+              if (placeLabel.trim() === "" || labelFromResult) {
+                setPlaceLabel(clampPlaceLabel(placeTitle(place)));
+                setLabelFromResult(true);
+              }
+              placeInput.current?.focus();
+            }}
+          />
           <p className="meta" id="location-help">
-            Neighbourhood level is enough. Latitude and longitude, for example 41.40 and 2.16 for
-            Gràcia, Barcelona.
+            Or type it: neighbourhood level is enough. Latitude and longitude, for example 41.40 and
+            2.16 for Gràcia, Barcelona.
           </p>
           <div className="coordinates">
             <label htmlFor="onboarding-place">Place name (optional)</label>
             <input
               id="onboarding-place"
+              ref={placeInput}
               type="text"
               autoComplete="off"
               value={placeLabel}
@@ -357,6 +388,7 @@ function Form({
               onChange={(event) => {
                 // 40 characters as the server counts them: code points, not UTF-16 units.
                 setPlaceLabel(clampPlaceLabel(event.target.value));
+                setLabelFromResult(false);
               }}
             />
             <p className="meta" id="place-help">

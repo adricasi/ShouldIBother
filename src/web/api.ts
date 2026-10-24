@@ -2,6 +2,43 @@ import { z } from "zod";
 
 import { flagsSchema } from "./features.js";
 
+/** A band with its words and odds, side by side with the other party's (AC-028.3). */
+export const bandFactSchema = z.object({
+  band: z.number(),
+  band_name: z.string(),
+  odds: z.number(),
+});
+
+/**
+ * What "How Gemma decided" shows of one stored decision (AC-028.4): the model tag and a short
+ * digest, the prompt version, the forecast tool's mode, the hours it returned (first six),
+ * retries and latency. `fake` is true for the fixture model.
+ */
+export const decisionSchema = z.object({
+  job: z.string(),
+  model: z.string(),
+  fake: z.boolean(),
+  digest: z.string().nullable(),
+  prompt_version: z.string(),
+  tool_mode: z.enum(["called", "injected", "missed"]).nullable(),
+  forecast: z
+    .array(
+      z.object({
+        hour: z.string(),
+        rain_mm: z.number().nullable(),
+        rain_prob_pct: z.number().nullable(),
+        temp_c: z.number().nullable(),
+        wind_kmh: z.number().nullable(),
+        sunshine_min: z.number().nullable(),
+      }),
+    )
+    .nullable(),
+  retries: z.number(),
+  latency_ms: z.number(),
+});
+export type BandFact = z.infer<typeof bandFactSchema>;
+export type Decision = z.infer<typeof decisionSchema>;
+
 const payoutsSchema = z.object({
   win_with_photo: z.number(),
   win_with_tap: z.number(),
@@ -129,6 +166,9 @@ export const cardSchema = z.object({
     })
     .nullable(),
   photo: photoSchema.nullish(),
+  /** The rule's band beside the quote, and the decision behind a quote of Gemma's (AC-028.3, AC-028.4). */
+  rule: bandFactSchema.optional(),
+  decision: decisionSchema.nullish(),
   /**
    * What a win would save, on a card that offers a do-nothing bet (AC-011.7): an estimate from the
    * same catalogue and baseline as the savings snapshot. `time_min` is absent when it is 0.
@@ -189,6 +229,16 @@ export const receiptSchema = z.object({
   stamp: z.string().nullable(),
   odds: z.number(),
   band_name: z.string(),
+  /** Whose odds the bet was on, both bands and the locked reason (AC-028.3). */
+  odds_source: z.enum(["rule", "gemma"]).optional(),
+  rule: bandFactSchema.optional(),
+  gemma: bandFactSchema.nullish(),
+  fake_model: z.boolean().optional(),
+  odds_reason: z.string().optional(),
+  /** "How Gemma decided": the decision that set the odds and the judge's verdict (AC-028.4). */
+  decisions: z
+    .object({ odds: decisionSchema.nullable(), verdict: decisionSchema.nullable() })
+    .optional(),
   points: z.number(),
   total_points: z.number(),
   multiplier: z.number(),
@@ -258,6 +308,13 @@ export const betSchema = z.object({
   band_name: z.string(),
   odds: z.number(),
   odds_source: z.enum(["rule", "gemma"]),
+  /** The rule's band for this bet, and Gemma's when it priced it (AC-028.3). */
+  rule: bandFactSchema.optional(),
+  gemma: bandFactSchema.nullish(),
+  /** True when the odds came from the fixture model (tests, the demo): said honestly (AC-028.3). */
+  fake_model: z.boolean().optional(),
+  /** The decision that priced a bet on Gemma's odds (AC-028.4). */
+  decision: decisionSchema.nullish(),
   reason: z.string(),
   placed_at: z.string(),
   undo_until: z.string(),
@@ -553,6 +610,28 @@ export const fetchOnboarding = (): Promise<Onboarding> =>
 
 export const saveOnboarding = (answers: OnboardingAnswers): Promise<Onboarding> =>
   request("/api/onboarding", onboardingSchema, { method: "PUT", body: answers });
+
+/** One place of the search in onboarding (AC-024.4): the laptop has rounded the coordinates. */
+export const placeSchema = z.object({
+  name: z.string(),
+  admin1: z.string().optional(),
+  country: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+});
+export type Place = z.infer<typeof placeSchema>;
+
+/**
+ * Asks the laptop to search for a place (AC-024.4). The text goes to the laptop only, which asks
+ * Open-Meteo's geocoding API; the page never calls Open-Meteo itself.
+ */
+export const searchPlaces = async (query: string): Promise<readonly Place[]> =>
+  (
+    await request(
+      `/api/geocode?q=${encodeURIComponent(query)}`,
+      z.object({ results: z.array(placeSchema) }),
+    )
+  ).results;
 
 export const skipOnboarding = (): Promise<Onboarding> =>
   request("/api/onboarding/skip", onboardingSchema, { method: "POST", body: {} });
