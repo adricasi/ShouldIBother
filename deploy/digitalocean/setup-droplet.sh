@@ -52,6 +52,11 @@ cat > /etc/apt/apt.conf.d/52sib-unattended-upgrades <<'CONF'
 Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:30";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
+// Docker's repository too, so runc and containerd fixes arrive by themselves [verify the origin
+// and label with `apt-cache policy docker-ce` after the install].
+Unattended-Upgrade::Origins-Pattern {
+  "origin=Docker,label=Docker CE";
+};
 CONF
 systemctl enable --now unattended-upgrades
 
@@ -73,7 +78,11 @@ if ! command -v docker > /dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
   key_tmp="$(mktemp)"
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "$key_tmp"
+  # Exactly one primary key, with the expected fingerprint: an extra key appended to the file
+  # would otherwise be trusted by apt too.
+  pubs="$(gpg --show-keys --with-colons "$key_tmp" | awk -F: '$1 == "pub"' | wc -l)"
   found="$(gpg --show-keys --with-colons "$key_tmp" | awk -F: '$1 == "fpr" { print $10; exit }')"
+  [[ "$pubs" -eq 1 ]] || { rm -f "$key_tmp"; die "Docker key file holds $pubs keys, expected 1"; }
   [[ "$found" == "$DOCKER_KEY_FINGERPRINT" ]] || { rm -f "$key_tmp"; die "Docker key fingerprint is $found, expected $DOCKER_KEY_FINGERPRINT"; }
   install -m 0644 "$key_tmp" /etc/apt/keyrings/docker.asc
   rm -f "$key_tmp"
@@ -99,6 +108,7 @@ chmod 0755 /opt/sib/backup.sh /opt/sib/setup-droplet.sh
 log "Backup timer"
 install -m 0644 /opt/sib/sib-backup.service /etc/systemd/system/sib-backup.service
 install -m 0644 /opt/sib/sib-backup.timer /etc/systemd/system/sib-backup.timer
+install -m 0644 /opt/sib/sib-backup-failed.service /etc/systemd/system/sib-backup-failed.service
 systemctl daemon-reload
 systemctl enable --now sib-backup.timer
 
@@ -120,6 +130,7 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 PubkeyAuthentication yes
+MaxAuthTries 3
 X11Forwarding no
 CONF
 sshd -t

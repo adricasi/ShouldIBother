@@ -35,17 +35,15 @@ RUN npm ci --omit=dev --ignore-scripts \
 # --- runtime ------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 
-# git: the data-folder guard (src/backtest/output-guard.ts) runs `git rev-parse` on the data
-# folder at every start and refuses to run when git is missing. It finds no repository in /data.
-# hadolint ignore=DL3008
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd --gid 10001 sib \
+# The `sib` wrapper runs node directly. npm and corepack are removed: nothing in the container
+# installs packages, so their code and their own dependencies stay out of the attack surface.
+RUN groupadd --gid 10001 sib \
  && useradd --uid 10001 --gid sib --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sib \
  && install -d -o sib -g sib -m 0700 /data \
  && printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/sib \
- && chmod 0755 /usr/local/bin/sib
+ && chmod 0755 /usr/local/bin/sib \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 WORKDIR /app
 # Code and config are root-owned and read-only for the app user.

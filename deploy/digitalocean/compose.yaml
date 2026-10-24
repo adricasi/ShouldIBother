@@ -24,6 +24,8 @@ services:
     environment:
       SIB_DATA_DIR: /data
       SIB_BIND_ADDRESS: 0.0.0.0
+      # Only Caddy's fixed address may tell the app the client's address (X-Forwarded-For).
+      SIB_TRUSTED_PROXY: 172.30.10.2
     volumes:
       - /srv/sib/data:/data
     # Reachable only from the Compose network. No published ports.
@@ -72,7 +74,9 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - sib
+      sib:
+        # Fixed, so the app can trust exactly this address (SIB_TRUSTED_PROXY above).
+        ipv4_address: 172.30.10.2
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
@@ -95,3 +99,6 @@ volumes:
 networks:
   sib:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24

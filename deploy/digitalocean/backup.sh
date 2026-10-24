@@ -4,8 +4,7 @@
 #
 # The database copy is made by a one-shot container from the image that is running, with the
 # same better-sqlite3 as the app: no sqlite3 package on the host, no root-owned -wal/-shm files,
-# and the app stays up. The copy leaves the container on stdout, so the container has no
-# writable mount.
+# and the app stays up. The copy leaves the container on stdout.
 #
 # The backups hold household data (photos, chores, habits): owner-only, never to a public place.
 # Not included: /etc/sib/sib.env (it holds the inference key; keep it in your password manager).
@@ -42,14 +41,17 @@ image="$(docker inspect --format '{{.Image}}' "$container")"
 install -d -m 0700 "$BACKUP_ROOT" "$work"
 
 # VACUUM INTO writes a consistent, defragmented copy while the app keeps running (WAL mode).
-# The copy is checked, then streamed out.
+# The target path is a bound parameter, never part of the SQL text. The copy is checked, then
+# streamed to stdout. The script has no quote characters, so it can stay in single quotes.
 snapshot_js='
 const Database = require("better-sqlite3");
 const fs = require("node:fs");
-const target = "/tmp/snapshot.db";
-const source = new Database("/data/sib.db", { fileMustExist: true });
+const path = require("node:path");
+const os = require("node:os");
+const target = path.join(os.tmpdir(), "snapshot.db");
+const source = new Database(path.join(process.env.SIB_DATA_DIR || "/data", "sib.db"), { fileMustExist: true });
 source.pragma("busy_timeout = 10000");
-source.exec("VACUUM INTO '" + target + "'");
+source.prepare("VACUUM INTO ?").run(target);
 source.close();
 const copy = new Database(target, { readonly: true });
 const verdict = copy.pragma("integrity_check", { simple: true });
@@ -60,6 +62,8 @@ if (verdict !== "ok") {
 }
 fs.createReadStream(target).pipe(process.stdout);
 '
+# /data must be writable for this container: a WAL database needs its -shm file even to be read.
+# Everything else is locked down: no network, read-only root, no capabilities, 256 MiB.
 docker run --rm \
   --network none \
   --user "$RUN_UID:$RUN_UID" \

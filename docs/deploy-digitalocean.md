@@ -374,19 +374,22 @@ There is no login screen and no password. A phone is linked once and then **reme
    cd /opt/sib && docker compose exec app sib pair
    ```
 
-   It prints a link (and a QR code) `https://<host>/pair#t=...`, valid for 10 minutes, that links at
-   most 3 devices. The link is shown in the terminal only and never goes to the server log.
+   It prints a link (and a QR code) `https://<host>/pair#t=...`, valid for 10 minutes, for **one**
+   device. For a second phone, run it again, or use `sib pair --devices 2` (at most 3). The link
+   is shown in the terminal only and never goes to the server log.
 2. Open the link on the phone (scan the QR code, or type it), and tap **Pair this phone**. The
    token is in the part of the address after `#`, which browsers never send to the server, and the
    button posts it, so link-preview bots and logs never see or spend it.
 3. The device stays remembered for 30 days, renewed whenever it is used (at most once a day)
-   **[verify against the shipped app: AC-032.3, `__Host-` cookie, `Secure`, `HttpOnly`,
-   `SameSite=Strict`]**.
+(a `__Host-` cookie: `Secure`, `HttpOnly`, `SameSite=Strict`).
 
 Rules:
 
 - Do not paste the link into a group chat, and never post it publicly. Anyone who opens it within 10
-  minutes can take one of the three slots.
+  minutes can take its slot.
+- `docker compose exec app sib devices` lists the linked devices (when linked, last seen, a short
+  summary such as "iPhone · Safari"). If you see one you don't know, or you are unsure, run
+  `sib forget-devices` and pair again.
 - To unlink every phone at once: `docker compose exec app sib forget-devices`. Do it when a phone
   is lost.
 - A stranger who finds the URL gets nothing: every screen and API call needs a remembered device, and
@@ -403,6 +406,7 @@ docker compose ps
 docker compose logs --tail 100 app          # structured JSON; no keys, no pairing links, no content
 docker compose logs --tail 50 caddy         # errors only: Caddy has no access log
 journalctl -u sib-backup.service --since yesterday
+ls /srv/sib/backups/LAST_FAILURE 2>/dev/null && echo 'a backup failed: see 10.4'
 df -h /srv/sib; free -h; swapon --show
 ```
 
@@ -418,10 +422,11 @@ undone by switching the image back.
 # on the laptop
 TAG="$(git rev-parse --short HEAD)"
 docker build --platform linux/amd64 -t "sib:$TAG" . && docker save "sib:$TAG" | gzip | ssh root@$IP 'gunzip | docker load'
+echo "$TAG"                                     # note it: the Droplet's shell does not know it
 
-# on the Droplet
+# on the Droplet (replace NEW_TAG with the tag printed above)
 systemctl start sib-backup.service && ls /srv/sib/backups
-sed -i "s/^SIB_IMAGE_TAG=.*/SIB_IMAGE_TAG=$TAG/" /opt/sib/.env   # use the real tag
+sed -i "s/^SIB_IMAGE_TAG=.*/SIB_IMAGE_TAG=NEW_TAG/" /opt/sib/.env
 docker compose up -d
 docker compose ps && docker compose logs --tail 30 app
 ```
@@ -465,9 +470,11 @@ ls /srv/sib/restore-test/photos | head
 rm -rf /srv/sib/restore-test
 ```
 
-**A real restore** (after data loss; the app is down while you do it):
+**A real restore** (after data loss; the app is down while you do it). Replace `BACKUP_DATE` with
+the folder you restore, from `ls /srv/sib/backups`:
 
 ```bash
+latest=/srv/sib/backups/BACKUP_DATE
 cd /opt/sib && docker compose stop app
 mv /srv/sib/data /srv/sib/data.broken-$(date -u +%F)
 install -d -m 0700 -o 10001 -g 10001 /srv/sib/data
@@ -514,8 +521,9 @@ check.
       **[verify]** in the panel.
 - [ ] From outside, only 80 and 443 answer: `nmap -Pn -p 22,80,443,8787 $IP` from a host that is not
       your admin IP shows 22 and 8787 filtered/closed.
-- [ ] `ssh -o PubkeyAuthentication=no root@$IP` is refused; `sshd -T | grep passwordauthentication`
-      says `no`.
+- [ ] `ssh -o PubkeyAuthentication=no root@$IP` is refused; `sshd -T | grep -E 'passwordauthentication|maxauthtries'`
+      says `no` and `3`. Root logs in with a key only, and only from your IP (Cloud Firewall): an accepted
+      trade-off for one household (ADR-0011); a named admin user with sudo is a later hardening step.
 - [ ] `ls -ld /srv/sib/data /srv/sib/backups /etc/sib` shows `drwx------`; `/etc/sib/sib.env` is
       `-rw-------` root:root.
 - [ ] `docker compose ps` shows the app healthy; `docker port sib-app-1` prints nothing (no published
@@ -530,7 +538,7 @@ check.
 - [ ] Two-factor authentication is on for DigitalOcean and the domain registrar.
 - [ ] Droplet backups are on (daily), monitoring is on and an alert email arrives (trigger a test).
 - [ ] `sib-backup.timer` is active (`systemctl list-timers sib-backup.timer`); a restore drill worked.
-- [ ] Pairing: the link was shown in the terminal only; `forget-devices` works.
+- [ ] Pairing: the link was shown in the terminal only; `sib devices` lists only your phones; `forget-devices` works.
 - [ ] Encryption at rest of Droplet disks and backups is documented in ADR-0011 **[verify]**.
 - [ ] The privacy line in the app reads as in section 1.
 - [ ] `sib hosted-check` results are recorded in ADR-0011.
@@ -542,7 +550,6 @@ check.
 | The browser says the certificate is invalid or the site is unreachable | DNS first (`dig +short <host>` shows the reserved IP), then the Cloud Firewall and `ufw status` (80 and 443), then `docker compose logs caddy`. Let's Encrypt limits repeated failed or duplicate requests (about 5 duplicate certificates a week **[verify]**): fix DNS before you retry. |
 | 502 from Caddy | `docker compose ps`: the app is starting, unhealthy or restarting. `docker compose logs app`. |
 | The app exits at start with a message about `SIB_...` | The environment is validated at start: `SIB_PUBLIC_ORIGIN` must be `https://`, the model ID must be on the list, the key must be set. Fix `/etc/sib/sib.env`, then `docker compose up -d --force-recreate app`. |
-| "Cannot run git to check whether the output folder is inside a repository" | The image needs `git` for the data-folder guard; the `Dockerfile` installs it. If you see this, the image was built from another Dockerfile. |
 | `EACCES` or "permission denied" on `/data` | `/srv/sib/data` must be owned by uid 10001 and mode 0700: `chown 10001:10001 /srv/sib/data && chmod 0700 /srv/sib/data`. |
 | Container "unhealthy" | `docker inspect sib-app-1 --format '{{json .State.Health}}'`. The check calls `http://127.0.0.1:8787/healthz` from inside; it must answer 2xx (204). |
 | "Gemma offline" in the app | Prepaid balance, key budget (paused at 100 %), the daily cap (`SIB_DAILY_MODEL_CALLS`), or a wrong model ID: run `sib hosted-check` and read the log line for the status code. |
@@ -551,7 +558,7 @@ check.
 | The out-of-memory killer, or the server is slow | `free -h`, `swapon --show`, `docker stats --no-stream`. The 1 GiB Droplet is tight: do not build images on it; resize it in the panel if it persists. |
 | You cannot SSH in | Your IP changed: edit the firewall's SSH rule. Or use Droplet > Access > Launch Droplet Console in the panel **[verify]**. |
 | The disk is filling | `du -sh /srv/sib/* /var/lib/docker`; `docker image prune` removes unused images (not the tags you keep for rollback); backups are limited to 7. |
-| The backup service failed | `journalctl -u sib-backup.service`; run `/opt/sib/backup.sh` by hand. It needs the app container to exist. |
+| The backup service failed | `cat /srv/sib/backups/LAST_FAILURE` (the time of the last failure), `journalctl -u sib-backup.service`; run `/opt/sib/backup.sh` by hand. It needs the app container to exist. Delete `LAST_FAILURE` once a backup works again. |
 | Metrics alerts do not arrive | `systemctl status do-agent`. The agent is installed when Monitoring is ticked at creation **[verify]**. |
 
 ## 13. Tear down
@@ -568,5 +575,8 @@ When you stop using hosted mode:
 4. Delete the model access key (and keep or remove the prepaid balance as you wish; check whether it
    expires or is refundable **[verify]**). Remove the account spend alert if you no longer need it.
 5. Delete `sib-laptop` from Settings > Security if you do not use the SSH key elsewhere.
-6. On the laptop: `docker rmi` the `sib:*` images if you want the space.
-7. Home mode keeps working without any of this.
+6. Delete any Droplet snapshots you made (Images > Snapshots), and the backup copies on your
+   laptop once you no longer need them (they hold household data).
+7. On the laptop: `docker rmi` the `sib:*` images if you want the space, and remove the Droplet's
+   host key: `ssh-keygen -R <reserved IP>`.
+8. Home mode keeps working without any of this.
