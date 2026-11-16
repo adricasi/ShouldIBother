@@ -48,8 +48,6 @@ that the sky will do it for you. Bet on the weather or do it yourself; every bet
 - [Licences and acknowledgements](#licences-and-acknowledgements)
 - [Documentation](#documentation)
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/BppNHpmmXVU?si=mxO5YeUtkboTNGFz" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
 ## Why Should I Bother?
 On the right day, the weather does some chores for you: the rain waters the balcony, the sun and wind dry
 the washing, a cool night stands in for the AC. The hard part is trusting the forecast. Should I
