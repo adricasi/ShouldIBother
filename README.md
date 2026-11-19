@@ -19,6 +19,7 @@ that the sky will do it for you. Bet on the weather or do it yourself; every bet
 [![#hf26challenge](https://img.shields.io/badge/DEV-%23hf26challenge-0A0A0A?logo=devdotto&logoColor=white)](https://dev.to/t/hf26challenge)
 [![Slow and Steady](https://img.shields.io/badge/theme-Slow%20and%20Steady-ffc23a)](https://dev.to/challenges/hacktoberfest-week3-2026-10-19)
 
+[Video Demo](https://www.youtube.com/watch?v=BppNHpmmXVU) ·
 [**Try the demo →**](#quick-start) ·
 [How it works](#how-it-works) · [Gemma](docs/gemma.md) ·
 [Run it yourself](#run-it-on-your-laptop-step-by-step) · [Hosted mode](#hosted-mode-optional) ·
